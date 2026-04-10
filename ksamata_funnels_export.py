@@ -7,12 +7,14 @@
 
 import sqlite3
 import json
+import os
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
-DB_PATH = '/Users/sergeielkin/Downloads/ksamata_funnels.db'
-OUT_PATH = '/Users/sergeielkin/Downloads/Сводная_таблица_автоворонок.xlsx'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, 'ksamata_funnels.db')
+OUT_PATH = os.path.join(BASE_DIR, 'Сводная_таблица_автоворонок.xlsx')
 
 # ============================================================
 # 1. LOAD DATA FROM DB
