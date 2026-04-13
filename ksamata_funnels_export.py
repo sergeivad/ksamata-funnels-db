@@ -24,11 +24,14 @@ def load_all(db_path):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
 
-    # Funnels with source name
+    # Funnels with source, product, contractor names
     funnels = conn.execute("""
-        SELECT f.*, s.name as source_name
+        SELECT f.*, s.name as source_name,
+               p.name as product_code, c.name as contractor_name
         FROM funnels f
         JOIN sources s ON f.source_id = s.id
+        JOIN products p ON f.product_id = p.id
+        JOIN contractors c ON f.contractor_id = c.id
         ORDER BY f.num
     """).fetchall()
 
@@ -84,6 +87,9 @@ def load_all(db_path):
             'num': fnum,
             'source': f['source_name'],
             'name': f['product_name'],
+            'product_code': f['product_code'],
+            'contractor': f['contractor_name'],
+            'variant': f['variant'] or '',
             'landing': f['landing_url'] or '',
             'start_date': sd,
             'block_name': f['block_name'] or '',
@@ -181,7 +187,7 @@ def build_excel(funnels_data, out_path):
         fnum = f['num']
 
         # Header row
-        cell = ws.cell(cur, 1, f"#{fnum}  {f['source']} — {f['name']}")
+        cell = ws.cell(cur, 1, f"#{fnum}  {f['name']}")
         cell.font = hdr_font
         cell.fill = hdr_fill
         for c in range(1, NC + 1):
@@ -191,7 +197,10 @@ def build_excel(funnels_data, out_path):
         cur += 1
 
         # Meta rows
-        cur = wmeta(cur, 'Подрядчик - продукт:', f['block_name'])
+        cur = wmeta(cur, 'Продукт:', f['product_code'])
+        cur = wmeta(cur, 'Подрядчик:', f['contractor'])
+        if f['variant']:
+            cur = wmeta(cur, 'Вариант:', f['variant'])
         cur = wmeta(cur, 'Тег 19:00:', f['tag_19'])
         cur = wmeta(cur, 'Тег 15:00:', f['tag_15'])
         cur = wmeta(cur, 'Теги регистрации:', f['reg_tags'])
