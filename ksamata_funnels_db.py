@@ -32,10 +32,23 @@ CREATE TABLE IF NOT EXISTS tags (
     name        TEXT NOT NULL UNIQUE
 );
 
+CREATE TABLE IF NOT EXISTS products (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS contractors (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL UNIQUE
+);
+
 CREATE TABLE IF NOT EXISTS funnels (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     num             INTEGER NOT NULL UNIQUE,
     source_id       INTEGER NOT NULL REFERENCES sources(id),
+    product_id      INTEGER NOT NULL REFERENCES products(id),
+    contractor_id   INTEGER NOT NULL REFERENCES contractors(id),
+    variant         TEXT NOT NULL DEFAULT '',
     product_name    TEXT NOT NULL DEFAULT '',
     landing_url     TEXT DEFAULT '',
     start_date      TEXT DEFAULT '',
@@ -99,6 +112,8 @@ CREATE INDEX IF NOT EXISTS idx_funnel_tags_funnel ON funnel_tags(funnel_id);
 CREATE INDEX IF NOT EXISTS idx_funnel_tags_tag    ON funnel_tags(tag_id);
 CREATE INDEX IF NOT EXISTS idx_funnel_days_funnel ON funnel_days(funnel_id);
 CREATE INDEX IF NOT EXISTS idx_salebot_funnel     ON salebot_configs(funnel_id);
+CREATE INDEX IF NOT EXISTS idx_funnels_product    ON funnels(product_id);
+CREATE INDEX IF NOT EXISTS idx_funnels_contractor ON funnels(contractor_id);
 
 CREATE TRIGGER IF NOT EXISTS trg_funnels_updated
 AFTER UPDATE ON funnels
@@ -208,6 +223,36 @@ salebot_overrides = {
         '19': {'condition': '', 'calculator': 'dbo-date = #{current_date}\n\nct_av = 19\n\ncontr_id = "yanr"'},
         '15': {'condition': '', 'calculator': 'dbo-date = #{current_date}\n\nct_av = 15\n\ncontr_id = "yanr"'},
     },
+}
+
+# Funnel mapping: num -> (product, contractor, variant)
+funnel_mapping = {
+    1:  ('БОО', 'Органика', 'ЮТУБ'),
+    2:  ('СВС', 'Органика', 'ЮТУБ'),
+    3:  ('ДБО', 'Органика', 'ЮТУБ'),
+    4:  ('ГП', 'Органика', 'ЮТУБ'),
+    5:  ('ДБО', 'НИМБ', 'ЮТУБ'),
+    6:  ('БОО', 'НИМБ', 'РСЯ'),
+    7:  ('ДБО', 'НИМБ', 'РСЯ'),
+    8:  ('ЖКТ', 'НИМБ', 'РСЯ'),
+    9:  ('ЩЖ', 'НИМБ', 'РСЯ'),
+    10: ('СВС', 'НИМБ', 'РСЯ'),
+    11: ('ДБО', 'NR', 'ВК'),
+    12: ('ЖКТ', 'NR', 'ВК'),
+    13: ('ЖКТ', 'NR', 'IS'),
+    14: ('ЖКТ', 'NR', 'МП'),
+    15: ('ДБО', 'NR', 'МП'),
+    16: ('БОО', 'NR', 'IS'),
+    17: ('ДБО', 'FAQ', 'MAX'),
+    18: ('ДБО', 'HT', 'ВК'),
+    19: ('БОО', 'HT', 'ВК'),
+    20: ('БОО', 'ВК БАИНГ', ''),
+    21: ('СВС', 'Алексей', 'Яндекс Реклама'),
+    22: ('БОО', 'Алексей', 'Яндекс Реклама'),
+    23: ('ДБО', 'Алексей', 'Яндекс Реклама'),
+    24: ('БОО', 'Алексей', 'Яндекс Ретаргет'),
+    25: ('СВС', 'Алексей', 'Яндекс Ретаргет'),
+    26: ('ДБО', 'Алексей', 'Яндекс Ретаргет'),
 }
 
 # Tag raw string override (extra space fix)
@@ -520,6 +565,22 @@ def populate(db_path):
         source_ids[name] = cur.lastrowid
     print(f"  Sources: {len(source_ids)}")
 
+    # --- Insert products ---
+    product_names = sorted(set(m[0] for m in funnel_mapping.values()))
+    product_ids = {}
+    for name in product_names:
+        cur = conn.execute("INSERT INTO products(name) VALUES(?)", (name,))
+        product_ids[name] = cur.lastrowid
+    print(f"  Products: {len(product_ids)}")
+
+    # --- Insert contractors ---
+    contractor_names = sorted(set(m[1] for m in funnel_mapping.values()))
+    contractor_ids = {}
+    for name in contractor_names:
+        cur = conn.execute("INSERT INTO contractors(name) VALUES(?)", (name,))
+        contractor_ids[name] = cur.lastrowid
+    print(f"  Contractors: {len(contractor_ids)}")
+
     # --- Collect all unique tags ---
     all_tag_names = set()
     for f in funnels:
@@ -587,16 +648,31 @@ def populate(db_path):
                 if rid:
                     room_ids[f'd{day}_{slot}'] = rid
 
+        # Build product_name from mapping
+        mapping = funnel_mapping.get(fnum)
+        if mapping:
+            prod, contr, var = mapping
+            prod_id = product_ids[prod]
+            contr_id = contractor_ids[contr]
+            composed_name = f"{prod} {contr} {var}".strip() if var else f"{prod} {contr}"
+        else:
+            prod_id = product_ids[list(product_ids.keys())[0]]
+            contr_id = contractor_ids[list(contractor_ids.keys())[0]]
+            composed_name = f['name']
+            var = ''
+
         cur = conn.execute("""
             INSERT INTO funnels(
-                num, source_id, product_name, landing_url, start_date,
+                num, source_id, product_id, contractor_id, variant,
+                product_name, landing_url, start_date,
                 block_name, sheet_name, tag_19_raw, tag_15_raw, reg_tags_raw,
                 dash_sales_url, dash_pereliv_url,
                 regi_total_url, regi_15_url, regi_19_url, regi_notime_url,
                 room_ids_json
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
-            fnum, source_ids[f['source']], f['name'], landing, sd,
+            fnum, source_ids[f['source']], prod_id, contr_id, var,
+            composed_name, landing, sd,
             block_name, sheet_name, tag_19_raw, tag_15_raw, reg_raw,
             f['dash_sales'], f['dash_pereliv'],
             regi_total, f['regi_15'], f['regi_19'], f['regi_notime'],
@@ -668,6 +744,8 @@ def populate(db_path):
 
     print(f"\n=== Database created: {db_path} ===")
     print(f"  sources:        {len(source_ids)}")
+    print(f"  products:       {len(product_ids)}")
+    print(f"  contractors:    {len(contractor_ids)}")
     print(f"  tags:           {len(tag_ids)}")
     print(f"  funnels:        {len(funnels)}")
     print(f"  funnel_tags:    {ftag_count}")
@@ -685,7 +763,7 @@ def verify(conn):
     print("\n=== Verification ===\n")
 
     # Counts
-    for table in ['sources', 'tags', 'funnels', 'funnel_tags', 'funnel_days', 'salebot_configs']:
+    for table in ['sources', 'products', 'contractors', 'tags', 'funnels', 'funnel_tags', 'funnel_days', 'salebot_configs']:
         cnt = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         print(f"  {table}: {cnt} rows")
 
