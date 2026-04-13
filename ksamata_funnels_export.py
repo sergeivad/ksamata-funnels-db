@@ -201,8 +201,6 @@ def build_excel(funnels_data, out_path):
         cur = wmeta(cur, 'Подрядчик:', f['contractor'])
         if f['variant']:
             cur = wmeta(cur, 'Вариант:', f['variant'])
-        cur = wmeta(cur, 'Источник:', f['source'])
-        cur = wmeta(cur, 'Блок:', f['block_name'])
         cur = wmeta(cur, 'Тег 19:00:', f['tag_19'])
         cur = wmeta(cur, 'Тег 15:00:', f['tag_15'])
         cur = wmeta(cur, 'Теги регистрации:', f['reg_tags'])
