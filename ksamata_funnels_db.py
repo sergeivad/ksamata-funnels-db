@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS funnels (
     regi_15_url     TEXT DEFAULT '',
     regi_19_url     TEXT DEFAULT '',
     regi_notime_url TEXT DEFAULT '',
+    predspisok_url  TEXT DEFAULT '',
     room_ids_json   TEXT DEFAULT '{}',
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
@@ -668,15 +669,15 @@ def populate(db_path):
                 block_name, sheet_name, tag_19_raw, tag_15_raw, reg_tags_raw,
                 dash_sales_url, dash_pereliv_url,
                 regi_total_url, regi_15_url, regi_19_url, regi_notime_url,
-                room_ids_json
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                predspisok_url, room_ids_json
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             fnum, source_ids[f['source']], prod_id, contr_id, var,
             composed_name, landing, sd,
             block_name, sheet_name, tag_19_raw, tag_15_raw, reg_raw,
             f['dash_sales'], f['dash_pereliv'],
             regi_total, f['regi_15'], f['regi_19'], f['regi_notime'],
-            json.dumps(room_ids),
+            '', json.dumps(room_ids),
         ))
         funnel_id = cur.lastrowid
 
