@@ -216,6 +216,10 @@ day_overrides = {
 
 # Salebot overrides for funnels with manually corrected conditions
 salebot_overrides = {
+    19: {
+        '19': {'condition': 'boo-vkns19', 'calculator': 'choose_time = 19\nboo_ht_date = #{current_date}'},
+        '15': {'condition': 'boo-vkns15', 'calculator': 'choose_time = 15\nboo_ht_date = #{current_date}'},
+    },
     25: {
         '19': {'condition': 'cvc-yanr-19', 'calculator': 'ct_av = 19\ncontr_id = "yanr"\n\ncvc_yanr_date = #{current_date}'},
         '15': {'condition': 'cvc-yanr-15', 'calculator': 'ct_av = 15\ncontr_id = "yanr"\n\ncvc_yanr_date = #{current_date}'},
