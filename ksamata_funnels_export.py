@@ -67,6 +67,17 @@ def load_all(db_path):
             key = (d['time_slot'], d['day_num'])
             days[key] = dict(d)
 
+        # Product durations — attach duration_minutes to each day entry
+        pid = f['product_id']
+        dur_rows = conn.execute("""
+            SELECT day_num, duration_minutes
+            FROM product_durations
+            WHERE product_id = ?
+        """, (pid,)).fetchall()
+        dur_map = {r['day_num']: r['duration_minutes'] for r in dur_rows}
+        for (slot, day_num), day_data in days.items():
+            day_data['duration_minutes'] = dur_map.get(day_num)
+
         # Salebot
         salebot = {}
         sb_rows = conn.execute("""
@@ -106,6 +117,7 @@ def load_all(db_path):
             'regi_notime': f['regi_notime_url'] or '',
             'days': days,
             'salebot': salebot,
+            'bothelp_condition': f['bothelp_condition'] or '',
             'room_ids': json.loads(f['room_ids_json'] or '{}'),
         })
 
@@ -143,15 +155,17 @@ def build_excel(funnels_data, out_path):
     fill_15 = PatternFill(start_color="FCE4D6", fill_type="solid")
     border = Border(left=Side('thin'), right=Side('thin'), top=Side('thin'), bottom=Side('thin'))
     wrap = Alignment(wrap_text=True, vertical='top')
-    NC = 12
+    NC = 14
 
     col_headers = [
         'Время', 'День',
         'Комната GC (аналит.)', 'Комната Web (вебинар)',
+        'Длительность',
         'Повтор', 'Продажная', 'Примечание',
         'Тарифы ГК', 'OTO', 'Бонусы / Программа',
         'GetCourse / Salebot',
         'Condition / Калькулятор',
+        'BotHelp condition',
     ]
 
     def wmeta(r, label, val):
@@ -165,15 +179,24 @@ def build_excel(funnels_data, out_path):
         ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=NC)
         return r + 1
 
+    def fmt_duration(minutes):
+        if not minutes:
+            return ''
+        h = minutes // 60
+        m = minutes % 60
+        return f"⏱ {h}ч {m}м"
+
     def wday(r, time, day, data, fill):
         vals = [
             time, f'{day} день',
             data.get('gc_room', ''), data.get('web_room', ''),
+            fmt_duration(data.get('duration_minutes')),
             data.get('replay_url', '') or data.get('web_replay', ''),
             data.get('sales_page', '') or data.get('meditation', ''),
             data.get('sales_note', '') or data.get('dojim_note', ''),
             data.get('tariffs', ''), data.get('oto', ''), data.get('bonuses', ''),
             data.get('mission', ''),
+            '',
             '',
         ]
         for c, v in enumerate(vals, 1):
@@ -246,40 +269,40 @@ def build_excel(funnels_data, out_path):
                 cur += 1
         end_15 = cur
 
-        # Merge salebot column
+        # Merge salebot column (col 13)
+        SB_COL = 13
         if end_19 > start_19:
             if end_19 - start_19 > 1:
-                ws.merge_cells(start_row=start_19, start_column=NC, end_row=end_19 - 1, end_column=NC)
-            cell = ws.cell(start_19, NC, sb_19_text)
+                ws.merge_cells(start_row=start_19, start_column=SB_COL, end_row=end_19 - 1, end_column=SB_COL)
+            cell = ws.cell(start_19, SB_COL, sb_19_text)
             cell.alignment = wrap
             cell.border = border
             cell.fill = fill_19
 
         if end_15 > start_15:
             if end_15 - start_15 > 1:
-                ws.merge_cells(start_row=start_15, start_column=NC, end_row=end_15 - 1, end_column=NC)
-            cell = ws.cell(start_15, NC, sb_15_text)
+                ws.merge_cells(start_row=start_15, start_column=SB_COL, end_row=end_15 - 1, end_column=SB_COL)
+            cell = ws.cell(start_15, SB_COL, sb_15_text)
             cell.alignment = wrap
             cell.border = border
             cell.fill = fill_15
 
-        # Room IDs row (from room_ids_json)
-        ids = []
-        room_ids = f.get('room_ids', {})
-        for day in range(1, 6):
-            for slot in ['19', '15']:
-                rid = room_ids.get(f'd{day}_{slot}', '')
-                if rid:
-                    ids.append(f"Д{day}/{slot}:{rid}")
-        ws.cell(cur, 1, "ID комнат (Ф1):").font = Font(bold=True, size=8, italic=True)
-        ws.cell(cur, 1).border = border
-        ws.cell(cur, 2, "  |  ".join(ids)).font = Font(size=8, italic=True, color="666666")
-        ws.cell(cur, 2).border = border
-        ws.merge_cells(start_row=cur, start_column=2, end_row=cur, end_column=NC)
-        cur += 2
+        # Merge BotHelp condition column (col 14) — spans all days
+        BH_COL = 14
+        bh_text = f.get('bothelp_condition', '')
+        total_start = start_19 if end_19 > start_19 else start_15
+        total_end = end_15 if end_15 > start_15 else end_19
+        if total_end > total_start:
+            if total_end - total_start > 1:
+                ws.merge_cells(start_row=total_start, start_column=BH_COL, end_row=total_end - 1, end_column=BH_COL)
+            cell = ws.cell(total_start, BH_COL, bh_text)
+            cell.alignment = wrap
+            cell.border = border
+
+        cur += 1  # blank row between funnels
 
     # Column widths
-    widths = [16, 10, 38, 38, 30, 38, 28, 35, 30, 30, 40, 45]
+    widths = [16, 10, 38, 38, 14, 30, 38, 28, 35, 30, 30, 40, 45, 30]
     for i, w in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
