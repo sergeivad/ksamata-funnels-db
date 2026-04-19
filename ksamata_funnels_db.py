@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS funnels (
     regi_notime_url TEXT DEFAULT '',
     predspisok_url  TEXT DEFAULT '',
     room_ids_json   TEXT DEFAULT '{}',
+    bothelp_condition TEXT DEFAULT '',
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -228,6 +229,28 @@ salebot_overrides = {
         '19': {'condition': '', 'calculator': 'dbo-date = #{current_date}\n\nct_av = 19\n\ncontr_id = "yanr"'},
         '15': {'condition': '', 'calculator': 'dbo-date = #{current_date}\n\nct_av = 15\n\ncontr_id = "yanr"'},
     },
+}
+
+# BotHelp conditions: funnel_num -> condition string
+bothelp_conditions = {
+    5: 'dbo_ytn_date',
+    6: 'boo_rsya_date',
+    7: 'dbo_yr_date',
+    8: 'zkt_rsya_date',
+    9: 'shzh_rsya_date',
+    10: 'cvc_vknimb_date',
+    11: 'dbo_nr_date',
+    12: 'zkt_nr_date',
+    13: 'zkt_isnr_date',
+    14: 'zkt_mpnr_date',
+    15: 'dbo_nrmp_date',
+    17: 'dbo_omax_date',
+    18: 'dbo_ht_date',
+    19: 'boo_ht_date',
+    21: 'cvc_yan_date',
+    22: 'boo_y_date',
+    23: 'dbo_y_date',
+    26: 'dbo_yanr_date',
 }
 
 # Funnel mapping: num -> (product, contractor, variant)
@@ -666,6 +689,8 @@ def populate(db_path):
             composed_name = f['name']
             var = ''
 
+        bh_cond = bothelp_conditions.get(fnum, '')
+
         cur = conn.execute("""
             INSERT INTO funnels(
                 num, source_id, product_id, contractor_id, variant,
@@ -673,15 +698,15 @@ def populate(db_path):
                 block_name, sheet_name, tag_19_raw, tag_15_raw, reg_tags_raw,
                 dash_sales_url, dash_pereliv_url,
                 regi_total_url, regi_15_url, regi_19_url, regi_notime_url,
-                predspisok_url, room_ids_json
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                predspisok_url, room_ids_json, bothelp_condition
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             fnum, source_ids[f['source']], prod_id, contr_id, var,
             composed_name, landing, sd,
             block_name, sheet_name, tag_19_raw, tag_15_raw, reg_raw,
             f['dash_sales'], f['dash_pereliv'],
             regi_total, f['regi_15'], f['regi_19'], f['regi_notime'],
-            '', json.dumps(room_ids),
+            '', json.dumps(room_ids), bh_cond,
         ))
         funnel_id = cur.lastrowid
 
