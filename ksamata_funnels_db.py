@@ -295,6 +295,16 @@ tag_raw_overrides = {
 def sv(v):
     return str(v).strip() if v and str(v).strip() != 'None' else ''
 
+def prepend_autofunnel(raw):
+    """Prepend 'автоворонки' to a time-tag raw string if not already present.
+    Empty strings are left empty (funnels without time tags shouldn't get one)."""
+    if not raw:
+        return raw
+    parts = [t.strip() for t in raw.split(',')]
+    if 'автоворонки' in parts:
+        return raw
+    return 'автоворонки, ' + raw
+
 def cond_to_key(cond):
     if not cond: return '', ''
     c = str(cond).strip()
@@ -623,6 +633,8 @@ def populate(db_path):
             tag_19_raw = tro['tag_19']
         if 'tag_15' in tro:
             tag_15_raw = tro['tag_15']
+        tag_19_raw = prepend_autofunnel(tag_19_raw)
+        tag_15_raw = prepend_autofunnel(tag_15_raw)
         reg_raw = reg_tags.get(fnum, '')
 
         for raw in [tag_19_raw, tag_15_raw, reg_raw]:
@@ -658,6 +670,8 @@ def populate(db_path):
             tag_19_raw = tro['tag_19']
         if 'tag_15' in tro:
             tag_15_raw = tro['tag_15']
+        tag_19_raw = prepend_autofunnel(tag_19_raw)
+        tag_15_raw = prepend_autofunnel(tag_15_raw)
         reg_raw = reg_tags.get(fnum, '')
 
         # Convert date from DD.MM.YYYY to YYYY-MM-DD for SQLite
