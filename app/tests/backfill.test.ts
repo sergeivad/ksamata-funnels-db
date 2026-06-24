@@ -24,36 +24,62 @@ const testDb = drizzle(sqlite, { schema });
 afterAll(() => sqlite.close());
 
 describe('runBackfill', () => {
-  it('sets status=active for all rows; front_code=f<num> for num<=26; front_code="" for num>=27', () => {
+  it('applies transformation rules on a controlled pre-state (independent of seed data)', () => {
+    // ── Establish a controlled pre-state ────────────────────────────────────────
+    // 1. Blank ALL front_codes so we start from a known baseline.
+    testDb.update(funnels).set({ frontCode: '' }).run();
+
+    // 2. Set a manual (non-auto) front_code on a num<=26 row — must be PRESERVED
+    //    because backfill only fills in when the value is empty.
+    testDb.update(funnels).set({ frontCode: 'fXX' }).where(eq(funnels.num, 5)).run();
+
+    // 3. Set the auto-pattern front_code on a num>=27 row — must be CLEARED to ''.
+    testDb.update(funnels).set({ frontCode: 'f30' }).where(eq(funnels.num, 30)).run();
+
+    // 4. Set a manual non-auto front_code on a num>=27 row — must be PRESERVED.
+    testDb.update(funnels).set({ frontCode: 'f31' }).where(eq(funnels.num, 32)).run();
+
+    // 5. Blank the status on one row so backfill fills it in.
+    testDb.update(funnels).set({ status: '' }).where(eq(funnels.num, 7)).run();
+
+    // 6. Set a non-empty status on another row — backfill must NOT change it.
+    testDb.update(funnels).set({ status: 'draft' }).where(eq(funnels.num, 10)).run();
+
+    // ── Run backfill ─────────────────────────────────────────────────────────────
     runBackfill(testDb);
 
     const rows = testDb.select().from(funnels).all();
-
     expect(rows.length).toBeGreaterThan(0);
 
-    // All rows must have status = 'active'
-    expect(rows.every(r => r.status === 'active')).toBe(true);
+    // ── Assert transformation RULES on representative rows ────────────────────
 
-    // num 1–26: front_code must match /^f\d+$/
-    const low = rows.filter(r => r.num <= 26);
-    expect(low.every(r => /^f\d+$/.test(r.frontCode ?? ''))).toBe(true);
-
-    // num >= 27: front_code must be blank (unknown / to be reconciled)
-    const high = rows.filter(r => r.num >= 27);
-    expect(high.length).toBeGreaterThan(0);
-    expect(high.every(r => r.frontCode === '')).toBe(true);
-
-    // Spot-checks: known good mappings
-    const row1  = rows.find(r => r.num === 1);
-    const row7  = rows.find(r => r.num === 7);
+    // Rule 1: num<=26 with previously-blank front_code → filled to f{num}
+    const row1 = rows.find(r => r.num === 1);
+    const row7 = rows.find(r => r.num === 7);
     const row26 = rows.find(r => r.num === 26);
     expect(row1?.frontCode).toBe('f1');
     expect(row7?.frontCode).toBe('f7');
     expect(row26?.frontCode).toBe('f26');
 
-    // Spot-check: num 32 must be blank, NOT 'f32'
+    // Rule 2: num<=26 with a manual value → PRESERVED (not overwritten)
+    const row5 = rows.find(r => r.num === 5);
+    expect(row5?.frontCode).toBe('fXX');
+
+    // Rule 3: num>=27 with auto-pattern 'f{num}' → CLEARED to ''
+    const row30 = rows.find(r => r.num === 30);
+    expect(row30?.frontCode).toBe('');
+
+    // Rule 4: num>=27 with manual non-auto value → PRESERVED
     const row32 = rows.find(r => r.num === 32);
-    expect(row32?.frontCode).toBe('');
+    expect(row32?.frontCode).toBe('f31');
+
+    // Rule 5: blank status → filled with 'active'
+    const row7status = rows.find(r => r.num === 7);
+    expect(row7status?.status).toBe('active');
+
+    // Rule 6: non-empty status ('draft') → unchanged
+    const row10 = rows.find(r => r.num === 10);
+    expect(row10?.status).toBe('draft');
   });
 
   it('is idempotent — does not overwrite a genuinely manual front_code on num>=27', () => {
