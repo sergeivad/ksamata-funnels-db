@@ -1,0 +1,16 @@
+node_modules
+.next
+.git
+*.db-shm
+*.db-wal
+*.db.bak*
+.env
+.env.*
+!.env.example
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+tests
+*.test.ts
+*.spec.ts

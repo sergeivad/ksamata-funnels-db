@@ -24,3 +24,5 @@ yarn-error.log*
 *.db
 *.db-wal
 *.db-shm
+# Exception: baked seed DB for Docker image
+!seed/ksamata_funnels.db
