@@ -8,7 +8,7 @@
  */
 
 import { eq, sql, inArray, like, and } from 'drizzle-orm';
-import { type DB } from '../db/client';
+import { type AnyDB, type DB } from '../db/client';
 import {
   funnels,
   funnelTags,
@@ -45,7 +45,7 @@ export type FunnelDetail = FunnelListItem & {
 /**
  * Fetch the reg-type tag names for a funnel and reconstruct AbAxes.
  */
-function getAxesForFunnel(db: DB, funnelId: number): AbAxes {
+function getAxesForFunnel(db: AnyDB, funnelId: number): AbAxes {
   const rows = db
     .select({ name: tags.name })
     .from(funnelTags)
@@ -53,7 +53,7 @@ function getAxesForFunnel(db: DB, funnelId: number): AbAxes {
     .where(and(eq(funnelTags.funnelId, funnelId), eq(funnelTags.tagType, 'reg')))
     .all();
 
-  return tagNamesToAxes(rows.map((r) => r.name));
+  return tagNamesToAxes((rows as { name: string }[]).map((r) => r.name));
 }
 
 /**
@@ -64,7 +64,7 @@ function getAxesForFunnel(db: DB, funnelId: number): AbAxes {
  *
  * Must be called INSIDE a transaction.
  */
-function syncAvTags(db: DB, funnelId: number, axes: AbAxes): void {
+function syncAvTags(db: AnyDB, funnelId: number, axes: AbAxes): void {
   // Find all funnel_tags for this funnel that join to an 'АВ '-prefixed tag
   const existingAvTags = db
     .select({ id: funnelTags.id })
@@ -79,7 +79,7 @@ function syncAvTags(db: DB, funnelId: number, axes: AbAxes): void {
     .all();
 
   if (existingAvTags.length > 0) {
-    const ids = existingAvTags.map((r) => r.id);
+    const ids = (existingAvTags as { id: number }[]).map((r) => r.id);
     db.delete(funnelTags).where(inArray(funnelTags.id, ids)).run();
   }
 

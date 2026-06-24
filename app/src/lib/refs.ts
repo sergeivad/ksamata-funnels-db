@@ -1,5 +1,5 @@
 import { eq, asc } from 'drizzle-orm';
-import { type DB } from '../db/client';
+import { type AnyDB, type DB } from '../db/client';
 import {
   products,
   contractors,
@@ -31,7 +31,7 @@ function resolveTable(kind: string) {
 export type RefRow = { id: number; name: string };
 
 /** Return all rows for a reference table, ordered by name. */
-export function listRefs(db: DB, kind: string): RefRow[] {
+export function listRefs(db: AnyDB, kind: string): RefRow[] {
   const table = resolveTable(kind);
   return db
     .select({ id: table.id, name: table.name })
@@ -44,7 +44,7 @@ export function listRefs(db: DB, kind: string): RefRow[] {
  * Get-or-create a row in a reference table by name.
  * Returns the existing row if found, inserts and returns the new row otherwise.
  */
-export function createRef(db: DB, kind: string, name: string): RefRow {
+export function createRef(db: AnyDB, kind: string, name: string): RefRow {
   const table = resolveTable(kind);
 
   // Try to find existing row
