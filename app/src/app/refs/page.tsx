@@ -14,6 +14,8 @@ type RefsState = {
   contractors: RefRow[];
   sources: RefRow[];
   tags: RefRow[];
+  channels: RefRow[];
+  directions: RefRow[];
 };
 
 const KINDS: Array<{ key: keyof RefsState; label: string }> = [
@@ -21,6 +23,8 @@ const KINDS: Array<{ key: keyof RefsState; label: string }> = [
   { key: 'contractors', label: 'Подрядчики' },
   { key: 'sources', label: 'Источники' },
   { key: 'tags', label: 'Теги' },
+  { key: 'channels', label: 'Каналы' },
+  { key: 'directions', label: 'Направления' },
 ];
 
 async function fetchKind(kind: string): Promise<RefRow[]> {
@@ -36,6 +40,8 @@ export default function RefsPage() {
     contractors: [],
     sources: [],
     tags: [],
+    channels: [],
+    directions: [],
   });
   const [loading, setLoading] = useState(true);
 

@@ -5,6 +5,8 @@ import {
   contractors,
   sources,
   tags,
+  channels,
+  directions,
 } from '../db/schema';
 
 // Explicit whitelist — never interpolate `kind` into SQL
@@ -13,6 +15,8 @@ const TABLE_MAP = {
   contractors,
   sources,
   tags,
+  channels,
+  directions,
 } as const;
 
 export type RefKind = keyof typeof TABLE_MAP;

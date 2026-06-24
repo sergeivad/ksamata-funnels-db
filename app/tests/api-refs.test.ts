@@ -83,3 +83,39 @@ describe('createRef', () => {
     expect(t.name).toBe('TestTag_XYZ');
   });
 });
+
+describe('channels', () => {
+  it('listRefs(channels) returns seeded channel names', () => {
+    const rows = listRefs(testDb, 'channels');
+    expect(Array.isArray(rows)).toBe(true);
+    expect(rows.length).toBeGreaterThan(0);
+    const names = rows.map((r) => r.name);
+    expect(names).toContain('Ютуб');
+    expect(names).toContain('ВК');
+  });
+
+  it('createRef(channels, ТестКанал) adds and does not duplicate', () => {
+    const first = createRef(testDb, 'channels', 'ТестКанал');
+    expect(first).toHaveProperty('id');
+    expect(first.name).toBe('ТестКанал');
+
+    const second = createRef(testDb, 'channels', 'ТестКанал');
+    expect(second.id).toBe(first.id);
+
+    const list = listRefs(testDb, 'channels');
+    const matches = list.filter((r) => r.name === 'ТестКанал');
+    expect(matches.length).toBe(1);
+  });
+});
+
+describe('directions', () => {
+  it('listRefs(directions) is non-empty', () => {
+    const rows = listRefs(testDb, 'directions');
+    expect(Array.isArray(rows)).toBe(true);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) {
+      expect(r).toHaveProperty('id');
+      expect(r).toHaveProperty('name');
+    }
+  });
+});
