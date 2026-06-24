@@ -34,8 +34,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(funnel, { status: 201 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error';
-    if (message.includes('409')) {
-      return NextResponse.json({ error: message }, { status: 409 });
+    // Friendly pre-check path: createFunnel throws "409: ..." on duplicate num
+    // TOCTOU path: SQLite UNIQUE constraint fires inside the transaction
+    if (
+      message.includes('409') ||
+      message.includes('UNIQUE constraint failed: funnels.num')
+    ) {
+      return NextResponse.json(
+        { error: `Funnel with num=${parsed.data.num} already exists` },
+        { status: 409 }
+      );
     }
     return NextResponse.json({ error: message }, { status: 500 });
   }

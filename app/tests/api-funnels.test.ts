@@ -89,8 +89,31 @@ describe('createFunnel', () => {
     expect(detail!.axes.contractor).toBe('НИМБ');
   });
 
-  it('POST with same num → 409 error', () => {
+  it('POST with same num → 409 error (pre-check path)', () => {
     expect(() => createFunnel(testDb, { ...BASE_FUNNEL_DATA })).toThrow(/409|already exists|UNIQUE/i);
+  });
+
+  it('UNIQUE constraint path also throws (TOCTOU guard)', () => {
+    // Bypass the pre-check by inserting via drizzle directly, then confirm
+    // that the raw SQLite UNIQUE constraint error matches the pattern the
+    // route handler also catches ("UNIQUE constraint failed: funnels.num").
+    const { funnels: funnelsTable } = schema;
+    // Funnel num=9900 already exists — inserting again triggers the constraint
+    expect(() =>
+      testDb.insert(funnelsTable).values({
+        num: 9900,
+        frontCode: '',
+        status: 'active',
+        productName: 'Duplicate Test',
+        variant: 'А',
+        landingUrl: '',
+        startDate: '',
+        blockName: '',
+        productId: 1,
+        contractorId: 1,
+        sourceId: 1,
+      }).run()
+    ).toThrow(/UNIQUE constraint failed: funnels\.num/i);
   });
 });
 

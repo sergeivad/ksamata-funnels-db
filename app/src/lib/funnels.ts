@@ -38,7 +38,6 @@ export type FunnelDetail = FunnelListItem & {
   landingUrl: string;
   startDate: string;
   blockName: string;
-  blockCondition: string;
 };
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -124,15 +123,24 @@ export function listFunnels(db: DB): FunnelListItem[] {
 /**
  * GET /api/funnels/[id] — single funnel with axes; null if not found.
  */
-export function getFunnel(db: DB, id: number): (FunnelListItem & Pick<Funnel, 'sourceId' | 'productId' | 'contractorId' | 'variant' | 'landingUrl' | 'startDate' | 'blockName'>) | null {
+export function getFunnel(db: DB, id: number): FunnelDetail | null {
   const row = db.select().from(funnels).where(eq(funnels.id, id)).get();
   if (!row) return null;
 
   return {
-    ...row,
-    frontCode: row.frontCode ?? '',
-    status: row.status ?? 'active',
-    axes: getAxesForFunnel(db, row.id),
+    id:           row.id,
+    num:          row.num,
+    frontCode:    row.frontCode    ?? '',
+    status:       row.status       ?? 'active',
+    productName:  row.productName,
+    sourceId:     row.sourceId,
+    productId:    row.productId,
+    contractorId: row.contractorId,
+    variant:      row.variant      ?? '',
+    landingUrl:   row.landingUrl   ?? '',
+    startDate:    row.startDate    ?? '',
+    blockName:    row.blockName    ?? '',
+    axes:         getAxesForFunnel(db, row.id),
   };
 }
 
@@ -245,12 +253,12 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
       || data.channel !== undefined || data.direction !== undefined;
 
     if (hasAxes) {
-      const updatedRow = tx.select().from(funnels).where(eq(funnels.id, id)).get()!;
+      const currentAxes = getAxesForFunnel(tx, id);
       const axes: AbAxes = {
-        product:    data.product    ?? getAxesForFunnel(tx, id).product,
-        contractor: data.contractor ?? getAxesForFunnel(tx, id).contractor,
-        channel:    data.channel    ?? getAxesForFunnel(tx, id).channel,
-        direction:  data.direction  ?? getAxesForFunnel(tx, id).direction,
+        product:    data.product    ?? currentAxes.product,
+        contractor: data.contractor ?? currentAxes.contractor,
+        channel:    data.channel    ?? currentAxes.channel,
+        direction:  data.direction  ?? currentAxes.direction,
       };
       syncAvTags(tx, id, axes);
     }
