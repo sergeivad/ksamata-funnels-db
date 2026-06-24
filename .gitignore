@@ -1,0 +1,9 @@
+# SQLite runtime sidecars
+*.db-wal
+*.db-shm
+
+# Local DB backups (keep them out of git; make them before migrations)
+*.bak-before-*
+
+# SDD scratch
+.superpowers/
