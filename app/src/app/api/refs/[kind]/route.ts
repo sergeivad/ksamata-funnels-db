@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { refCreateSchema } from '@/lib/validation';
-import { listRefs, createRef } from '@/lib/refs';
+import { listRefs, createRef, isValidKind, VALID_KINDS } from '@/lib/refs';
 
 type Params = { params: Promise<{ kind: string }> };
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const { kind } = await params;
+  if (!isValidKind(kind)) {
+    return NextResponse.json(
+      { error: `Invalid kind "${kind}". Must be one of: ${VALID_KINDS.join(', ')}.` },
+      { status: 400 }
+    );
+  }
   try {
     const rows = listRefs(db, kind);
     return NextResponse.json(rows);
@@ -19,11 +25,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   const { kind } = await params;
 
-  // Validate kind first (fast path)
-  const validKinds = ['products', 'contractors', 'sources', 'tags'];
-  if (!validKinds.includes(kind)) {
+  // Validate kind against the canonical whitelist from refs.ts
+  if (!isValidKind(kind)) {
     return NextResponse.json(
-      { error: `Invalid kind "${kind}". Must be one of: ${validKinds.join(', ')}.` },
+      { error: `Invalid kind "${kind}". Must be one of: ${VALID_KINDS.join(', ')}.` },
       { status: 400 }
     );
   }

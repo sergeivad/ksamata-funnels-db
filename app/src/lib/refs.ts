@@ -21,7 +21,11 @@ const TABLE_MAP = {
 
 export type RefKind = keyof typeof TABLE_MAP;
 
-const VALID_KINDS = Object.keys(TABLE_MAP) as RefKind[];
+export const VALID_KINDS = Object.keys(TABLE_MAP) as RefKind[];
+
+export function isValidKind(kind: string): kind is RefKind {
+  return VALID_KINDS.includes(kind as RefKind);
+}
 
 function resolveTable(kind: string) {
   if (!VALID_KINDS.includes(kind as RefKind)) {

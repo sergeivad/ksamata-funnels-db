@@ -83,7 +83,7 @@ export default function RefsPage() {
         <div>
           <h1 className="text-[18px] font-semibold text-[var(--color-text)]">Справочники</h1>
           <p className="mt-1 text-[12px] text-[var(--color-text-secondary)]">
-            Управление значениями продуктов, подрядчиков, источников и тегов.
+            Управление значениями продуктов, подрядчиков, источников, каналов, направлений и тегов.
           </p>
         </div>
         <button
