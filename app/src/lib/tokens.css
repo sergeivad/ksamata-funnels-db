@@ -1,0 +1,35 @@
+/* Design tokens extracted from UTM-стандарт/Стандарт рекламы — UTM и кабинеты.html */
+/* Source: :root { ... } block in the self-contained HTML file */
+
+:root {
+  /* Color palette */
+  --cream: #F4F1EA;         /* warm cream — page background */
+  --card: #FAF8F2;          /* card / panel background */
+  --ink: #111111;           /* primary text, near-black */
+  --muted: #5E5A52;         /* secondary text */
+  --faint: #8A8275;         /* tertiary / placeholder text */
+  --line: #CBBFA8;          /* border */
+  --line-soft: #E2DACB;     /* soft border */
+  --paper: #FFF7F0;         /* paper-white with warm tint */
+  --orange: #FF6A13;        /* accent / CTA */
+  --orange-soft: #FFE7D6;   /* accent background tint */
+  --dark: #111111;          /* dark accent (same as ink) */
+  --chip: #EDE7DA;          /* chip / tag background */
+
+  /* Semantic aliases (mapped from above) */
+  --color-bg: var(--cream);
+  --color-bg-panel: var(--card);
+  --color-border-soft: var(--line-soft);
+  --color-text: var(--ink);
+  --color-text-secondary: var(--muted);
+  --color-accent: var(--orange);
+
+  /* Border radii */
+  --radius: 32px;
+  --radius-sm: 16px;
+
+  /* Typography — guessed to be consistent with cream/#111 palette */
+  /* The source HTML did not declare font-family variables; using system stack */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
