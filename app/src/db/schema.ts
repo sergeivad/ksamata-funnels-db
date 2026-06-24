@@ -149,6 +149,36 @@ export const productDurations = sqliteTable(
   }),
 );
 
+// ─── channels ─────────────────────────────────────────────────────────────────
+
+export const channels = sqliteTable('channels', {
+  id:   integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull().unique(),
+});
+
+// ─── directions ───────────────────────────────────────────────────────────────
+
+export const directions = sqliteTable('directions', {
+  id:   integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull().unique(),
+});
+
+// ─── funnel_links ─────────────────────────────────────────────────────────────
+
+export const funnelLinks = sqliteTable(
+  'funnel_links',
+  {
+    id:       integer('id').primaryKey({ autoIncrement: true }),
+    funnelId: integer('funnel_id').notNull().references(() => funnels.id, { onDelete: 'cascade' }),
+    label:    text('label').notNull().default(''),
+    url:      text('url').notNull().default(''),
+    position: integer('position').notNull().default(0),
+  },
+  (t) => ({
+    funnelIdx: index('idx_funnel_links_funnel').on(t.funnelId),
+  }),
+);
+
 // ─── Type exports ─────────────────────────────────────────────────────────────
 
 export type Source           = typeof sources.$inferSelect;
@@ -160,5 +190,9 @@ export type FunnelTag        = typeof funnelTags.$inferSelect;
 export type FunnelDay        = typeof funnelDays.$inferSelect;
 export type SalebotConfig    = typeof salebotConfigs.$inferSelect;
 export type ProductDuration  = typeof productDurations.$inferSelect;
+export type Channel          = typeof channels.$inferSelect;
+export type Direction        = typeof directions.$inferSelect;
+export type FunnelLink       = typeof funnelLinks.$inferSelect;
 
 export type NewFunnel        = typeof funnels.$inferInsert;
+export type NewFunnelLink    = typeof funnelLinks.$inferInsert;
