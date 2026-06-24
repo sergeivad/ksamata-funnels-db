@@ -1,13 +1,28 @@
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
+import fs from 'fs';
 import path from 'path';
 import * as schema from './schema';
 
-// Resolve DB path: env FUNNELS_DB_PATH, or default relative to app/ dir
-const dbPath = process.env.FUNNELS_DB_PATH
-  ? process.env.FUNNELS_DB_PATH
-  : path.resolve(__dirname, '../../..', 'ksamata_funnels.db');
+// Resolve DB path:
+//   1. FUNNELS_DB_PATH env var (Docker/prod sets an absolute path; allowed as-is)
+//   2. Default: repo root = one level above process.cwd(), which is always app/
+//      Both `next dev/build` and `tsx` scripts run with cwd = app/.
+const envPath = process.env.FUNNELS_DB_PATH;
+const dbPath = envPath
+  ? envPath
+  : path.resolve(process.cwd(), '..', 'ksamata_funnels.db');
+
+// Safety guard for the default path only: if the DB file doesn't exist we
+// refuse to create an empty one — better-sqlite3 would silently do so otherwise.
+if (!envPath && !fs.existsSync(dbPath)) {
+  throw new Error(
+    `Database not found at default path: ${dbPath}\n` +
+    `Set FUNNELS_DB_PATH to the absolute path of the SQLite file, ` +
+    `or ensure process.cwd() is the app/ directory.`
+  );
+}
 
 // Singleton pattern — safe in Next.js dev (hot reload) because the module
 // cache is shared within one Node process.
