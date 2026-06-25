@@ -60,11 +60,19 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB 
           <Segmented
             options={[{ value: 'common', label: 'Общее' }, { value: 'by_time', label: 'По времени' }]}
             value={mode}
-            onChange={(v) => { const m = v as BlockMode; setMode(m); save({ mode: m }); }}
+            onChange={(v) => {
+              const m = v as BlockMode;
+              const transformed = m === 'common'
+                ? items.map((it) => ({ ...it, slot: null as null }))
+                : items.map((it) => ({ ...it, slot: (it.slot ?? '15') as '15' | '19' }));
+              setMode(m);
+              setItems(transformed);
+              save({ mode: m, items: transformed });
+            }}
           />
         )}
         <span className="ml-auto">
-          <Switch checked={true} onChange={(v) => { setEnabled(v); save({ enabled: v }); }} />
+          <Switch checked={enabled} onChange={(v) => { setEnabled(v); save({ enabled: v }); }} />
         </span>
       </div>
 
