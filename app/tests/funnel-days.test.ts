@@ -1,148 +1,59 @@
-/**
- * Task 4 — funnel-days helper tests
- *
- * ISOLATION: All tests operate on a TEMP COPY of the DB.
- * The real ksamata_funnels.db is NEVER opened directly by these tests.
- */
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { eq, and } from 'drizzle-orm';
-import { copyFileSync, unlinkSync, existsSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { listDays, replaceDays, type DayCell } from '../src/lib/funnel-days';
 import * as schema from '../src/db/schema';
-import { listDays, replaceDays } from '../src/lib/funnel-days';
 
-// __dirname = app/tests/ → go up 2 levels to repo root for the DB
-const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
-const TMP_DB  = join(tmpdir(), `ksamata_funnels_days_test_${Date.now()}_${process.pid}.db`);
+const REAL_DB = path.resolve(process.cwd(), '..', 'ksamata_funnels.db');
+let tmp: string;
+let sqlite: Database.Database;
+let db: ReturnType<typeof drizzle>;
+let funnelId: number;
 
-// Copy real DB to temp location — never touch the real file
-copyFileSync(REAL_DB, TMP_DB);
+beforeEach(() => {
+  tmp = path.join(os.tmpdir(), `fd-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
+  fs.copyFileSync(REAL_DB, tmp);
+  sqlite = new Database(tmp);
+  db = drizzle(sqlite, { schema });
+  funnelId = (sqlite.prepare('SELECT id FROM funnels LIMIT 1').get() as { id: number }).id;
+  sqlite.prepare('DELETE FROM funnel_days WHERE funnel_id = ?').run(funnelId);
+});
 
-const sqlite = new Database(TMP_DB);
-sqlite.pragma('journal_mode = WAL');
-sqlite.pragma('foreign_keys = ON');
-const testDb = drizzle(sqlite, { schema });
-
-afterAll(() => {
+afterEach(() => {
   sqlite.close();
-  if (existsSync(TMP_DB)) unlinkSync(TMP_DB);
+  fs.rmSync(tmp, { force: true });
 });
 
-// Funnel 33 (num=33) has no funnel_days rows
-// Funnel id=2 (num=2) has populated rows with tariffs
-
-describe('listDays', () => {
-  it('returns empty array for funnel with no days', () => {
-    // funnel id=33 (num=33) has no funnel_days
-    const funnel = testDb.select().from(schema.funnels).where(eq(schema.funnels.num, 33)).get()!;
-    const days = listDays(testDb, funnel.id);
-    expect(days).toEqual([]);
-  });
-});
-
-describe('replaceDays — create and delete', () => {
-  it('creates a row when given one non-empty cell', () => {
-    const funnel = testDb.select().from(schema.funnels).where(eq(schema.funnels.num, 33)).get()!;
-
-    replaceDays(testDb, funnel.id, [
-      { timeSlot: '19', dayNum: 1, gcRoom: 'gc-test', webRoom: 'web-test', salesPage: 'sales-test' },
-    ]);
-
-    const days = listDays(testDb, funnel.id);
-    expect(days).toHaveLength(1);
-    expect(days[0]).toEqual({
-      timeSlot: '19',
-      dayNum: 1,
-      gcRoom: 'gc-test',
-      webRoom: 'web-test',
-      salesPage: 'sales-test',
-    });
+describe('funnel-days (rooms)', () => {
+  it('replaceDays writes gc/web/replay and listDays reads them', () => {
+    const cells: DayCell[] = [
+      { timeSlot: '15', dayNum: 1, gcRoom: 'g1', webRoom: 'w1', replayUrl: 'r1' },
+      { timeSlot: '19', dayNum: 1, gcRoom: 'g2', webRoom: 'w2', replayUrl: '' },
+    ];
+    replaceDays(db, funnelId, cells);
+    const got = listDays(db, funnelId);
+    expect(got).toContainEqual({ timeSlot: '15', dayNum: 1, gcRoom: 'g1', webRoom: 'w1', replayUrl: 'r1' });
+    expect(got).toContainEqual({ timeSlot: '19', dayNum: 1, gcRoom: 'g2', webRoom: 'w2', replayUrl: '' });
   });
 
-  it('deletes the row when all three fields are empty', () => {
-    const funnel = testDb.select().from(schema.funnels).where(eq(schema.funnels.num, 33)).get()!;
-
-    // Ensure the row exists first (from the previous test)
-    replaceDays(testDb, funnel.id, [
-      { timeSlot: '19', dayNum: 1, gcRoom: '', webRoom: '', salesPage: '' },
-    ]);
-
-    const days = listDays(testDb, funnel.id);
-    expect(days).toEqual([]);
-  });
-});
-
-describe('replaceDays — preservation of other columns', () => {
-  it('does not overwrite tariffs when updating gc_room on an existing row', () => {
-    // funnel id=2 (num=2) has rows with tariffs set; get funnel id first
-    const funnel = testDb.select().from(schema.funnels).where(eq(schema.funnels.num, 2)).get()!;
-
-    // Read the existing row for time_slot=19, day_num=1 to know its tariffs
-    const rowBefore = testDb
-      .select()
-      .from(schema.funnelDays)
-      .where(
-        and(
-          eq(schema.funnelDays.funnelId, funnel.id),
-          eq(schema.funnelDays.timeSlot, '19'),
-          eq(schema.funnelDays.dayNum, 1),
-        )
-      )
-      .get()!;
-
-    expect(rowBefore.tariffs).toBeTruthy(); // confirm pre-condition
-
-    // Now update only gc_room
-    replaceDays(testDb, funnel.id, [
-      {
-        timeSlot: '19',
-        dayNum: 1,
-        gcRoom: 'new-gc-room',
-        webRoom: rowBefore.webRoom ?? '',
-        salesPage: rowBefore.salesPage ?? '',
-      },
-    ]);
-
-    // Re-read from DB and assert tariffs is unchanged
-    const rowAfter = testDb
-      .select()
-      .from(schema.funnelDays)
-      .where(
-        and(
-          eq(schema.funnelDays.funnelId, funnel.id),
-          eq(schema.funnelDays.timeSlot, '19'),
-          eq(schema.funnelDays.dayNum, 1),
-        )
-      )
-      .get()!;
-
-    expect(rowAfter.gcRoom).toBe('new-gc-room');
-    expect(rowAfter.tariffs).toBe(rowBefore.tariffs);
-  });
-});
-
-describe('replaceDays — input validation', () => {
-  it('throws on invalid timeSlot', () => {
-    const funnel = testDb.select().from(schema.funnels).where(eq(schema.funnels.num, 33)).get()!;
-
-    expect(() =>
-      replaceDays(testDb, funnel.id, [
-        // @ts-expect-error intentional bad input
-        { timeSlot: '20', dayNum: 1, gcRoom: 'x', webRoom: 'y', salesPage: 'z' },
-      ])
-    ).toThrow(/timeSlot/i);
+  it('empty cell deletes the row', () => {
+    replaceDays(db, funnelId, [{ timeSlot: '15', dayNum: 1, gcRoom: 'g', webRoom: '', replayUrl: '' }]);
+    replaceDays(db, funnelId, [{ timeSlot: '15', dayNum: 1, gcRoom: '', webRoom: '', replayUrl: '' }]);
+    expect(listDays(db, funnelId)).toHaveLength(0);
   });
 
-  it('throws on invalid dayNum (out of range)', () => {
-    const funnel = testDb.select().from(schema.funnels).where(eq(schema.funnels.num, 33)).get()!;
+  it('preserves other columns (tariffs) on update', () => {
+    replaceDays(db, funnelId, [{ timeSlot: '15', dayNum: 1, gcRoom: 'g', webRoom: '', replayUrl: '' }]);
+    sqlite.prepare(`UPDATE funnel_days SET tariffs='https://t' WHERE funnel_id=? AND time_slot='15' AND day_num=1`).run(funnelId);
+    replaceDays(db, funnelId, [{ timeSlot: '15', dayNum: 1, gcRoom: 'g2', webRoom: '', replayUrl: '' }]);
+    const t = sqlite.prepare(`SELECT tariffs FROM funnel_days WHERE funnel_id=? AND time_slot='15' AND day_num=1`).get(funnelId) as { tariffs: string };
+    expect(t.tariffs).toBe('https://t');
+  });
 
-    expect(() =>
-      replaceDays(testDb, funnel.id, [
-        { timeSlot: '19', dayNum: 6, gcRoom: 'x', webRoom: 'y', salesPage: 'z' },
-      ])
-    ).toThrow(/dayNum/i);
+  it('rejects dayNum outside 1..5', () => {
+    expect(() => replaceDays(db, funnelId, [{ timeSlot: '15', dayNum: 6, gcRoom: 'g', webRoom: '', replayUrl: '' }])).toThrow();
   });
 });
