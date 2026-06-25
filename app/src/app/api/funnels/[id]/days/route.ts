@@ -48,7 +48,27 @@ export async function PUT(req: NextRequest, { params }: Params) {
     );
   }
 
-  const cells = (body as { cells: unknown[] }).cells as DayCell[];
+  const rawCells = (body as { cells: unknown[] }).cells;
+  const cells: DayCell[] = [];
+  for (let i = 0; i < rawCells.length; i++) {
+    const cell = rawCells[i] as Record<string, unknown>;
+    if (
+      (cell.timeSlot !== '19' && cell.timeSlot !== '15') ||
+      typeof cell.dayNum !== 'number' ||
+      typeof cell.gcRoom !== 'string' ||
+      typeof cell.webRoom !== 'string' ||
+      typeof cell.replayUrl !== 'string'
+    ) {
+      return NextResponse.json({ error: `cells[${i}] has invalid shape` }, { status: 400 });
+    }
+    cells.push({
+      timeSlot: cell.timeSlot,
+      dayNum: cell.dayNum,
+      gcRoom: cell.gcRoom,
+      webRoom: cell.webRoom,
+      replayUrl: cell.replayUrl,
+    });
+  }
 
   try {
     replaceDays(db, numId, cells);
