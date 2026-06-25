@@ -239,23 +239,27 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
       const contractorRow = createRef(tx, 'contractors', data.contractor);
       scalarUpdate.contractorId = contractorRow.id;
     }
-    // Re-derive source when sourceName is explicitly provided OR when axes (channel/contractor) change.
-    // If neither is provided, leave the existing source_id untouched.
-    const axesChanging = data.channel !== undefined || data.contractor !== undefined;
-    if (data.sourceName !== undefined || axesChanging) {
-      if (data.sourceName?.trim()) {
-        // Explicit sourceName wins
-        const sourceRow = createRef(tx, 'sources', data.sourceName.trim());
-        scalarUpdate.sourceId = sourceRow.id;
-      } else if (axesChanging) {
-        // Derive from the new or existing axes values
-        const currentAxes = getAxesForFunnel(tx, id);
-        const effectiveChannel    = data.channel    ?? currentAxes.channel;
-        const effectiveContractor = data.contractor ?? currentAxes.contractor;
+    // Re-derive source only when:
+    //   (a) sourceName is explicitly provided (non-empty) → use it as-is, OR
+    //   (b) channel or contractor VALUE actually changed from the current stored value.
+    // If the form sends the same channel/contractor as already stored, leave source_id untouched.
+    if (data.sourceName?.trim()) {
+      // (a) Explicit sourceName wins unconditionally
+      const sourceRow = createRef(tx, 'sources', data.sourceName.trim());
+      scalarUpdate.sourceId = sourceRow.id;
+    } else if (data.channel !== undefined || data.contractor !== undefined) {
+      // (b) Axes were sent — only re-derive if the VALUE actually changed
+      const currentAxes = getAxesForFunnel(tx, id);
+      const effectiveChannel    = data.channel    ?? currentAxes.channel;
+      const effectiveContractor = data.contractor ?? currentAxes.contractor;
+      const channelChanged    = effectiveChannel    !== currentAxes.channel;
+      const contractorChanged = effectiveContractor !== currentAxes.contractor;
+      if (channelChanged || contractorChanged) {
         const derivedName = `${effectiveChannel} ${effectiveContractor}`;
         const sourceRow = createRef(tx, 'sources', derivedName);
         scalarUpdate.sourceId = sourceRow.id;
       }
+      // else: same values as before → do NOT touch source_id
     }
 
     if (Object.keys(scalarUpdate).length > 0) {

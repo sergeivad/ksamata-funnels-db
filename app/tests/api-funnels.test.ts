@@ -287,6 +287,100 @@ describe('createFunnel — auto-derive source', () => {
   });
 });
 
+// ─── SOURCE REWRITE FIX ───────────────────────────────────────────────────────
+describe('updateFunnel — source-id stability', () => {
+  // Set up a funnel with a curated source name that differs from "{channel} {contractor}"
+  let curatedFunnelId: number;
+  const curatedNum = 9960;
+
+  it('setup: create funnel with curated sourceName distinct from auto-derived', () => {
+    const funnel = createFunnel(testDb, {
+      num: curatedNum,
+      frontCode: '',
+      status: 'active' as const,
+      productName: 'Курирование Тест',
+      variant: 'А',
+      landingUrl: '',
+      startDate: '',
+      blockName: '',
+      product: 'ТКМ',
+      contractor: 'NR',
+      channel: 'ВК',
+      direction: 'Таргет',
+      sourceName: 'Курированный',  // != 'ВК NR'
+    });
+    curatedFunnelId = funnel.id;
+
+    // Verify the source row is 'Курированный'
+    const { funnels: funnelsTable, sources: sourcesTable } = schema;
+    const { eq } = require('drizzle-orm');
+    const funnelRow = testDb.select().from(funnelsTable).where(eq(funnelsTable.id, curatedFunnelId)).get()!;
+    const sourceRow = testDb.select().from(sourcesTable).where(eq(sourcesTable.id, funnelRow.sourceId)).get()!;
+    expect(sourceRow.name).toBe('Курированный');
+  });
+
+  it('PATCH with only { status } — source_id UNCHANGED (curated name preserved)', () => {
+    const { funnels: funnelsTable, sources: sourcesTable } = schema;
+    const { eq } = require('drizzle-orm');
+
+    const before = testDb.select().from(funnelsTable).where(eq(funnelsTable.id, curatedFunnelId)).get()!;
+    const beforeSourceId = before.sourceId;
+
+    updateFunnel(testDb, curatedFunnelId, { status: 'draft' });
+
+    const after = testDb.select().from(funnelsTable).where(eq(funnelsTable.id, curatedFunnelId)).get()!;
+    expect(after.sourceId).toBe(beforeSourceId);
+
+    const sourceRow = testDb.select().from(sourcesTable).where(eq(sourcesTable.id, after.sourceId)).get()!;
+    expect(sourceRow.name).toBe('Курированный');
+  });
+
+  it('PATCH with same channel+contractor values (form sends all axes) — source_id UNCHANGED', () => {
+    const { funnels: funnelsTable, sources: sourcesTable } = schema;
+    const { eq } = require('drizzle-orm');
+
+    const before = testDb.select().from(funnelsTable).where(eq(funnelsTable.id, curatedFunnelId)).get()!;
+    const beforeSourceId = before.sourceId;
+
+    // Simulate the edit form: sends all four axes with their CURRENT values + a scalar change
+    updateFunnel(testDb, curatedFunnelId, {
+      channel: 'ВК',         // same as current
+      contractor: 'NR',      // same as current
+      product: 'ТКМ',        // same as current
+      direction: 'Таргет',   // same as current
+      productName: 'Курирование Тест (edited)',
+    });
+
+    const after = testDb.select().from(funnelsTable).where(eq(funnelsTable.id, curatedFunnelId)).get()!;
+    expect(after.sourceId).toBe(beforeSourceId);
+
+    const sourceRow = testDb.select().from(sourcesTable).where(eq(sourcesTable.id, after.sourceId)).get()!;
+    expect(sourceRow.name).toBe('Курированный');
+  });
+
+  it('PATCH with changed channel → source re-derived to "{newChannel} {contractor}"', () => {
+    const { funnels: funnelsTable, sources: sourcesTable } = schema;
+    const { eq } = require('drizzle-orm');
+
+    updateFunnel(testDb, curatedFunnelId, { channel: 'Яндекс' });  // NR stays
+
+    const after = testDb.select().from(funnelsTable).where(eq(funnelsTable.id, curatedFunnelId)).get()!;
+    const sourceRow = testDb.select().from(sourcesTable).where(eq(sourcesTable.id, after.sourceId)).get()!;
+    expect(sourceRow.name).toBe('Яндекс NR');
+  });
+
+  it('PATCH with explicit sourceName → uses it (overrides derive)', () => {
+    const { funnels: funnelsTable, sources: sourcesTable } = schema;
+    const { eq } = require('drizzle-orm');
+
+    updateFunnel(testDb, curatedFunnelId, { sourceName: 'Ручной источник' });
+
+    const after = testDb.select().from(funnelsTable).where(eq(funnelsTable.id, curatedFunnelId)).get()!;
+    const sourceRow = testDb.select().from(sourcesTable).where(eq(sourcesTable.id, after.sourceId)).get()!;
+    expect(sourceRow.name).toBe('Ручной источник');
+  });
+});
+
 // ─── DELETE ───────────────────────────────────────────────────────────────────
 describe('deleteFunnel', () => {
   it('removes funnel AND its funnelTags (cascade)', () => {
