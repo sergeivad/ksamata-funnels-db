@@ -2,8 +2,10 @@ import { notFound } from 'next/navigation';
 import { db } from '@/db/client';
 import { getFunnel } from '@/lib/funnels';
 import { listDays } from '@/lib/funnel-days';
+import { listLinks } from '@/lib/funnel-links';
 import FunnelForm from '@/components/FunnelForm';
 import DaysEditor from '@/components/DaysEditor';
+import LinksEditor from '@/components/LinksEditor';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -23,6 +25,7 @@ export default async function FunnelEditPage({ params }: PageProps) {
   }
 
   const initialDays = listDays(db, numId);
+  const initialLinks = listLinks(db, numId);
 
   return (
     <>
@@ -41,6 +44,7 @@ export default async function FunnelEditPage({ params }: PageProps) {
         }}
       />
       <DaysEditor funnelId={numId} initialDays={initialDays} />
+      <LinksEditor funnelId={numId} initialLinks={initialLinks} />
     </>
   );
 }
