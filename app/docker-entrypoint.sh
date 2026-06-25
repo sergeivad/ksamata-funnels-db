@@ -19,4 +19,11 @@ if [ -n "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] Phase-2 migration done."
 fi
 
+# Apply Phase-3 migration (idempotent: guarded ALTER + CREATE IF NOT EXISTS + skip-if-has-blocks data move).
+if [ -n "$FUNNELS_DB_PATH" ]; then
+  echo "[entrypoint] Running Phase-3 migration against $FUNNELS_DB_PATH"
+  node /app/migrate-phase3.cjs
+  echo "[entrypoint] Phase-3 migration done."
+fi
+
 exec node server.js
