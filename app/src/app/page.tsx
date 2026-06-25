@@ -22,6 +22,7 @@ interface FunnelListItem {
   frontCode: string;
   status: 'active' | 'draft';
   productName: string;
+  name: string;
   axes: FunnelAxes;
 }
 
@@ -184,8 +185,7 @@ export default function HomePage() {
   );
 
   function buildTitle(f: FunnelListItem): string {
-    const { product, contractor, channel, direction } = f.axes;
-    return `${product} / ${contractor} / ${channel} / ${direction}`;
+    return f.name;
   }
 
   /** Build sorted groups from current funnels list */
