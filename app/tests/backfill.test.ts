@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm';
 import * as schema from '../src/db/schema';
 import { funnels } from '../src/db/schema';
 import { runBackfill } from '../scripts/backfill-status';
+import { runMigratePhase3 } from '../scripts/migrate-phase3';
 
 // __dirname = app/tests/  →  go up 2 levels to repo root
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
@@ -19,6 +20,7 @@ copyFileSync(REAL_DB, TMP_DB);
 const sqlite = new Database(TMP_DB);
 sqlite.pragma('journal_mode = WAL');
 sqlite.pragma('foreign_keys = ON');
+runMigratePhase3(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => sqlite.close());
