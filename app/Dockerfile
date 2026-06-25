@@ -29,6 +29,14 @@ ENV FUNNELS_DB_PATH=/build/seed/ksamata_funnels.db
 # Build Next.js in standalone mode
 RUN npm run build
 
+# Compile the Phase-2 migration to a self-contained CJS bundle.
+# better-sqlite3 is kept external so the runner's native .node binary is used.
+RUN npx esbuild scripts/migrate-phase2-runner.ts \
+      --bundle \
+      --platform=node \
+      --external:better-sqlite3 \
+      --outfile=migrate-phase2.cjs
+
 # ──────────────────────────────────────────────
 # Stage 2: runner
 # ──────────────────────────────────────────────
@@ -53,6 +61,10 @@ COPY --from=builder /build/node_modules/better-sqlite3 ./node_modules/better-sql
 # Bake the seed database into the image (used by entrypoint on first run)
 RUN mkdir -p /app/seed
 COPY --from=builder /build/seed/ksamata_funnels.db /app/seed/ksamata_funnels.db
+
+# Copy the compiled Phase-2 migration bundle into the runner image.
+# It runs as a plain Node script using better-sqlite3 from /app/node_modules.
+COPY --from=builder /build/migrate-phase2.cjs /app/migrate-phase2.cjs
 
 # Copy and make the entrypoint executable
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
