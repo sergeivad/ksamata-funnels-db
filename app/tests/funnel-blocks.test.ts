@@ -21,6 +21,8 @@ beforeEach(() => {
   runMigratePhase3(sqlite);
   db = drizzle(sqlite, { schema });
   funnelId = (sqlite.prepare('SELECT id FROM funnels LIMIT 1').get() as { id: number }).id;
+  sqlite.prepare('DELETE FROM funnel_block_items WHERE block_id IN (SELECT id FROM funnel_blocks WHERE funnel_id = ?)').run(funnelId);
+  sqlite.prepare('DELETE FROM funnel_blocks WHERE funnel_id = ?').run(funnelId);
 });
 
 afterEach(() => {
