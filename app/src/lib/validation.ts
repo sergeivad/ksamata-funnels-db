@@ -49,13 +49,14 @@ export const funnelCreateSchema = z.object({
   variant: z.string(),
   landingUrl: landingUrlSchema,
   startDate: startDateSchema,
-  blockName: z.string(),
+  blockName: z.string().optional(),
   // AV axes — must be non-empty
   product: z.string().min(1),
   contractor: z.string().min(1),
   channel: z.string().min(1),
   direction: z.string().min(1),
-  sourceName: z.string().min(1),
+  // sourceName is optional — when absent, source is auto-derived as `${channel} ${contractor}`
+  sourceName: z.string().optional(),
 });
 
 export const funnelUpdateSchema = funnelCreateSchema.partial();

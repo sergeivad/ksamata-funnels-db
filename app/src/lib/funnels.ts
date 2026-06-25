@@ -168,7 +168,8 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
     // Get-or-create foreign key refs
     const productRow    = createRef(tx, 'products',    data.product);
     const contractorRow = createRef(tx, 'contractors', data.contractor);
-    const sourceRow     = createRef(tx, 'sources',     data.sourceName);
+    const srcName = data.sourceName?.trim() || `${data.channel} ${data.contractor}`;
+    const sourceRow     = createRef(tx, 'sources',     srcName);
 
     // Insert funnel row
     const inserted = tx
@@ -238,9 +239,23 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
       const contractorRow = createRef(tx, 'contractors', data.contractor);
       scalarUpdate.contractorId = contractorRow.id;
     }
-    if (data.sourceName !== undefined) {
-      const sourceRow = createRef(tx, 'sources', data.sourceName);
-      scalarUpdate.sourceId = sourceRow.id;
+    // Re-derive source when sourceName is explicitly provided OR when axes (channel/contractor) change.
+    // If neither is provided, leave the existing source_id untouched.
+    const axesChanging = data.channel !== undefined || data.contractor !== undefined;
+    if (data.sourceName !== undefined || axesChanging) {
+      if (data.sourceName?.trim()) {
+        // Explicit sourceName wins
+        const sourceRow = createRef(tx, 'sources', data.sourceName.trim());
+        scalarUpdate.sourceId = sourceRow.id;
+      } else if (axesChanging) {
+        // Derive from the new or existing axes values
+        const currentAxes = getAxesForFunnel(tx, id);
+        const effectiveChannel    = data.channel    ?? currentAxes.channel;
+        const effectiveContractor = data.contractor ?? currentAxes.contractor;
+        const derivedName = `${effectiveChannel} ${effectiveContractor}`;
+        const sourceRow = createRef(tx, 'sources', derivedName);
+        scalarUpdate.sourceId = sourceRow.id;
+      }
     }
 
     if (Object.keys(scalarUpdate).length > 0) {

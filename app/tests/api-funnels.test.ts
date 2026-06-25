@@ -224,6 +224,69 @@ describe('duplicateFunnel', () => {
   });
 });
 
+// ─── AUTO-DERIVE SOURCE ───────────────────────────────────────────────────────
+describe('createFunnel — auto-derive source', () => {
+  it('derives source name from channel+contractor when sourceName is absent', () => {
+    const data = {
+      num: 9950,
+      frontCode: '',
+      status: 'active' as const,
+      productName: 'ВК Тест',
+      variant: 'А',
+      landingUrl: '',
+      startDate: '',
+      blockName: '',
+      product: 'ТКМ',
+      contractor: 'NR',
+      channel: 'ВК',
+      direction: 'Таргет',
+      // NO sourceName
+    };
+
+    const funnel = createFunnel(testDb, data);
+    expect(funnel).toHaveProperty('id');
+
+    // Look up the source row for this funnel
+    const { funnels: funnelsTable } = schema;
+    const { eq } = require('drizzle-orm');
+    const { sources: sourcesTable } = schema;
+
+    const funnelRow = testDb.select().from(funnelsTable).where(eq(funnelsTable.id, funnel.id)).get()!;
+    const sourceRow = testDb.select().from(sourcesTable).where(eq(sourcesTable.id, funnelRow.sourceId)).get()!;
+
+    expect(sourceRow.name).toBe('ВК NR');
+  });
+
+  it('uses provided sourceName when given (overrides derive)', () => {
+    const data = {
+      num: 9951,
+      frontCode: '',
+      status: 'active' as const,
+      productName: 'Кастом Тест',
+      variant: 'А',
+      landingUrl: '',
+      startDate: '',
+      blockName: '',
+      product: 'ТКМ',
+      contractor: 'NR',
+      channel: 'ВК',
+      direction: 'Таргет',
+      sourceName: 'Кастом',
+    };
+
+    const funnel = createFunnel(testDb, data);
+
+    const { funnels: funnelsTable } = schema;
+    const { eq } = require('drizzle-orm');
+    const { sources: sourcesTable } = schema;
+
+    const funnelRow = testDb.select().from(funnelsTable).where(eq(funnelsTable.id, funnel.id)).get()!;
+    const sourceRow = testDb.select().from(sourcesTable).where(eq(sourcesTable.id, funnelRow.sourceId)).get()!;
+
+    expect(sourceRow.name).toBe('Кастом');
+  });
+});
+
 // ─── DELETE ───────────────────────────────────────────────────────────────────
 describe('deleteFunnel', () => {
   it('removes funnel AND its funnelTags (cascade)', () => {
