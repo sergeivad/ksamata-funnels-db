@@ -62,6 +62,11 @@ export const funnels = sqliteTable(
     // New columns added by migration
     status:           text('status').default('active'),
     frontCode:        text('front_code').default(''),
+    // Phase 3 columns
+    comment:            text('comment').default(''),
+    timeLabelA:         text('time_label_a').default('15:00'),
+    timeLabelB:         text('time_label_b').default('19:00'),
+    roomsReplayEnabled: integer('rooms_replay_enabled').default(0),
   },
   (t) => ({
     productIdx:    index('idx_funnels_product').on(t.productId),
@@ -179,6 +184,38 @@ export const funnelLinks = sqliteTable(
   }),
 );
 
+// ─── funnel_blocks / funnel_block_items (Phase 3) ────────────────────────────
+
+export const funnelBlocks = sqliteTable(
+  'funnel_blocks',
+  {
+    id:       integer('id').primaryKey({ autoIncrement: true }),
+    funnelId: integer('funnel_id').notNull().references(() => funnels.id, { onDelete: 'cascade' }),
+    kind:     text('kind').notNull(),
+    enabled:  integer('enabled').notNull().default(0),
+    mode:     text('mode', { enum: ['common', 'by_time'] }).notNull().default('common'),
+  },
+  (t) => ({
+    uniq:      uniqueIndex('funnel_blocks_funnel_kind_unique').on(t.funnelId, t.kind),
+    funnelIdx: index('idx_funnel_blocks_funnel').on(t.funnelId),
+  }),
+);
+
+export const funnelBlockItems = sqliteTable(
+  'funnel_block_items',
+  {
+    id:       integer('id').primaryKey({ autoIncrement: true }),
+    blockId:  integer('block_id').notNull().references(() => funnelBlocks.id, { onDelete: 'cascade' }),
+    slot:     text('slot', { enum: ['15', '19'] }),
+    label:    text('label').notNull().default(''),
+    url:      text('url').notNull().default(''),
+    position: integer('position').notNull().default(0),
+  },
+  (t) => ({
+    blockIdx: index('idx_fbi_block').on(t.blockId),
+  }),
+);
+
 // ─── Type exports ─────────────────────────────────────────────────────────────
 
 export type Source           = typeof sources.$inferSelect;
@@ -196,3 +233,5 @@ export type FunnelLink       = typeof funnelLinks.$inferSelect;
 
 export type NewFunnel        = typeof funnels.$inferInsert;
 export type NewFunnelLink    = typeof funnelLinks.$inferInsert;
+export type FunnelBlock     = typeof funnelBlocks.$inferSelect;
+export type FunnelBlockItem = typeof funnelBlockItems.$inferSelect;
