@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getBlock, replaceBlock, type BlockItem } from '@/lib/funnel-blocks';
 import { funnelExists } from '@/lib/funnel-days';
-import { isBlockKind, getBlockDef } from '@/lib/blocks';
+import { isBlockKind, getBlockDef, type BlockKind } from '@/lib/blocks';
 
 type Params = { params: Promise<{ id: string; kind: string }> };
 
-function parse(id: string, kind: string) {
+function parse(id: string, kind: string): { error: NextResponse } | { numId: number; kind: BlockKind } {
   const numId = parseInt(id, 10);
   if (isNaN(numId)) return { error: NextResponse.json({ error: 'Invalid id' }, { status: 400 }) };
   if (!isBlockKind(kind)) return { error: NextResponse.json({ error: 'Invalid kind' }, { status: 400 }) };
@@ -18,7 +18,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const p = parse(id, kind);
   if ('error' in p) return p.error;
   if (!funnelExists(db, p.numId)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  return NextResponse.json(getBlock(db, p.numId, p.kind as never));
+  return NextResponse.json(getBlock(db, p.numId, p.kind));
 }
 
 export async function PUT(req: NextRequest, { params }: Params) {
@@ -32,7 +32,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
   if (!body || typeof body !== 'object') return NextResponse.json({ error: 'Body must be an object' }, { status: 400 });
 
   const b = body as { enabled?: unknown; mode?: unknown; items?: unknown };
-  const def = getBlockDef(p.kind as never);
+  const def = getBlockDef(p.kind);
 
   if (typeof b.enabled !== 'boolean') return NextResponse.json({ error: 'enabled must be boolean' }, { status: 400 });
   if (b.mode !== 'common' && b.mode !== 'by_time') return NextResponse.json({ error: 'invalid mode' }, { status: 400 });
@@ -49,6 +49,6 @@ export async function PUT(req: NextRequest, { params }: Params) {
     items.push({ slot, label: it.label, url: it.url });
   }
 
-  const result = replaceBlock(db, p.numId, p.kind as never, b.enabled, b.mode, items);
+  const result = replaceBlock(db, p.numId, p.kind, b.enabled, b.mode, items);
   return NextResponse.json(result);
 }
