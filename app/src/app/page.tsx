@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import FunnelCard from '@/components/FunnelCard';
 import Toast from '@/components/Toast';
+import GroupToggle, { type GroupBy } from '@/components/GroupToggle';
+
+const LS_KEY = 'funnels.groupBy';
 
 interface FunnelAxes {
   product: string;
@@ -28,12 +31,38 @@ interface ToastState {
   key: number;
 }
 
+function isGroupBy(v: unknown): v is GroupBy {
+  return v === 'contractor' || v === 'product' || v === 'none';
+}
+
 export default function HomePage() {
   const router = useRouter();
   const [funnels, setFunnels] = useState<FunnelListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<ToastState | null>(null);
   const toastKeyRef = useRef(0);
+  const [groupBy, setGroupBy] = useState<GroupBy>('none');
+
+  // Load groupBy from localStorage on mount (client-only)
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(LS_KEY);
+      if (isGroupBy(stored)) {
+        setGroupBy(stored);
+      }
+    } catch {
+      // localStorage unavailable — ignore
+    }
+  }, []);
+
+  function handleGroupByChange(value: GroupBy) {
+    setGroupBy(value);
+    try {
+      localStorage.setItem(LS_KEY, value);
+    } catch {
+      // localStorage unavailable — ignore
+    }
+  }
 
   function showToast(message: string, variant: 'success' | 'error') {
     toastKeyRef.current += 1;
@@ -159,6 +188,76 @@ export default function HomePage() {
     return `${product} / ${contractor} / ${channel} / ${direction}`;
   }
 
+  /** Build sorted groups from current funnels list */
+  function buildGroups(
+    items: FunnelListItem[],
+    by: 'contractor' | 'product'
+  ): { name: string; funnels: FunnelListItem[] }[] {
+    const map = new Map<string, FunnelListItem[]>();
+    for (const f of items) {
+      const key = by === 'contractor' ? f.axes.contractor : f.axes.product;
+      const bucket = map.get(key) ?? [];
+      bucket.push(f);
+      map.set(key, bucket);
+    }
+    // Sort groups alphabetically, items within group by num asc
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b, 'ru'))
+      .map(([name, gs]) => ({
+        name,
+        funnels: [...gs].sort((a, b) => a.num - b.num),
+      }));
+  }
+
+  function renderCard(funnel: FunnelListItem) {
+    return (
+      <FunnelCard
+        key={funnel.id}
+        funnel={{
+          id: funnel.id,
+          frontCode: funnel.frontCode,
+          status: funnel.status,
+          title: buildTitle(funnel),
+        }}
+        onActivateToggle={() => handleActivateToggle(funnel)}
+        onDuplicate={() => handleDuplicate(funnel)}
+        onDelete={() => handleDelete(funnel)}
+        onOpen={() => handleOpen(funnel)}
+      />
+    );
+  }
+
+  function renderList() {
+    if (groupBy === 'none') {
+      return (
+        <div className="grid gap-1.5">
+          {funnels.map(renderCard)}
+        </div>
+      );
+    }
+
+    const groups = buildGroups(funnels, groupBy);
+    return (
+      <div className="grid gap-6">
+        {groups.map((group) => (
+          <section key={group.name}>
+            <div className="mb-2 flex items-baseline gap-2">
+              <h2 className="text-[13px] font-semibold text-[var(--color-text)]">
+                {group.name}
+              </h2>
+              <span className="text-[11px] text-[var(--color-text-secondary)]">
+                {group.funnels.length}
+              </span>
+            </div>
+            <div className="grid gap-1.5">
+              {group.funnels.map(renderCard)}
+            </div>
+          </section>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <main className="mx-auto max-w-[900px] px-4 py-8">
       {/* Header */}
@@ -186,29 +285,20 @@ export default function HomePage() {
         </div>
       </div>
 
+      {/* Grouping toggle */}
+      {!loading && funnels.length > 0 && (
+        <div className="mb-4">
+          <GroupToggle value={groupBy} onChange={handleGroupByChange} />
+        </div>
+      )}
+
       {/* List */}
       {loading ? (
         <p className="text-[13px] text-[var(--color-text-secondary)]">Загрузка...</p>
       ) : funnels.length === 0 ? (
         <p className="text-[13px] text-[var(--color-text-secondary)]">Нет воронок.</p>
       ) : (
-        <div className="grid gap-1.5">
-          {funnels.map((funnel) => (
-            <FunnelCard
-              key={funnel.id}
-              funnel={{
-                id: funnel.id,
-                frontCode: funnel.frontCode,
-                status: funnel.status,
-                title: buildTitle(funnel),
-              }}
-              onActivateToggle={() => handleActivateToggle(funnel)}
-              onDuplicate={() => handleDuplicate(funnel)}
-              onDelete={() => handleDelete(funnel)}
-              onOpen={() => handleOpen(funnel)}
-            />
-          ))}
-        </div>
+        renderList()
       )}
 
       {/* Toast portal */}
