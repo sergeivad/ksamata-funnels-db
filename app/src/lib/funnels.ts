@@ -21,12 +21,17 @@ import { type FunnelCreate, type FunnelUpdate } from './validation';
 
 // ─── Public return shapes ─────────────────────────────────────────────────────
 
+export function funnelName(axes: AbAxes): string {
+  return `${axes.product} / ${axes.contractor} / ${axes.channel} / ${axes.direction}`;
+}
+
 export type FunnelListItem = {
   id: number;
   num: number;
   frontCode: string;
   status: string;
   productName: string;
+  name: string;
   axes: AbAxes;
 };
 
@@ -38,6 +43,10 @@ export type FunnelDetail = FunnelListItem & {
   landingUrl: string;
   startDate: string;
   blockName: string;
+  comment: string;
+  timeLabelA: string;
+  timeLabelB: string;
+  roomsReplayEnabled: boolean;
 };
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -110,14 +119,18 @@ function syncAvTags(db: AnyDB, funnelId: number, axes: AbAxes): void {
 export function listFunnels(db: DB): FunnelListItem[] {
   const rows = db.select().from(funnels).all();
 
-  return rows.map((f) => ({
-    id: f.id,
-    num: f.num,
-    frontCode: f.frontCode ?? '',
-    status: f.status ?? 'active',
-    productName: f.productName,
-    axes: getAxesForFunnel(db, f.id),
-  }));
+  return rows.map((f) => {
+    const axes = getAxesForFunnel(db, f.id);
+    return {
+      id: f.id,
+      num: f.num,
+      frontCode: f.frontCode ?? '',
+      status: f.status ?? 'active',
+      productName: f.productName,
+      name: funnelName(axes),
+      axes,
+    };
+  });
 }
 
 /**
@@ -127,12 +140,14 @@ export function getFunnel(db: DB, id: number): FunnelDetail | null {
   const row = db.select().from(funnels).where(eq(funnels.id, id)).get();
   if (!row) return null;
 
+  const axes = getAxesForFunnel(db, row.id);
   return {
     id:           row.id,
     num:          row.num,
     frontCode:    row.frontCode    ?? '',
     status:       row.status       ?? 'active',
     productName:  row.productName,
+    name:         funnelName(axes),
     sourceId:     row.sourceId,
     productId:    row.productId,
     contractorId: row.contractorId,
@@ -140,7 +155,11 @@ export function getFunnel(db: DB, id: number): FunnelDetail | null {
     landingUrl:   row.landingUrl   ?? '',
     startDate:    row.startDate    ?? '',
     blockName:    row.blockName    ?? '',
-    axes:         getAxesForFunnel(db, row.id),
+    comment:      row.comment      ?? '',
+    timeLabelA:   row.timeLabelA   ?? '15:00',
+    timeLabelB:   row.timeLabelB   ?? '19:00',
+    roomsReplayEnabled: (row.roomsReplayEnabled ?? 0) === 1,
+    axes,
   };
 }
 
@@ -175,17 +194,21 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
     const inserted = tx
       .insert(funnels)
       .values({
-        num:          data.num,
-        frontCode:    data.frontCode,
-        status:       data.status,
-        productName:  data.productName,
-        variant:      data.variant,
-        landingUrl:   data.landingUrl,
-        startDate:    data.startDate,
-        blockName:    data.blockName,
-        productId:    productRow.id,
-        contractorId: contractorRow.id,
-        sourceId:     sourceRow.id,
+        num:                data.num,
+        frontCode:          data.frontCode,
+        status:             data.status,
+        productName:        data.productName,
+        variant:            data.variant,
+        landingUrl:         data.landingUrl,
+        startDate:          data.startDate,
+        blockName:          data.blockName,
+        productId:          productRow.id,
+        contractorId:       contractorRow.id,
+        sourceId:           sourceRow.id,
+        comment:            data.comment            ?? '',
+        timeLabelA:         data.timeLabelA         ?? '15:00',
+        timeLabelB:         data.timeLabelB         ?? '19:00',
+        roomsReplayEnabled: data.roomsReplayEnabled ? 1 : 0,
       })
       .returning()
       .get() as Funnel;
@@ -199,6 +222,7 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
       frontCode:   inserted.frontCode ?? '',
       status:      inserted.status ?? 'active',
       productName: inserted.productName,
+      name:        funnelName(axes),
       axes,
     };
   });
@@ -229,6 +253,10 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
     if (data.landingUrl   !== undefined) scalarUpdate.landingUrl   = data.landingUrl;
     if (data.startDate    !== undefined) scalarUpdate.startDate    = data.startDate;
     if (data.blockName    !== undefined) scalarUpdate.blockName    = data.blockName;
+    if (data.comment            !== undefined) scalarUpdate.comment            = data.comment;
+    if (data.timeLabelA         !== undefined) scalarUpdate.timeLabelA         = data.timeLabelA;
+    if (data.timeLabelB         !== undefined) scalarUpdate.timeLabelB         = data.timeLabelB;
+    if (data.roomsReplayEnabled !== undefined) scalarUpdate.roomsReplayEnabled = data.roomsReplayEnabled ? 1 : 0;
 
     // If product/contractor/source names change, update FKs too
     if (data.product !== undefined) {
@@ -283,13 +311,15 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
     }
 
     const finalRow = tx.select().from(funnels).where(eq(funnels.id, id)).get()!;
+    const finalAxes = getAxesForFunnel(tx, id);
     result = {
       id:          finalRow.id,
       num:         finalRow.num,
       frontCode:   finalRow.frontCode ?? '',
       status:      finalRow.status ?? 'active',
       productName: finalRow.productName,
-      axes:        getAxesForFunnel(tx, id),
+      name:        funnelName(finalAxes),
+      axes:        finalAxes,
     };
   });
 
@@ -356,6 +386,7 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
       frontCode:   '',
       status:      'draft',
       productName: inserted.productName,
+      name:        funnelName(sourceAxes),
       axes:        sourceAxes,
     };
   });

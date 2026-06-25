@@ -55,6 +55,10 @@ export const funnelCreateSchema = z.object({
   contractor: z.string().min(1),
   channel: z.string().min(1),
   direction: z.string().min(1),
+  comment: z.string().optional(),
+  timeLabelA: z.string().optional(),
+  timeLabelB: z.string().optional(),
+  roomsReplayEnabled: z.boolean().optional(),
   // sourceName is optional — when absent, source is auto-derived as `${channel} ${contractor}`
   sourceName: z.string().optional(),
 });

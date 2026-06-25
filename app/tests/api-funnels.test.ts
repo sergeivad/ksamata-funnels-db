@@ -19,6 +19,7 @@ import {
   deleteFunnel,
   duplicateFunnel,
 } from '../src/lib/funnels';
+import { runMigratePhase3 } from '../scripts/migrate-phase3';
 
 // __dirname = app/tests/ → go up 2 levels to repo root for the DB
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
@@ -30,6 +31,7 @@ copyFileSync(REAL_DB, TMP_DB);
 const sqlite = new Database(TMP_DB);
 sqlite.pragma('journal_mode = WAL');
 sqlite.pragma('foreign_keys = ON');
+runMigratePhase3(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => {
@@ -378,6 +380,30 @@ describe('updateFunnel — source-id stability', () => {
     const after = testDb.select().from(funnelsTable).where(eq(funnelsTable.id, curatedFunnelId)).get()!;
     const sourceRow = testDb.select().from(sourcesTable).where(eq(sourcesTable.id, after.sourceId)).get()!;
     expect(sourceRow.name).toBe('Ручной источник');
+  });
+});
+
+// ─── FUNNEL NAME + IDENTITY FIELDS ───────────────────────────────────────────
+describe('funnelName and identity fields', () => {
+  it('funnelName derives «product / contractor / channel / direction»', async () => {
+    const { funnelName } = await import('../src/lib/funnels');
+    expect(funnelName({ product: 'БОО', contractor: 'NR', channel: 'ВК', direction: 'Перелив с БОО' }))
+      .toBe('БОО / NR / ВК / Перелив с БОО');
+  });
+
+  it('updateFunnel persists comment and time labels', () => {
+    const list = listFunnels(testDb);
+    const found = list.find((f) => f.num === 9900)!;
+    const updated = updateFunnel(testDb, found.id, {
+      comment: 'тест', timeLabelA: '12:00', timeLabelB: '20:00', roomsReplayEnabled: true,
+    });
+    expect(updated).not.toBeNull();
+    const detail = getFunnel(testDb, found.id)!;
+    expect(detail.comment).toBe('тест');
+    expect(detail.timeLabelA).toBe('12:00');
+    expect(detail.timeLabelB).toBe('20:00');
+    expect(detail.roomsReplayEnabled).toBe(true);
+    expect(detail.name).toContain(' / ');
   });
 });
 
