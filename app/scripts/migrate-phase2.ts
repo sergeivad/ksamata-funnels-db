@@ -13,23 +13,7 @@
  */
 
 import type { AnyDB } from '../src/db/client';
-
-// ─── Seed data ────────────────────────────────────────────────────────────────
-
-const CHANNELS: string[] = ['Ютуб', 'Яндекс', 'ВК', 'МАКС', 'Перелив'];
-
-const DIRECTIONS: string[] = [
-  'Органика',
-  'Реклама',
-  'РСЯ',
-  'In Stream',
-  'Маркетплатформа',
-  'Посевы',
-  'Ретаргет',
-  'Перелив с БОО',
-  'Перелив с ДБО',
-  'Квиз',
-];
+import { CHANNELS, DIRECTIONS, MIGRATION_DDL } from './migrate-phase2-data';
 
 // ─── Core migration function (injectable DB for testing) ──────────────────────
 
@@ -43,27 +27,7 @@ export function runMigratePhase2(db: AnyDB): void {
 
   // ── Create tables (idempotent) ──────────────────────────────────────────────
 
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS channels (
-      id   INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT    NOT NULL UNIQUE
-    );
-
-    CREATE TABLE IF NOT EXISTS directions (
-      id   INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT    NOT NULL UNIQUE
-    );
-
-    CREATE TABLE IF NOT EXISTS funnel_links (
-      id        INTEGER PRIMARY KEY AUTOINCREMENT,
-      funnel_id INTEGER NOT NULL REFERENCES funnels(id) ON DELETE CASCADE,
-      label     TEXT    NOT NULL DEFAULT '',
-      url       TEXT    NOT NULL DEFAULT '',
-      position  INTEGER NOT NULL DEFAULT 0
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_funnel_links_funnel ON funnel_links(funnel_id);
-  `);
+  sqlite.exec(MIGRATION_DDL);
 
   // ── Seed channels (get-or-create by name) ──────────────────────────────────
 
