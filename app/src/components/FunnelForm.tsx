@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Toast from './Toast';
 
@@ -21,14 +21,12 @@ interface FunnelFormProps {
     variant: string;
     landingUrl: string;
     startDate: string;
-    blockName: string;
     axes: {
       product: string;
       contractor: string;
       channel: string;
       direction: string;
     };
-    sourceName?: string;
   };
 }
 
@@ -197,12 +195,10 @@ export default function FunnelForm({ mode, initial }: FunnelFormProps) {
     variant: initial?.variant ?? '',
     landingUrl: initial?.landingUrl ?? '',
     startDate: initial?.startDate ?? '',
-    blockName: initial?.blockName ?? '',
     product: initial?.axes.product ?? '',
     contractor: initial?.axes.contractor ?? '',
     channel: initial?.axes.channel ?? '',
     direction: initial?.axes.direction ?? '',
-    sourceName: initial?.sourceName ?? '',
   });
 
   const [errors, setErrors] = useState<FormErrors>({});
@@ -257,7 +253,6 @@ export default function FunnelForm({ mode, initial }: FunnelFormProps) {
     if (!fields.contractor) errs.contractor = 'Обязательное поле';
     if (!fields.channel) errs.channel = 'Обязательное поле';
     if (!fields.direction) errs.direction = 'Обязательное поле';
-    if (!fields.sourceName) errs.sourceName = 'Обязательное поле';
 
     return errs;
   }
@@ -281,12 +276,10 @@ export default function FunnelForm({ mode, initial }: FunnelFormProps) {
       variant: fields.variant,
       landingUrl: fields.landingUrl,
       startDate: fields.startDate,
-      blockName: fields.blockName,
       product: fields.product,
       contractor: fields.contractor,
       channel: fields.channel,
       direction: fields.direction,
-      sourceName: fields.sourceName,
     };
 
     try {
@@ -475,18 +468,6 @@ export default function FunnelForm({ mode, initial }: FunnelFormProps) {
             {errors.startDate && <p className={errClass}>{errors.startDate}</p>}
           </div>
 
-          {/* blockName */}
-          <div className="flex flex-col gap-1">
-            <label className={labelClass}>Блок</label>
-            <input
-              type="text"
-              value={fields.blockName}
-              onChange={(e) => set('blockName', e.target.value)}
-              placeholder="Название блока"
-              className={inputClass('blockName')}
-            />
-          </div>
-
           {/* ── АВ-axes ─────────────────────────────────────────────── */}
           <hr className="border-[var(--color-border-soft)]" />
           <p className="text-[12px] font-semibold text-[var(--color-text-secondary)]">
@@ -511,43 +492,22 @@ export default function FunnelForm({ mode, initial }: FunnelFormProps) {
             error={errors.contractor}
           />
 
-          {/* channel — free text (no dedicated ref table) */}
-          <div className="flex flex-col gap-1">
-            <label className={labelClass}>
-              Канал <span className="text-[#B42318]">*</span>
-            </label>
-            <input
-              type="text"
-              value={fields.channel}
-              onChange={(e) => set('channel', e.target.value)}
-              placeholder="ВК, ТГ, Email..."
-              className={inputClass('channel')}
-            />
-            {errors.channel && <p className={errClass}>{errors.channel}</p>}
-          </div>
-
-          {/* direction — free text */}
-          <div className="flex flex-col gap-1">
-            <label className={labelClass}>
-              Направление <span className="text-[#B42318]">*</span>
-            </label>
-            <input
-              type="text"
-              value={fields.direction}
-              onChange={(e) => set('direction', e.target.value)}
-              placeholder="Горячая, Холодная..."
-              className={inputClass('direction')}
-            />
-            {errors.direction && <p className={errClass}>{errors.direction}</p>}
-          </div>
+          <RefSelect
+            label="Канал"
+            kind="channels"
+            value={fields.channel}
+            onChange={(v) => set('channel', v)}
+            required
+            error={errors.channel}
+          />
 
           <RefSelect
-            label="Источник"
-            kind="sources"
-            value={fields.sourceName}
-            onChange={(v) => set('sourceName', v)}
+            label="Направление"
+            kind="directions"
+            value={fields.direction}
+            onChange={(v) => set('direction', v)}
             required
-            error={errors.sourceName}
+            error={errors.direction}
           />
 
           {/* ── Submit ──────────────────────────────────────────────── */}

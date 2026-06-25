@@ -1,7 +1,6 @@
 import { notFound } from 'next/navigation';
 import { db } from '@/db/client';
 import { getFunnel } from '@/lib/funnels';
-import { listRefs } from '@/lib/refs';
 import FunnelForm from '@/components/FunnelForm';
 
 interface PageProps {
@@ -21,11 +20,6 @@ export default async function FunnelEditPage({ params }: PageProps) {
     notFound();
   }
 
-  // Resolve sourceName from sourceId
-  const sources = listRefs(db, 'sources');
-  const sourceRow = sources.find((s) => s.id === funnel.sourceId);
-  const sourceName = sourceRow?.name ?? '';
-
   return (
     <FunnelForm
       mode="edit"
@@ -38,9 +32,7 @@ export default async function FunnelEditPage({ params }: PageProps) {
         variant: funnel.variant,
         landingUrl: funnel.landingUrl,
         startDate: funnel.startDate,
-        blockName: funnel.blockName,
         axes: funnel.axes,
-        sourceName,
       }}
     />
   );

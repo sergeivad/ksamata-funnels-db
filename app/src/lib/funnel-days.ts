@@ -58,7 +58,13 @@ export function listDays(db: AnyDB, funnelId: number): DayCell[] {
     .orderBy(funnelDays.timeSlot, funnelDays.dayNum)
     .all();
 
-  return rows.map((r) => ({
+  return rows.map((r: {
+    timeSlot: string | null;
+    dayNum: number;
+    gcRoom: string | null;
+    webRoom: string | null;
+    salesPage: string | null;
+  }) => ({
     timeSlot: r.timeSlot as '19' | '15',
     dayNum: r.dayNum,
     gcRoom: r.gcRoom ?? '',
