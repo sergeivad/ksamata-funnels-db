@@ -81,7 +81,7 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB 
           onChange={(next) => { setItems(next); }} />
       ) : (
         <div className="flex gap-3">
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <div className="mb-1 text-[11px] font-medium text-[var(--muted)]">{timeLabelA}</div>
             <BlockListField fields={def.fields} slot="15" items={items} onChange={(next) => setItems(next)} />
           </div>

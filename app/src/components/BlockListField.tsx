@@ -33,35 +33,30 @@ export default function BlockListField({ fields, slot, items, onChange }: Props)
     onChange([...items, { slot, label: '', url: '' }]);
   }
 
+  const gtc = fields === 2 ? 'minmax(120px,260px) minmax(0,1fr) 24px' : 'minmax(0,1fr) 24px';
+
   return (
     <div className="flex flex-col gap-1.5">
       {fields === 2 && rows.length > 0 && (
-        <div className="grid grid-cols-[150px_1fr_24px] gap-2 text-[10px] uppercase tracking-wide text-[var(--faint)]">
+        <div className="grid gap-2 text-[10px] uppercase tracking-wide text-[var(--faint)]" style={{ gridTemplateColumns: gtc }}>
           <span>Описание</span><span>Ссылка</span><span />
         </div>
       )}
       {rows.map((row, i) => (
-        <div
-          key={i}
-          className={
-            fields === 2
-              ? 'grid grid-cols-[150px_1fr_24px] items-center gap-2'
-              : 'grid grid-cols-[1fr_24px] items-center gap-2'
-          }
-        >
+        <div key={i} className="grid items-center gap-2" style={{ gridTemplateColumns: gtc }}>
           {fields === 2 && (
             <input
               value={row.label}
               onChange={(e) => update(i, { label: e.target.value })}
               placeholder="описание…"
-              className="h-7 rounded-[6px] border border-[var(--line-soft)] bg-white px-2 text-[12px] text-[var(--ink)]"
+              className="h-7 w-full min-w-0 rounded-[6px] border border-[var(--line-soft)] bg-white px-2 text-[12px] text-[var(--ink)]"
             />
           )}
           <input
             value={row.url}
             onChange={(e) => update(i, { url: e.target.value })}
             placeholder="ссылка…"
-            className="h-7 rounded-[6px] border border-[var(--line-soft)] bg-white px-2 font-mono text-[12px] text-[var(--ink)]"
+            className="h-7 w-full min-w-0 rounded-[6px] border border-[var(--line-soft)] bg-white px-2 font-mono text-[12px] text-[var(--ink)]"
           />
           <button type="button" onClick={() => remove(i)} aria-label="Удалить строку" className="text-[var(--faint)] hover:text-[var(--ink)]">
             <Trash2 size={15} />

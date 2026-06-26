@@ -23,7 +23,7 @@ export default async function FunnelEditPage({ params }: PageProps) {
   const rest = blocks.filter((b) => b.kind !== 'landings');
 
   return (
-    <main className="mx-auto max-w-[680px] px-4 py-6">
+    <main className="mx-auto max-w-[1120px] px-6 py-8">
       <FunnelIdentity funnel={funnel} />
       <div className="my-4 h-px bg-[var(--line-soft)]" />
       {/* Order: landings → rooms → remaining blocks (records, tariffs, ...) */}

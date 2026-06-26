@@ -69,7 +69,9 @@ export default function RoomsEditor({ funnelId, initialDays, replayEnabled, time
     } finally { setSaving(false); }
   }
 
-  const cols = replay ? 'grid-cols-[22px_1fr_1fr_0.8fr]' : 'grid-cols-[22px_1fr_1fr]';
+  const gtc = replay
+    ? '22px minmax(0,1fr) minmax(0,1fr) minmax(0,0.8fr)'
+    : '22px minmax(0,1fr) minmax(0,1fr)';
 
   return (
     <div className="mb-2.5 rounded-[10px] border border-[var(--line-soft)] bg-[var(--paper)] p-3.5">
@@ -81,9 +83,9 @@ export default function RoomsEditor({ funnelId, initialDays, replayEnabled, time
 
       <div className="flex gap-2.5">
         {SLOTS.map((slot) => (
-          <div key={slot} className="flex-1">
+          <div key={slot} className="min-w-0 flex-1">
             <div className="mb-1 text-[11px] font-medium text-[var(--muted)]">{labels[slot]}</div>
-            <div className={`grid ${cols} items-center gap-1`}>
+            <div className="grid items-center gap-x-1.5 gap-y-1" style={{ gridTemplateColumns: gtc }}>
               <span /><span className="text-[10px] text-[var(--faint)]">GC</span>
               <span className="text-[10px] text-[var(--faint)]">Web</span>
               {replay && <span className="text-[10px] text-[var(--faint)]">повтор</span>}
@@ -117,7 +119,7 @@ function FragmentRow({ day, cell, replay, onChange }: {
   day: number; cell: { gcRoom: string; webRoom: string; replayUrl: string };
   replay: boolean; onChange: (field: 'gcRoom' | 'webRoom' | 'replayUrl', value: string) => void;
 }) {
-  const inp = 'h-6 rounded-[5px] border border-[var(--line-soft)] bg-white px-1.5 font-mono text-[11px] text-[var(--ink)]';
+  const inp = 'h-7 w-full min-w-0 rounded-[5px] border border-[var(--line-soft)] bg-white px-2 font-mono text-[12px] text-[var(--ink)]';
   return (
     <>
       <span className="rounded-[4px] bg-[var(--chip)] py-[2px] text-center font-mono text-[10px] text-[var(--muted)]">{day}</span>
