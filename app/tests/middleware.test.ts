@@ -47,4 +47,14 @@ describe('auth middleware', () => {
     process.env.ADMIN_BASIC_AUTH = 'admin:s3cret';
     expect(middleware(req('Basic @@@not-base64@@@')).status).toBe(401);
   });
+
+  it('accepts a credential containing non-ASCII (UTF-8) characters', () => {
+    process.env.ADMIN_BASIC_AUTH = 'админ:пароль€';
+    expect(middleware(req(basic('админ', 'пароль€'))).status).not.toBe(401);
+  });
+
+  it('rejects a near-miss non-ASCII credential', () => {
+    process.env.ADMIN_BASIC_AUTH = 'админ:пароль€';
+    expect(middleware(req(basic('админ', 'пароль'))).status).toBe(401);
+  });
 });

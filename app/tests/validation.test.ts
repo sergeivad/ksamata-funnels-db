@@ -62,6 +62,21 @@ describe('funnelCreateSchema', () => {
     ).toBe(false);
   });
 
+  test('120-char ref field passes, 121-char is rejected', () => {
+    expect(
+      funnelCreateSchema.safeParse({ ...validFunnel, contractor: 'a'.repeat(120) }).success
+    ).toBe(true);
+    expect(
+      funnelCreateSchema.safeParse({ ...validFunnel, contractor: 'a'.repeat(121) }).success
+    ).toBe(false);
+  });
+
+  test('over-length productName is rejected', () => {
+    expect(
+      funnelCreateSchema.safeParse({ ...validFunnel, productName: 'x'.repeat(201) }).success
+    ).toBe(false);
+  });
+
   test('startDate="" passes', () => {
     expect(
       funnelCreateSchema.safeParse({ ...validFunnel, startDate: '' }).success

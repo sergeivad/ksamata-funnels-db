@@ -23,12 +23,21 @@ export function axesToTagNames(axes: AbAxes): {
   time19: string[];
   time15: string[];
 } {
-  const axisTags = [
-    `${AXIS_PREFIXES.product}${axes.product}`,
-    `${AXIS_PREFIXES.contractor}${axes.contractor}`,
-    `${AXIS_PREFIXES.channel}${axes.channel}`,
-    `${AXIS_PREFIXES.direction}${axes.direction}`,
-  ];
+  // Only emit a tag for an axis that actually has a value. An empty axis (e.g. a
+  // freshly-created draft, or a partial PATCH that touches only one axis) must
+  // NOT create placeholder tags like "АВ Продукт: " — those would pollute the
+  // `tags` table with permanent orphan rows. On read-back, a missing axis tag
+  // already reconstructs as '' (see tagNamesToAxes), so the round-trip holds.
+  const axisTags = (
+    [
+      ['product', axes.product],
+      ['contractor', axes.contractor],
+      ['channel', axes.channel],
+      ['direction', axes.direction],
+    ] as [keyof AbAxes, string][]
+  )
+    .filter(([, value]) => value.trim() !== '')
+    .map(([axis, value]) => `${AXIS_PREFIXES[axis]}${value}`);
 
   const reg: string[] = [
     ...COMMON_TAGS,

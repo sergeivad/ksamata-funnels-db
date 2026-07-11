@@ -3,6 +3,12 @@ import { db } from '@/db/client';
 import { getBlock, replaceBlock, type BlockItem } from '@/lib/funnel-blocks';
 import { funnelExists } from '@/lib/funnel-days';
 import { isBlockKind, getBlockDef, type BlockKind } from '@/lib/blocks';
+import { internalError } from '@/lib/http';
+
+// Upper bound on items per block — guards against insert-amplification from a
+// pathological payload. A real block has at most a handful of links.
+const MAX_ITEMS = 100;
+const MAX_STR = 2000;
 
 type Params = { params: Promise<{ id: string; kind: string }> };
 
@@ -38,6 +44,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
   if (b.mode !== 'common' && b.mode !== 'by_time') return NextResponse.json({ error: 'invalid mode' }, { status: 400 });
   if (!def.modes.includes(b.mode)) return NextResponse.json({ error: `mode ${b.mode} not allowed for ${p.kind}` }, { status: 400 });
   if (!Array.isArray(b.items)) return NextResponse.json({ error: 'items must be an array' }, { status: 400 });
+  if (b.items.length > MAX_ITEMS) return NextResponse.json({ error: `too many items (max ${MAX_ITEMS})` }, { status: 400 });
 
   const items: BlockItem[] = [];
   for (let i = 0; i < b.items.length; i++) {
@@ -45,10 +52,19 @@ export async function PUT(req: NextRequest, { params }: Params) {
     if (typeof it?.label !== 'string' || typeof it?.url !== 'string') {
       return NextResponse.json({ error: `items[${i}] needs string label and url` }, { status: 400 });
     }
+    if (it.label.length > MAX_STR || it.url.length > MAX_STR) {
+      return NextResponse.json({ error: `items[${i}] label/url too long (max ${MAX_STR})` }, { status: 400 });
+    }
     const slot = it.slot === '15' || it.slot === '19' ? it.slot : null;
     items.push({ slot, label: it.label, url: it.url });
   }
 
-  const result = replaceBlock(db, p.numId, p.kind, b.enabled, b.mode, items);
-  return NextResponse.json(result);
+  try {
+    const result = replaceBlock(db, p.numId, p.kind, b.enabled, b.mode, items);
+    return NextResponse.json(result);
+  } catch (err: unknown) {
+    // e.g. the funnel was deleted between funnelExists() and this write (the FK
+    // then rejects the insert). Keep it a generic 500 without leaking internals.
+    return internalError('PUT /api/funnels/[id]/blocks/[kind]', err);
+  }
 }

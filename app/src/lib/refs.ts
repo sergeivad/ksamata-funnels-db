@@ -1,5 +1,5 @@
 import { eq, asc } from 'drizzle-orm';
-import { type AnyDB, type DB } from '../db/client';
+import { type AnyDB } from '../db/client';
 import {
   products,
   contractors,

@@ -44,6 +44,23 @@ describe('axesToTagNames', () => {
     expect(r.time19).not.toContain('АВ Этап: Регистрация');
     expect(r.time15).not.toContain('АВ Этап: Регистрация');
   });
+
+  test('omits placeholder tags for empty axes (no "АВ Продукт: " pollution)', () => {
+    const r = axesToTagNames({ product: '', contractor: '', channel: '', direction: 'РСЯ' });
+    // Present axis is emitted…
+    expect(r.reg).toContain('АВ Направление: РСЯ');
+    // …empty axes produce NO tag (not even the bare prefix)
+    expect(r.reg).not.toContain('АВ Продукт: ');
+    expect(r.reg).not.toContain('АВ Подрядчик: ');
+    expect(r.reg).not.toContain('АВ Канал: ');
+    expect(r.reg.some((t) => t === 'АВ Продукт: ' || t.startsWith('АВ Продукт: '))).toBe(false);
+  });
+
+  test('whitespace-only axis is treated as empty', () => {
+    const r = axesToTagNames({ product: '   ', contractor: 'НИМБ', channel: '', direction: '' });
+    expect(r.reg).toContain('АВ Подрядчик: НИМБ');
+    expect(r.reg.some((t) => t.startsWith('АВ Продукт:'))).toBe(false);
+  });
 });
 
 describe('tagNamesToAxes', () => {

@@ -7,6 +7,7 @@
 import { eq, and } from 'drizzle-orm';
 import { type AnyDB } from '../db/client';
 import { funnelDays, funnels } from '../db/schema';
+import { ValidationError } from './errors';
 
 export type DayCell = {
   timeSlot: '19' | '15';
@@ -22,10 +23,10 @@ const MAX_DAY_NUM = 5;
 
 function validateCell(cell: DayCell): void {
   if (!VALID_TIME_SLOTS.has(cell.timeSlot)) {
-    throw new Error(`Invalid timeSlot "${cell.timeSlot}": must be '19' or '15'`);
+    throw new ValidationError(`Invalid timeSlot "${cell.timeSlot}": must be '19' or '15'`);
   }
   if (cell.dayNum < MIN_DAY_NUM || cell.dayNum > MAX_DAY_NUM || !Number.isInteger(cell.dayNum)) {
-    throw new Error(`Invalid dayNum ${cell.dayNum}: must be an integer between 1 and 5`);
+    throw new ValidationError(`Invalid dayNum ${cell.dayNum}: must be an integer between 1 and 5`);
   }
 }
 

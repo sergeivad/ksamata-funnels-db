@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { listDays, replaceDays, funnelExists, type DayCell } from '@/lib/funnel-days';
+import { ValidationError } from '@/lib/errors';
+import { internalError } from '@/lib/http';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -49,6 +51,11 @@ export async function PUT(req: NextRequest, { params }: Params) {
   }
 
   const rawCells = (body as { cells: unknown[] }).cells;
+  // Valid space is 2 slots × 5 days = 10 cells; cap generously to block
+  // insert-amplification from a pathological payload.
+  if (rawCells.length > 100) {
+    return NextResponse.json({ error: 'too many cells (max 100)' }, { status: 400 });
+  }
   const cells: DayCell[] = [];
   for (let i = 0; i < rawCells.length; i++) {
     const cell = rawCells[i] as Record<string, unknown>;
@@ -73,8 +80,13 @@ export async function PUT(req: NextRequest, { params }: Params) {
   try {
     replaceDays(db, numId, cells);
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Internal error';
-    return NextResponse.json({ error: message }, { status: 400 });
+    // Domain-validation problems are the caller's fault → 400 with the message.
+    // Anything else (DB/FK error, e.g. funnel deleted mid-request) is unexpected
+    // → generic 500 without leaking internal details.
+    if (err instanceof ValidationError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
+    return internalError('PUT /api/funnels/[id]/days', err);
   }
 
   const updated = listDays(db, numId);

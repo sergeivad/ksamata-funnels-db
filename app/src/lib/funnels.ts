@@ -7,7 +7,7 @@
  * This module NEVER imports the singleton `db` from client.ts.
  */
 
-import { eq, sql, inArray, like, and } from 'drizzle-orm';
+import { eq, sql, inArray, like, notLike, and } from 'drizzle-orm';
 import { type AnyDB, type DB } from '../db/client';
 import {
   funnels,
@@ -15,6 +15,7 @@ import {
   funnelDays,
   funnelBlocks,
   funnelBlockItems,
+  salebotConfigs,
   tags,
   type Funnel,
 } from '../db/schema';
@@ -112,6 +113,30 @@ function syncAvTags(db: AnyDB, funnelId: number, axes: AbAxes): void {
   insertForType(tagSets.reg, 'reg');
   insertForType(tagSets.time19, 'time_19');
   insertForType(tagSets.time15, 'time_15');
+}
+
+/**
+ * `num` is allocated as MAX(num)+1. Within one Node process that read→insert is
+ * atomic (better-sqlite3 is synchronous), but across processes sharing the DB
+ * file two allocations can collide on the UNIQUE constraint. Retry a few times
+ * on that specific conflict so the loser recomputes MAX+1 instead of failing.
+ */
+function isNumConflict(err: unknown): boolean {
+  return err instanceof Error
+    && err.message.includes('UNIQUE constraint failed: funnels.num');
+}
+
+function withNumRetry<T>(fn: () => T, attempts = 5): T {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return fn();
+    } catch (err) {
+      if (!isNumConflict(err)) throw err;
+      lastErr = err;
+    }
+  }
+  throw lastErr;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -249,12 +274,6 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
 export function createDraftFunnel(db: DB): FunnelListItem {
   const emptyAxes: AbAxes = { product: '', contractor: '', channel: '', direction: '' };
 
-  const maxRow = db
-    .select({ maxNum: sql<number>`COALESCE(MAX(${funnels.num}), 0)` })
-    .from(funnels)
-    .get();
-  const num = (maxRow?.maxNum ?? 0) + 1;
-
   const firstId = (kind: string): number | undefined => listRefs(db, kind)[0]?.id;
   const productId    = firstId('products');
   const contractorId = firstId('contractors');
@@ -263,27 +282,35 @@ export function createDraftFunnel(db: DB): FunnelListItem {
     throw new Error('Cannot create draft: reference tables (products/contractors/sources) are empty');
   }
 
-  const inserted = db
-    .insert(funnels)
-    .values({
-      num,
-      frontCode:    `f${num}`,
-      status:       'draft',
-      productName:  '',
-      variant:      '',
-      landingUrl:   '',
-      startDate:    '',
-      blockName:    '',
-      productId,
-      contractorId,
-      sourceId,
-      comment:      '',
-      timeLabelA:   '15:00',
-      timeLabelB:   '19:00',
-      roomsReplayEnabled: 0,
-    })
-    .returning()
-    .get() as Funnel;
+  const inserted = withNumRetry(() => {
+    const maxRow = db
+      .select({ maxNum: sql<number>`COALESCE(MAX(${funnels.num}), 0)` })
+      .from(funnels)
+      .get();
+    const num = (maxRow?.maxNum ?? 0) + 1;
+
+    return db
+      .insert(funnels)
+      .values({
+        num,
+        frontCode:    `f${num}`,
+        status:       'draft',
+        productName:  '',
+        variant:      '',
+        landingUrl:   '',
+        startDate:    '',
+        blockName:    '',
+        productId,
+        contractorId,
+        sourceId,
+        comment:      '',
+        timeLabelA:   '15:00',
+        timeLabelB:   '19:00',
+        roomsReplayEnabled: 0,
+      })
+      .returning()
+      .get() as Funnel;
+  });
 
   return {
     id:          inserted.id,
@@ -448,6 +475,29 @@ function copyFunnelChildren(tx: AnyDB, srcId: number, dstId: number): void {
       }).run();
     }
   }
+
+  // salebot_configs — per-slot condition/calculator. Part of the funnel's
+  // content, so a faithful duplicate must carry it over.
+  const configs = tx.select().from(salebotConfigs).where(eq(salebotConfigs.funnelId, srcId)).all();
+  for (const c of configs) {
+    const { id: _id, funnelId: _fid, ...rest } = c;
+    tx.insert(salebotConfigs).values({ ...rest, funnelId: dstId }).run();
+  }
+
+  // Legacy non-AV funnel_tags. AV tags are re-synced from axes by the caller,
+  // but any manually-attached non-AV tags would otherwise be silently dropped.
+  const legacyTags = tx
+    .select({ tagId: funnelTags.tagId, tagType: funnelTags.tagType, position: funnelTags.position })
+    .from(funnelTags)
+    .innerJoin(tags, eq(funnelTags.tagId, tags.id))
+    .where(and(eq(funnelTags.funnelId, srcId), notLike(tags.name, 'АВ %')))
+    .all() as { tagId: number; tagType: 'reg' | 'time_19' | 'time_15'; position: number }[];
+  for (const t of legacyTags) {
+    tx.insert(funnelTags)
+      .values({ funnelId: dstId, tagId: t.tagId, tagType: t.tagType, position: t.position })
+      .onConflictDoNothing()
+      .run();
+  }
 }
 
 /**
@@ -460,9 +510,7 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
 
   const sourceAxes = getAxesForFunnel(db, id);
 
-  let duplicated: FunnelListItem | null = null;
-
-  db.transaction((tx) => {
+  const duplicated = withNumRetry(() => db.transaction((tx) => {
     // Get max num
     const maxResult = tx
       .select({ maxNum: sql<number>`MAX(${funnels.num})` })
@@ -500,7 +548,7 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
     // Deep-copy child rows so a duplicate is a faithful copy, not an empty draft.
     copyFunnelChildren(tx, id, inserted.id);
 
-    duplicated = {
+    return {
       id:          inserted.id,
       num:         inserted.num,
       frontCode:   '',
@@ -509,7 +557,7 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
       name:        funnelName(sourceAxes),
       axes:        sourceAxes,
     };
-  });
+  }));
 
   return duplicated;
 }

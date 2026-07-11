@@ -309,6 +309,49 @@ describe('duplicateFunnel', () => {
   });
 });
 
+// ─── TAG-TABLE HYGIENE ────────────────────────────────────────────────────────
+describe('updateFunnel — no empty-axis tag pollution', () => {
+  it('partial-axis PATCH on a draft does not create "АВ Продукт: " placeholder tags', () => {
+    const draft = createDraftFunnel(testDb); // empty axes
+
+    const emptyPlaceholders = () =>
+      (testDb.select({ name: schema.tags.name }).from(schema.tags).all() as { name: string }[])
+        .filter((t) => ['АВ Продукт: ', 'АВ Подрядчик: ', 'АВ Канал: ', 'АВ Направление: '].includes(t.name));
+
+    expect(emptyPlaceholders()).toHaveLength(0);
+
+    // PATCH only ONE axis — the other three remain empty (draft default).
+    updateFunnel(testDb, draft.id, { direction: 'РСЯ-ЧИСТО' });
+
+    // The touched axis must be stored…
+    expect(getFunnel(testDb, draft.id)!.axes.direction).toBe('РСЯ-ЧИСТО');
+    // …but the three empty axes must NOT have leaked placeholder tags.
+    expect(emptyPlaceholders()).toHaveLength(0);
+  });
+});
+
+describe('duplicateFunnel — copies salebot_configs', () => {
+  it('carries per-slot salebot condition/calculator to the duplicate', () => {
+    const src = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9970 });
+    testDb.insert(schema.salebotConfigs).values([
+      { funnelId: src.id, timeSlot: '19', condition: 'cond-19', calculator: 'calc-19' },
+      { funnelId: src.id, timeSlot: '15', condition: 'cond-15', calculator: 'calc-15' },
+    ]).run();
+
+    const dup = duplicateFunnel(testDb, src.id)!;
+
+    const dupConfigs = testDb
+      .select({ timeSlot: schema.salebotConfigs.timeSlot, condition: schema.salebotConfigs.condition, calculator: schema.salebotConfigs.calculator })
+      .from(schema.salebotConfigs)
+      .where(eq(schema.salebotConfigs.funnelId, dup.id))
+      .all() as { timeSlot: string; condition: string; calculator: string }[];
+
+    expect(dupConfigs).toHaveLength(2);
+    expect(dupConfigs.find((c) => c.timeSlot === '19')).toMatchObject({ condition: 'cond-19', calculator: 'calc-19' });
+    expect(dupConfigs.find((c) => c.timeSlot === '15')).toMatchObject({ condition: 'cond-15', calculator: 'calc-15' });
+  });
+});
+
 // ─── AUTO-DERIVE SOURCE ───────────────────────────────────────────────────────
 describe('createFunnel — auto-derive source', () => {
   it('derives source name from channel+contractor when sourceName is absent', () => {
