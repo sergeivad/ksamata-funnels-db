@@ -168,21 +168,9 @@ export const directions = sqliteTable('directions', {
   name: text('name').notNull().unique(),
 });
 
-// ─── funnel_links ─────────────────────────────────────────────────────────────
-
-export const funnelLinks = sqliteTable(
-  'funnel_links',
-  {
-    id:       integer('id').primaryKey({ autoIncrement: true }),
-    funnelId: integer('funnel_id').notNull().references(() => funnels.id, { onDelete: 'cascade' }),
-    label:    text('label').notNull().default(''),
-    url:      text('url').notNull().default(''),
-    position: integer('position').notNull().default(0),
-  },
-  (t) => ({
-    funnelIdx: index('idx_funnel_links_funnel').on(t.funnelId),
-  }),
-);
+// NOTE: the legacy `funnel_links` table (Phase-2) was removed — funnel links are
+// now stored as a `links` block in funnel_blocks / funnel_block_items. Existing
+// databases may still carry the empty orphan table; it is unused by the app.
 
 // ─── funnel_blocks / funnel_block_items (Phase 3) ────────────────────────────
 
@@ -229,9 +217,7 @@ export type SalebotConfig    = typeof salebotConfigs.$inferSelect;
 export type ProductDuration  = typeof productDurations.$inferSelect;
 export type Channel          = typeof channels.$inferSelect;
 export type Direction        = typeof directions.$inferSelect;
-export type FunnelLink       = typeof funnelLinks.$inferSelect;
 
 export type NewFunnel        = typeof funnels.$inferInsert;
-export type NewFunnelLink    = typeof funnelLinks.$inferInsert;
 export type FunnelBlock     = typeof funnelBlocks.$inferSelect;
 export type FunnelBlockItem = typeof funnelBlockItems.$inferSelect;

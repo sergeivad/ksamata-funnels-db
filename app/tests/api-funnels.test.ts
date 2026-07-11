@@ -24,7 +24,6 @@ import {
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { replaceDays, listDays } from '../src/lib/funnel-days';
 import { replaceBlock, getBlock } from '../src/lib/funnel-blocks';
-import { replaceLinks, listLinks } from '../src/lib/funnel-links';
 
 // __dirname = app/tests/ → go up 2 levels to repo root for the DB
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
@@ -290,10 +289,6 @@ describe('duplicateFunnel', () => {
     replaceBlock(testDb, src.id, 'landings', true, 'common', [
       { slot: null, label: 'L', url: 'https://land' },
     ]);
-    replaceLinks(testDb, src.id, [
-      { label: 'A', url: 'https://a' },
-      { label: 'B', url: 'https://b' },
-    ]);
 
     const dup = duplicateFunnel(testDb, src.id)!;
 
@@ -307,10 +302,6 @@ describe('duplicateFunnel', () => {
     // Child rows copied faithfully (previously not copied at all).
     expect(listDays(testDb, dup.id)).toEqual(listDays(testDb, src.id));
     expect(getBlock(testDb, dup.id, 'landings')).toEqual(getBlock(testDb, src.id, 'landings'));
-    expect(listLinks(testDb, dup.id).map((l) => ({ label: l.label, url: l.url }))).toEqual([
-      { label: 'A', url: 'https://a' },
-      { label: 'B', url: 'https://b' },
-    ]);
 
     // Copies are independent rows on the new funnel, not the source's.
     expect(dup.id).not.toBe(src.id);

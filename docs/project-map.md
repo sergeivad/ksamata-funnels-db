@@ -5,7 +5,6 @@
 - `README.md` - high-level orientation.
 - `AGENTS.md` - shared instructions for Codex and Claude Code.
 - `ksamata_funnels.db` - local live SQLite database.
-- `migrate.sh` - legacy helper script kept at root until reviewed separately.
 
 ## App
 

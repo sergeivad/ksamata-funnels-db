@@ -14,7 +14,7 @@
  */
 
 import Database from 'better-sqlite3';
-import { CHANNELS, DIRECTIONS, MIGRATION_DDL } from './migrate-phase2-data';
+import { CHANNELS, DIRECTIONS, MIGRATION_DDL, PHASE2_FUNNEL_COLUMNS, addColumnIfMissing } from './migrate-phase2-data';
 
 const dbPath = process.env.FUNNELS_DB_PATH;
 if (!dbPath) {
@@ -30,6 +30,11 @@ sqlite.pragma('foreign_keys = ON');
 
 // Create tables (idempotent)
 sqlite.exec(MIGRATION_DDL);
+
+// Add Phase-2 funnels columns (idempotent; replaces migrate.sh)
+for (const col of PHASE2_FUNNEL_COLUMNS) {
+  addColumnIfMissing(sqlite, 'funnels', col.name, col.ddl);
+}
 
 // Seed channels (idempotent via INSERT OR IGNORE)
 const insertChannel = sqlite.prepare('INSERT OR IGNORE INTO channels (name) VALUES (?)');

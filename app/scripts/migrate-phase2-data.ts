@@ -36,14 +36,23 @@ CREATE TABLE IF NOT EXISTS directions (
   id   INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT    NOT NULL UNIQUE
 );
-
-CREATE TABLE IF NOT EXISTS funnel_links (
-  id        INTEGER PRIMARY KEY AUTOINCREMENT,
-  funnel_id INTEGER NOT NULL REFERENCES funnels(id) ON DELETE CASCADE,
-  label     TEXT    NOT NULL DEFAULT '',
-  url       TEXT    NOT NULL DEFAULT '',
-  position  INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE INDEX IF NOT EXISTS idx_funnel_links_funnel ON funnel_links(funnel_id);
 `;
+
+// Funnels columns introduced in Phase-2 (previously added by the now-removed
+// migrate.sh). Added idempotently so from-scratch DBs get them too.
+export const PHASE2_FUNNEL_COLUMNS: { name: string; ddl: string }[] = [
+  { name: 'status',     ddl: `ALTER TABLE funnels ADD COLUMN status TEXT DEFAULT 'active'` },
+  { name: 'front_code', ddl: `ALTER TABLE funnels ADD COLUMN front_code TEXT DEFAULT ''` },
+];
+
+/** Add a column only if it is not already present (SQLite lacks ADD COLUMN IF NOT EXISTS). */
+export function addColumnIfMissing(
+  sqlite: import('better-sqlite3').Database,
+  table: string,
+  column: string,
+  ddl: string,
+): void {
+  const present = (sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])
+    .some((r) => r.name === column);
+  if (!present) sqlite.exec(ddl);
+}

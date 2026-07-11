@@ -1,5 +1,5 @@
 /**
- * Phase-2 migration: creates tables channels, directions, funnel_links
+ * Phase-2 migration: creates tables channels, directions
  * and seeds channels + directions with canonical values.
  *
  * Design:
@@ -13,7 +13,7 @@
  */
 
 import type { AnyDB } from '../src/db/client';
-import { CHANNELS, DIRECTIONS, MIGRATION_DDL } from './migrate-phase2-data';
+import { CHANNELS, DIRECTIONS, MIGRATION_DDL, PHASE2_FUNNEL_COLUMNS, addColumnIfMissing } from './migrate-phase2-data';
 
 // ─── Core migration function (injectable DB for testing) ──────────────────────
 
@@ -28,6 +28,12 @@ export function runMigratePhase2(db: AnyDB): void {
   // ── Create tables (idempotent) ──────────────────────────────────────────────
 
   sqlite.exec(MIGRATION_DDL);
+
+  // ── Add Phase-2 funnels columns (idempotent; replaces migrate.sh) ──────────
+
+  for (const col of PHASE2_FUNNEL_COLUMNS) {
+    addColumnIfMissing(sqlite, 'funnels', col.name, col.ddl);
+  }
 
   // ── Seed channels (get-or-create by name) ──────────────────────────────────
 
@@ -58,6 +64,6 @@ export function runMigratePhase2(db: AnyDB): void {
 if (require.main === module) {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { db } = require('../src/db/client');
-  console.log('Phase-2 migration: creating channels, directions, funnel_links...\n');
+  console.log('Phase-2 migration: creating channels, directions...\n');
   runMigratePhase2(db);
 }

@@ -15,7 +15,6 @@ import {
   funnelDays,
   funnelBlocks,
   funnelBlockItems,
-  funnelLinks,
   tags,
   type Funnel,
 } from '../db/schema';
@@ -419,8 +418,8 @@ export function deleteFunnel(db: DB, id: number): boolean {
 }
 
 /**
- * Deep-copy every child row of `srcId` onto `dstId` (days, blocks + block items,
- * links), preserving order and per-slot data. Must run inside a transaction.
+ * Deep-copy every child row of `srcId` onto `dstId` (days, blocks + block items),
+ * preserving order and per-slot data. Must run inside a transaction.
  */
 function copyFunnelChildren(tx: AnyDB, srcId: number, dstId: number): void {
   // funnel_days — copy all data columns, swap funnelId, drop the PK.
@@ -448,17 +447,6 @@ function copyFunnelChildren(tx: AnyDB, srcId: number, dstId: number): void {
         position: it.position,
       }).run();
     }
-  }
-
-  // funnel_links — copy all rows.
-  const links = tx.select().from(funnelLinks).where(eq(funnelLinks.funnelId, srcId)).all();
-  for (const l of links) {
-    tx.insert(funnelLinks).values({
-      funnelId: dstId,
-      label:    l.label,
-      url:      l.url,
-      position: l.position,
-    }).run();
   }
 }
 

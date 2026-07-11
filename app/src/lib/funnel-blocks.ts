@@ -1,6 +1,6 @@
 /**
  * funnel-blocks.ts — read/write helper for funnel_blocks + funnel_block_items.
- * Injected `db` handle (same pattern as funnel-links.ts).
+ * Injected `db` handle (same pattern as funnel-days.ts).
  */
 
 import { eq, and, asc } from 'drizzle-orm';

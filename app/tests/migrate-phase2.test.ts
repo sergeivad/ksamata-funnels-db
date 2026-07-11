@@ -1,5 +1,5 @@
 /**
- * Task 1 — Phase-2 migration test: channels, directions, funnel_links
+ * Task 1 — Phase-2 migration test: channels, directions
  *
  * ISOLATION: All tests operate on a TEMP COPY of the DB.
  * The real ksamata_funnels.db is NEVER opened directly by these tests.
@@ -11,7 +11,7 @@ import { copyFileSync, unlinkSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import * as schema from '../src/db/schema';
-import { channels, directions, funnelLinks, funnels } from '../src/db/schema';
+import { channels, directions } from '../src/db/schema';
 import { runMigratePhase2 } from '../scripts/migrate-phase2';
 
 // __dirname = app/tests/ → go up 2 levels to repo root for the DB
@@ -62,22 +62,23 @@ describe('runMigratePhase2', () => {
     ]));
   });
 
-  it('funnel_links table exists and accepts an insert', () => {
-    // Get the first funnel to use as a valid reference
-    const firstFunnel = testDb.select({ id: funnels.id }).from(funnels).get();
-    expect(firstFunnel).toBeDefined();
+  it('adds funnels.status and funnels.front_code when missing (replaces migrate.sh)', () => {
+    // Fresh DB whose funnels table lacks the Phase-2 columns.
+    const bare = new Database(':memory:');
+    bare.exec(`CREATE TABLE funnels (id INTEGER PRIMARY KEY AUTOINCREMENT, num INTEGER)`);
+    const bareDb = drizzle(bare, { schema });
 
-    // Insert into funnel_links
-    testDb.insert(funnelLinks).values({
-      funnelId: firstFunnel!.id,
-      label:    'Test Link',
-      url:      'https://example.com',
-      position: 0,
-    }).run();
+    runMigratePhase2(bareDb);
+    runMigratePhase2(bareDb); // idempotent — must not throw on the second pass
 
-    const links = testDb.select().from(funnelLinks).all();
-    expect(links.length).toBeGreaterThanOrEqual(1);
-    expect(links[0].label).toBe('Test Link');
-    expect(links[0].url).toBe('https://example.com');
+    const cols = (bare.prepare(`PRAGMA table_info(funnels)`).all() as { name: string }[]).map((r) => r.name);
+    expect(cols).toEqual(expect.arrayContaining(['status', 'front_code']));
+    bare.exec(`INSERT INTO funnels (num) VALUES (1)`);
+    const row = bare.prepare(`SELECT status, front_code FROM funnels WHERE num = 1`).get() as {
+      status: string; front_code: string;
+    };
+    expect(row.status).toBe('active');
+    expect(row.front_code).toBe('');
+    bare.close();
   });
 });
