@@ -7,6 +7,7 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { eq } from 'drizzle-orm';
 import { copyFileSync, unlinkSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -15,11 +16,15 @@ import {
   listFunnels,
   getFunnel,
   createFunnel,
+  createDraftFunnel,
   updateFunnel,
   deleteFunnel,
   duplicateFunnel,
 } from '../src/lib/funnels';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
+import { replaceDays, listDays } from '../src/lib/funnel-days';
+import { replaceBlock, getBlock } from '../src/lib/funnel-blocks';
+import { replaceLinks, listLinks } from '../src/lib/funnel-links';
 
 // __dirname = app/tests/ → go up 2 levels to repo root for the DB
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
@@ -119,6 +124,41 @@ describe('createFunnel', () => {
   });
 });
 
+// ─── CREATE DRAFT ───────────────────────────────────────────────────────────────
+describe('createDraftFunnel', () => {
+  it('creates a draft with next free num, status=draft, EMPTY axes', () => {
+    const before = listFunnels(testDb);
+    const maxNum = Math.max(...before.map((f) => f.num));
+
+    const draft = createDraftFunnel(testDb);
+
+    expect(draft).toHaveProperty('id');
+    expect(draft.num).toBe(maxNum + 1);
+    expect(draft.status).toBe('draft');
+    expect(draft.frontCode).toBe(`f${maxNum + 1}`);
+    // Axes are empty — the user fills them on the card
+    expect(draft.axes).toEqual({ product: '', contractor: '', channel: '', direction: '' });
+  });
+
+  it('reads back empty axes via getFunnel and creates NO AV tags', () => {
+    const draft = createDraftFunnel(testDb);
+    const detail = getFunnel(testDb, draft.id);
+    expect(detail).not.toBeNull();
+    expect(detail!.status).toBe('draft');
+    expect(detail!.axes).toEqual({ product: '', contractor: '', channel: '', direction: '' });
+
+    // No reg AV tags were attached to the draft
+    const { funnelTags: ft, tags: t } = schema;
+    const rows = testDb
+      .select({ name: t.name })
+      .from(ft)
+      .innerJoin(t, eq(ft.tagId, t.id))
+      .where(eq(ft.funnelId, draft.id))
+      .all() as { name: string }[];
+    expect(rows.length).toBe(0);
+  });
+});
+
 // ─── READ ─────────────────────────────────────────────────────────────────────
 describe('getFunnel', () => {
   it('returns null for non-existent id', () => {
@@ -190,6 +230,15 @@ describe('updateFunnel', () => {
     const result = updateFunnel(testDb, 999999, { status: 'draft' });
     expect(result).toBeNull();
   });
+
+  it('throws 409 when changing num to one already taken by another funnel', () => {
+    const a = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9980 });
+    createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9981 });
+    // Renaming a → 9981 collides with the second funnel.
+    expect(() => updateFunnel(testDb, a.id, { num: 9981 })).toThrow(/409/);
+    // Setting num to its own current value is a no-op, not a collision.
+    expect(() => updateFunnel(testDb, a.id, { num: 9980 })).not.toThrow();
+  });
 });
 
 // ─── DUPLICATE ────────────────────────────────────────────────────────────────
@@ -223,6 +272,49 @@ describe('duplicateFunnel', () => {
   it('returns null for non-existent funnel', () => {
     const result = duplicateFunnel(testDb, 999999);
     expect(result).toBeNull();
+  });
+
+  it('deep-copies Phase-3 scalar fields and all child rows', () => {
+    const src = createFunnel(testDb, {
+      ...BASE_FUNNEL_DATA,
+      num: 9990,
+      comment: 'src comment',
+      timeLabelA: '11:00',
+      timeLabelB: '20:30',
+      roomsReplayEnabled: true,
+    });
+    replaceDays(testDb, src.id, [
+      { timeSlot: '19', dayNum: 1, gcRoom: 'gc-1', webRoom: 'web-1', replayUrl: 'r-1' },
+      { timeSlot: '15', dayNum: 2, gcRoom: 'gc-2', webRoom: 'web-2', replayUrl: 'r-2' },
+    ]);
+    replaceBlock(testDb, src.id, 'landings', true, 'common', [
+      { slot: null, label: 'L', url: 'https://land' },
+    ]);
+    replaceLinks(testDb, src.id, [
+      { label: 'A', url: 'https://a' },
+      { label: 'B', url: 'https://b' },
+    ]);
+
+    const dup = duplicateFunnel(testDb, src.id)!;
+
+    // Phase-3 scalar fields carried over (previously lost → reset to defaults).
+    const dupDetail = getFunnel(testDb, dup.id)!;
+    expect(dupDetail.comment).toBe('src comment');
+    expect(dupDetail.timeLabelA).toBe('11:00');
+    expect(dupDetail.timeLabelB).toBe('20:30');
+    expect(dupDetail.roomsReplayEnabled).toBe(true);
+
+    // Child rows copied faithfully (previously not copied at all).
+    expect(listDays(testDb, dup.id)).toEqual(listDays(testDb, src.id));
+    expect(getBlock(testDb, dup.id, 'landings')).toEqual(getBlock(testDb, src.id, 'landings'));
+    expect(listLinks(testDb, dup.id).map((l) => ({ label: l.label, url: l.url }))).toEqual([
+      { label: 'A', url: 'https://a' },
+      { label: 'B', url: 'https://b' },
+    ]);
+
+    // Copies are independent rows on the new funnel, not the source's.
+    expect(dup.id).not.toBe(src.id);
+    expect(listDays(testDb, dup.id).length).toBe(2);
   });
 });
 

@@ -50,6 +50,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json(updated);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error';
+    // updateFunnel throws "409: ..." on a duplicate num; SQLite may also raise
+    // the raw UNIQUE constraint under a TOCTOU race. Map both to 409.
+    if (
+      message.includes('409') ||
+      message.includes('UNIQUE constraint failed: funnels.num')
+    ) {
+      return NextResponse.json(
+        { error: `Funnel with num=${parsed.data.num} already exists` },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

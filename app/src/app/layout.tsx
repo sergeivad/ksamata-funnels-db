@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import AppHeader from "@/components/AppHeader";
 
 export const metadata: Metadata = {
   title: "Ksamata Funnels Admin",
@@ -13,7 +14,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ru">
-      <body>{children}</body>
+      <body>
+        <AppHeader />
+        {children}
+      </body>
     </html>
   );
 }

@@ -15,14 +15,20 @@ export default function FunnelIdentity({ funnel }: { funnel: FunnelDetail }) {
   const [ta, setTa] = useState(funnel.timeLabelA);
   const [tb, setTb] = useState(funnel.timeLabelB);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  const allEmpty = !axes.product && !axes.contractor && !axes.channel && !axes.direction;
   const name = `${axes.product} / ${axes.contractor} / ${axes.channel} / ${axes.direction}`;
-  const tags = axesToTagNames(axes).reg.map((t) => t.replace(/^АВ /, ''));
+  // Drop axis chips whose value is still empty (e.g. a fresh draft)
+  const tags = axesToTagNames(axes).reg
+    .map((t) => t.replace(/^АВ /, ''))
+    .filter((t) => !t.endsWith(': '));
 
   async function save() {
     setSaving(true);
+    setError(null);
     try {
-      await fetch(`/api/funnels/${funnel.id}`, {
+      const res = await fetch(`/api/funnels/${funnel.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -31,6 +37,12 @@ export default function FunnelIdentity({ funnel }: { funnel: FunnelDetail }) {
           comment, timeLabelA: ta, timeLabelB: tb,
         }),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? `Не удалось сохранить (${res.status})`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось сохранить');
     } finally { setSaving(false); }
   }
 
@@ -41,7 +53,9 @@ export default function FunnelIdentity({ funnel }: { funnel: FunnelDetail }) {
       <div className="mb-1 flex flex-wrap items-center gap-2.5">
         <input aria-label="Код" value={frontCode} onChange={(e) => setFrontCode(e.target.value)}
           className="h-[26px] w-[56px] rounded-[6px] border border-[var(--line)] bg-[var(--chip)] px-1.5 text-center font-mono text-[12px] text-[var(--muted)]" />
-        <span className="text-[16px] font-medium">{name}</span>
+        <span className={`text-[16px] font-medium ${allEmpty ? 'text-[var(--faint)]' : ''}`}>
+          {allEmpty ? 'Новая воронка — заполните продукт и подрядчика' : name}
+        </span>
         <span className="ml-auto">
           <Segmented options={[{ value: 'active', label: 'Активна' }, { value: 'draft', label: 'Черновик' }]} value={status} onChange={setStatus} />
         </span>
@@ -79,6 +93,9 @@ export default function FunnelIdentity({ funnel }: { funnel: FunnelDetail }) {
           {saving ? 'Сохранение…' : 'Сохранить идентификацию'}
         </button>
       </div>
+      {error && (
+        <div role="alert" className="mt-2 text-right text-[11px] font-medium text-[#B42318]">{error}</div>
+      )}
     </div>
   );
 }

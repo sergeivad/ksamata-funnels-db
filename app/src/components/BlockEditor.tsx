@@ -16,6 +16,7 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB 
   const [mode, setMode] = useState<BlockMode>(initial.mode);
   const [items, setItems] = useState<BlockItem[]>(initial.items);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const Icon = (Icons as any)[def.icon] ?? Icons.Link;
@@ -28,12 +29,19 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB 
       payloadMode === 'common' ? { ...it, slot: null } : it,
     );
     setSaving(true);
+    setError(null);
     try {
-      await fetch(`/api/funnels/${funnelId}/blocks/${initial.kind}`, {
+      const res = await fetch(`/api/funnels/${funnelId}/blocks/${initial.kind}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: payloadEnabled, mode: payloadMode, items: payloadItems }),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? `Не удалось сохранить (${res.status})`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось сохранить');
     } finally {
       setSaving(false);
     }
@@ -92,7 +100,8 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB 
         </div>
       )}
 
-      <div className="mt-3 flex justify-end">
+      <div className="mt-3 flex items-center justify-end gap-3">
+        {error && <span role="alert" className="text-[11px] font-medium text-[#B42318]">{error}</span>}
         <button type="button" onClick={() => save()} disabled={saving}
           className="rounded-[8px] bg-[var(--orange)] px-4 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">
           {saving ? 'Сохранение…' : 'Сохранить'}

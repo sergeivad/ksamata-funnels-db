@@ -34,6 +34,7 @@ export default function RoomsEditor({ funnelId, initialDays, replayEnabled, time
   const [replay, setReplay] = useState(replayEnabled);
   const [grid, setGrid] = useState<Grid>(() => buildGrid(initialDays, Math.min(MAX_DAYS, initialDayCount)));
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const labels = { '15': timeLabelA, '19': timeLabelB } as const;
 
   function set(slot: string, day: number, field: keyof Cell, value: string) {
@@ -53,19 +54,30 @@ export default function RoomsEditor({ funnelId, initialDays, replayEnabled, time
 
   async function save() {
     setSaving(true);
+    setError(null);
     const cells: DayCell[] = [];
     for (const slot of SLOTS) for (let d = 1; d <= dayCount; d++) {
       const c = grid[key(slot, d)];
       cells.push({ timeSlot: slot, dayNum: d, gcRoom: c.gcRoom, webRoom: c.webRoom, replayUrl: replay ? c.replayUrl : '' });
     }
     try {
-      await fetch(`/api/funnels/${funnelId}/days`, {
+      const daysRes = await fetch(`/api/funnels/${funnelId}/days`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cells }),
       });
+      if (!daysRes.ok) {
+        const body = await daysRes.json().catch(() => null);
+        throw new Error(body?.error ?? `Не удалось сохранить комнаты (${daysRes.status})`);
+      }
       // Persist replay flag on the funnel
-      await fetch(`/api/funnels/${funnelId}`, {
+      const flagRes = await fetch(`/api/funnels/${funnelId}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomsReplayEnabled: replay }),
       });
+      if (!flagRes.ok) {
+        const body = await flagRes.json().catch(() => null);
+        throw new Error(body?.error ?? `Не удалось сохранить настройку повтора (${flagRes.status})`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось сохранить');
     } finally { setSaving(false); }
   }
 
@@ -106,10 +118,13 @@ export default function RoomsEditor({ funnelId, initialDays, replayEnabled, time
           className="flex items-center gap-1 text-[12px] font-semibold text-[var(--orange)] disabled:opacity-40">
           <Plus size={13} /> добавить день
         </button>
-        <button type="button" onClick={save} disabled={saving}
-          className="rounded-[8px] bg-[var(--orange)] px-4 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">
-          {saving ? 'Сохранение…' : 'Сохранить'}
-        </button>
+        <div className="flex items-center gap-3">
+          {error && <span role="alert" className="text-[11px] font-medium text-[#B42318]">{error}</span>}
+          <button type="button" onClick={save} disabled={saving}
+            className="rounded-[8px] bg-[var(--orange)] px-4 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">
+            {saving ? 'Сохранение…' : 'Сохранить'}
+          </button>
+        </div>
       </div>
     </div>
   );

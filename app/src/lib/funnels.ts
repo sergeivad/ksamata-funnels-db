@@ -12,11 +12,15 @@ import { type AnyDB, type DB } from '../db/client';
 import {
   funnels,
   funnelTags,
+  funnelDays,
+  funnelBlocks,
+  funnelBlockItems,
+  funnelLinks,
   tags,
   type Funnel,
 } from '../db/schema';
 import { type AbAxes, axesToTagNames, tagNamesToAxes } from './ab-tags';
-import { createRef } from './refs';
+import { createRef, listRefs } from './refs';
 import { type FunnelCreate, type FunnelUpdate } from './validation';
 
 // ─── Public return shapes ─────────────────────────────────────────────────────
@@ -231,6 +235,69 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
 }
 
 /**
+ * POST /api/funnels/draft — create a blank draft funnel and return it.
+ *
+ * The draft gets the next free `num`, status='draft', and EMPTY axes.
+ *
+ * Axes shown on the card come from AV reg-tags (see getAxesForFunnel), so a
+ * draft is created with NO AV tags → all four axes read back empty and the
+ * card shows blank selects. The NOT NULL product/contractor/source FK columns
+ * are satisfied with the first existing ref of each table purely as a
+ * placeholder — those columns are not displayed anywhere on the card and get
+ * overwritten the moment the user saves identity (updateFunnel). No new refs or
+ * tags are created, so nothing pollutes the reference/tag tables.
+ */
+export function createDraftFunnel(db: DB): FunnelListItem {
+  const emptyAxes: AbAxes = { product: '', contractor: '', channel: '', direction: '' };
+
+  const maxRow = db
+    .select({ maxNum: sql<number>`COALESCE(MAX(${funnels.num}), 0)` })
+    .from(funnels)
+    .get();
+  const num = (maxRow?.maxNum ?? 0) + 1;
+
+  const firstId = (kind: string): number | undefined => listRefs(db, kind)[0]?.id;
+  const productId    = firstId('products');
+  const contractorId = firstId('contractors');
+  const sourceId     = firstId('sources');
+  if (productId === undefined || contractorId === undefined || sourceId === undefined) {
+    throw new Error('Cannot create draft: reference tables (products/contractors/sources) are empty');
+  }
+
+  const inserted = db
+    .insert(funnels)
+    .values({
+      num,
+      frontCode:    `f${num}`,
+      status:       'draft',
+      productName:  '',
+      variant:      '',
+      landingUrl:   '',
+      startDate:    '',
+      blockName:    '',
+      productId,
+      contractorId,
+      sourceId,
+      comment:      '',
+      timeLabelA:   '15:00',
+      timeLabelB:   '19:00',
+      roomsReplayEnabled: 0,
+    })
+    .returning()
+    .get() as Funnel;
+
+  return {
+    id:          inserted.id,
+    num:         inserted.num,
+    frontCode:   inserted.frontCode ?? '',
+    status:      inserted.status ?? 'draft',
+    productName: inserted.productName,
+    name:        funnelName(emptyAxes),
+    axes:        emptyAxes,
+  };
+}
+
+/**
  * PATCH /api/funnels/[id] — update scalar fields and/or re-sync axes.
  * Returns null if funnel not found.
  * Preserves non-AV tags when axes are re-synced.
@@ -238,6 +305,19 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
 export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelListItem | null {
   const existing = db.select().from(funnels).where(eq(funnels.id, id)).get();
   if (!existing) return null;
+
+  // Reject a num change that collides with another funnel BEFORE hitting the
+  // raw UNIQUE constraint, so the route can surface a clean 409 (mirrors createFunnel).
+  if (data.num !== undefined && data.num !== existing.num) {
+    const clash = db
+      .select({ id: funnels.id })
+      .from(funnels)
+      .where(eq(funnels.num, data.num))
+      .get();
+    if (clash) {
+      throw new Error(`409: Funnel with num=${data.num} already exists`);
+    }
+  }
 
   let result: FunnelListItem | null = null;
 
@@ -339,8 +419,52 @@ export function deleteFunnel(db: DB, id: number): boolean {
 }
 
 /**
+ * Deep-copy every child row of `srcId` onto `dstId` (days, blocks + block items,
+ * links), preserving order and per-slot data. Must run inside a transaction.
+ */
+function copyFunnelChildren(tx: AnyDB, srcId: number, dstId: number): void {
+  // funnel_days — copy all data columns, swap funnelId, drop the PK.
+  const days = tx.select().from(funnelDays).where(eq(funnelDays.funnelId, srcId)).all();
+  for (const d of days) {
+    const { id: _id, funnelId: _fid, ...rest } = d;
+    tx.insert(funnelDays).values({ ...rest, funnelId: dstId }).run();
+  }
+
+  // funnel_blocks + funnel_block_items — copy each block then its items.
+  const blocks = tx.select().from(funnelBlocks).where(eq(funnelBlocks.funnelId, srcId)).all();
+  for (const b of blocks) {
+    const newBlock = tx
+      .insert(funnelBlocks)
+      .values({ funnelId: dstId, kind: b.kind, enabled: b.enabled, mode: b.mode })
+      .returning()
+      .get();
+    const items = tx.select().from(funnelBlockItems).where(eq(funnelBlockItems.blockId, b.id)).all();
+    for (const it of items) {
+      tx.insert(funnelBlockItems).values({
+        blockId:  newBlock.id,
+        slot:     it.slot,
+        label:    it.label,
+        url:      it.url,
+        position: it.position,
+      }).run();
+    }
+  }
+
+  // funnel_links — copy all rows.
+  const links = tx.select().from(funnelLinks).where(eq(funnelLinks.funnelId, srcId)).all();
+  for (const l of links) {
+    tx.insert(funnelLinks).values({
+      funnelId: dstId,
+      label:    l.label,
+      url:      l.url,
+      position: l.position,
+    }).run();
+  }
+}
+
+/**
  * POST /api/funnels/[id]/duplicate — copy with num=max(num)+1, frontCode='', status='draft'.
- * Returns null if source funnel not found.
+ * Copies all editable scalar fields and every child row. Returns null if source not found.
  */
 export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
   const source = db.select().from(funnels).where(eq(funnels.id, id)).get();
@@ -358,27 +482,35 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
       .get();
     const newNum = (maxResult?.maxNum ?? 0) + 1;
 
-    // Insert copy
+    // Insert copy — carry over ALL editable scalar fields (incl. Phase-3),
+    // resetting only identity fields (num/frontCode/status) for the new draft.
     const inserted = tx
       .insert(funnels)
       .values({
-        num:          newNum,
-        frontCode:    '',
-        status:       'draft',
-        productName:  source.productName,
-        variant:      source.variant,
-        landingUrl:   source.landingUrl ?? '',
-        startDate:    source.startDate ?? '',
-        blockName:    source.blockName ?? '',
-        productId:    source.productId,
-        contractorId: source.contractorId,
-        sourceId:     source.sourceId,
+        num:                newNum,
+        frontCode:          '',
+        status:             'draft',
+        productName:        source.productName,
+        variant:            source.variant,
+        landingUrl:         source.landingUrl ?? '',
+        startDate:          source.startDate ?? '',
+        blockName:          source.blockName ?? '',
+        productId:          source.productId,
+        contractorId:       source.contractorId,
+        sourceId:           source.sourceId,
+        comment:            source.comment ?? '',
+        timeLabelA:         source.timeLabelA ?? '15:00',
+        timeLabelB:         source.timeLabelB ?? '19:00',
+        roomsReplayEnabled: source.roomsReplayEnabled ?? 0,
       })
       .returning()
       .get() as Funnel;
 
     // Sync AV tags from source axes
     syncAvTags(tx, inserted.id, sourceAxes);
+
+    // Deep-copy child rows so a duplicate is a faithful copy, not an empty draft.
+    copyFunnelChildren(tx, id, inserted.id);
 
     duplicated = {
       id:          inserted.id,

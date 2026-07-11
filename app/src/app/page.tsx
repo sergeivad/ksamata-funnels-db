@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import FunnelCard from '@/components/FunnelCard';
 import Toast from '@/components/Toast';
 import GroupToggle, { type GroupBy } from '@/components/GroupToggle';
@@ -185,7 +184,9 @@ export default function HomePage() {
   );
 
   function buildTitle(f: FunnelListItem): string {
-    return f.name;
+    const allEmpty =
+      !f.axes.product && !f.axes.contractor && !f.axes.channel && !f.axes.direction;
+    return allEmpty ? 'Новая воронка (черновик)' : f.name;
   }
 
   /** Build sorted groups from current funnels list */
@@ -195,7 +196,8 @@ export default function HomePage() {
   ): { name: string; funnels: FunnelListItem[] }[] {
     const map = new Map<string, FunnelListItem[]>();
     for (const f of items) {
-      const key = by === 'contractor' ? f.axes.contractor : f.axes.product;
+      const raw = by === 'contractor' ? f.axes.contractor : f.axes.product;
+      const key = raw || '— без осей';
       const bucket = map.get(key) ?? [];
       bucket.push(f);
       map.set(key, bucket);
@@ -261,34 +263,22 @@ export default function HomePage() {
   return (
     <main className="mx-auto max-w-[900px] px-4 py-8">
       {/* Header */}
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-[18px] font-semibold text-[var(--color-text)]">
-            Проектные воронки
-          </h1>
-          <p className="mt-1 text-[12px] text-[var(--color-text-secondary)]">
-            Выберите воронку, чтобы открыть карточку и управлять правилами.
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-3">
-          {!loading && (
-            <span className="text-[12px] text-[var(--color-text-secondary)]">
-              {funnels.length} всего
-            </span>
-          )}
-          <Link
-            href="/funnels/new"
-            className="inline-flex items-center gap-1 rounded-[8px] bg-[var(--color-accent)] px-3 py-2 text-[13px] font-semibold text-white transition hover:opacity-90"
-          >
-            ＋ Новая воронка
-          </Link>
-        </div>
+      <div className="mb-6">
+        <h1 className="text-[18px] font-semibold text-[var(--color-text)]">
+          Проектные воронки
+        </h1>
+        <p className="mt-1 text-[12px] text-[var(--color-text-secondary)]">
+          Выберите воронку, чтобы открыть карточку и управлять правилами.
+        </p>
       </div>
 
-      {/* Grouping toggle */}
+      {/* Grouping toggle + count */}
       {!loading && funnels.length > 0 && (
-        <div className="mb-4">
+        <div className="mb-4 flex items-center justify-between gap-3">
           <GroupToggle value={groupBy} onChange={handleGroupByChange} />
+          <span className="text-[12px] text-[var(--color-text-secondary)]">
+            {funnels.length} всего
+          </span>
         </div>
       )}
 

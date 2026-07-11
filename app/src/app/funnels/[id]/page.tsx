@@ -1,4 +1,6 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { ChevronLeft } from 'lucide-react';
 import { db } from '@/db/client';
 import { getFunnel } from '@/lib/funnels';
 import { listDays } from '@/lib/funnel-days';
@@ -24,6 +26,12 @@ export default async function FunnelEditPage({ params }: PageProps) {
 
   return (
     <main className="mx-auto max-w-[1120px] px-6 py-8">
+      <Link
+        href="/"
+        className="mb-4 inline-flex items-center gap-1 text-[13px] text-[var(--muted)] transition hover:text-[var(--ink)]"
+      >
+        <ChevronLeft size={15} /> Все воронки
+      </Link>
       <FunnelIdentity funnel={funnel} />
       <div className="my-4 h-px bg-[var(--line-soft)]" />
       {/* Order: landings → rooms → remaining blocks (records, tariffs, ...) */}
