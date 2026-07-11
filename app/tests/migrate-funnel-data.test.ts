@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
-import { migrateFunnelData } from '../scripts/migrate-funnel-data';
+import { migrateFunnelData, FUNNEL_DATA_MIGRATION } from '../scripts/migrate-funnel-data';
 
 let tmp: string;
 let sqlite: Database.Database;
@@ -95,5 +95,49 @@ describe('migrateFunnelData', () => {
     migrateFunnelData(sqlite);
     migrateFunnelData(sqlite);
     expect(blockItems('tariffs')).toHaveLength(1);
+  });
+
+  it('records a persistent marker in schema_migrations', () => {
+    migrateFunnelData(sqlite);
+    const marker = sqlite
+      .prepare(`SELECT name FROM schema_migrations WHERE name = ?`)
+      .get(FUNNEL_DATA_MIGRATION) as { name: string } | undefined;
+    expect(marker?.name).toBe(FUNNEL_DATA_MIGRATION);
+  });
+
+  it('does NOT resurrect blocks a user later deleted (marker prevents re-run)', () => {
+    migrateFunnelData(sqlite);
+    // User deletes every block of funnel 1 through the admin UI.
+    sqlite.exec(`DELETE FROM funnel_blocks WHERE funnel_id = 1`);
+    // A restart re-invokes the migration — it must stay away.
+    migrateFunnelData(sqlite);
+    const remaining = sqlite.prepare(`SELECT COUNT(*) AS n FROM funnel_blocks WHERE funnel_id = 1`).get() as { n: number };
+    expect(remaining.n).toBe(0);
+  });
+
+  it('back-compat: a pre-marker DB (blocks exist, no marker) is stamped and NOT re-scanned', () => {
+    // Simulate a DB migrated by the old code: it has a block but no marker row
+    // (schema_migrations doesn't even exist yet), and funnel 1 still carries the
+    // legacy landing_url scalar.
+    sqlite.exec(`INSERT INTO funnel_blocks (funnel_id, kind, enabled, mode) VALUES (1, 'tariffs', 1, 'common')`);
+
+    migrateFunnelData(sqlite);
+
+    // Marker is stamped, and NO landings block was manufactured from landing_url.
+    expect(
+      sqlite.prepare(`SELECT COUNT(*) AS n FROM schema_migrations WHERE name = ?`).get(FUNNEL_DATA_MIGRATION),
+    ).toEqual({ n: 1 });
+    expect(blockItems('landings')).toEqual([]);
+  });
+
+  it('does NOT inject blocks into a funnel created after the migration ran', () => {
+    migrateFunnelData(sqlite);
+    // A UI-created funnel: has a landing_url scalar but no blocks yet.
+    sqlite.prepare(`INSERT INTO funnels (id, num, landing_url) VALUES (2, 2, 'https://new-land')`).run();
+    migrateFunnelData(sqlite);
+    const injected = sqlite
+      .prepare(`SELECT COUNT(*) AS n FROM funnel_blocks WHERE funnel_id = 2`)
+      .get() as { n: number };
+    expect(injected.n).toBe(0);
   });
 });

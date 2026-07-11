@@ -1,13 +1,22 @@
 /**
  * Phase-3 DATA migration: distribute funnel_days columns + funnels dashboard
- * columns into funnel_blocks / funnel_block_items. Idempotent — a funnel that
- * already has any funnel_blocks row is skipped entirely.
+ * columns into funnel_blocks / funnel_block_items.
+ *
+ * Idempotency is enforced by a persistent marker row in `schema_migrations`
+ * (name = 'phase3_funnel_data'). Once the move has run, the whole function is a
+ * no-op. This must NOT rely on "does the funnel already have blocks", because
+ * the legacy source columns (landing_url, funnel_days.*, dashboard URLs) are
+ * never cleared: re-scanning them on every container start would inject blocks
+ * into UI-created funnels and resurrect blocks a user deleted through the admin.
  *
  * Run AFTER runMigratePhase3 (needs the new tables/columns).
  *   FUNNELS_DB_PATH=../ksamata_funnels.db npx tsx scripts/migrate-funnel-data.ts
  */
 
 type DB = import('better-sqlite3').Database;
+
+/** Marker recorded in schema_migrations once the one-time data move completes. */
+export const FUNNEL_DATA_MIGRATION = 'phase3_funnel_data';
 
 // funnel_days column -> block kind (single-field unless processes)
 const DAY_COLUMN_TO_KIND: { col: string; kind: string; labelCol?: string }[] = [
@@ -45,14 +54,38 @@ function createBlock(sqlite: DB, funnelId: number, kind: string, mode: string, i
 
 export function migrateFunnelData(sqlite: DB): void {
   sqlite.pragma('foreign_keys = ON');
+
+  // Self-contained migration ledger (also usable by future data migrations).
+  sqlite.exec(
+    `CREATE TABLE IF NOT EXISTS schema_migrations (
+       name       TEXT PRIMARY KEY,
+       applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+     )`,
+  );
+
+  // Marker-based idempotency: run the legacy→blocks move at most once per DB.
+  const already = sqlite
+    .prepare(`SELECT 1 FROM schema_migrations WHERE name = ? LIMIT 1`)
+    .get(FUNNEL_DATA_MIGRATION);
+  if (already) return;
+
+  // Back-compat: DBs migrated by the pre-marker code already carry blocks but no
+  // marker. The original move ran in one transaction (all-or-nothing), so ANY
+  // block existing means it completed. Stamp the marker and skip — never re-scan
+  // the legacy columns of funnels created after that original migration.
+  const alreadyHasBlocks = sqlite.prepare(`SELECT 1 FROM funnel_blocks LIMIT 1`).get();
+  if (alreadyHasBlocks) {
+    sqlite.prepare(`INSERT INTO schema_migrations (name) VALUES (?)`).run(FUNNEL_DATA_MIGRATION);
+    return;
+  }
+
   const funnels = sqlite.prepare(`SELECT * FROM funnels`).all() as Record<string, unknown>[];
-  const hasBlocks = sqlite.prepare(`SELECT 1 FROM funnel_blocks WHERE funnel_id = ? LIMIT 1`);
   const daysFor = sqlite.prepare(`SELECT * FROM funnel_days WHERE funnel_id = ? ORDER BY day_num`);
 
   const run = sqlite.transaction(() => {
     for (const f of funnels) {
       const funnelId = f.id as number;
-      if (hasBlocks.get(funnelId)) continue; // idempotent skip
+      // Reaching here means the DB had zero blocks, so every funnel is unmigrated.
 
       const days = daysFor.all(funnelId) as Record<string, string>[];
 
@@ -90,6 +123,10 @@ export function migrateFunnelData(sqlite: DB): void {
         sqlite.prepare(`UPDATE funnels SET rooms_replay_enabled = 1 WHERE id = ?`).run(funnelId);
       }
     }
+
+    // Record the marker in the SAME transaction as the data move — either both
+    // the blocks and the marker land, or neither does.
+    sqlite.prepare(`INSERT INTO schema_migrations (name) VALUES (?)`).run(FUNNEL_DATA_MIGRATION);
   });
   run();
 }

@@ -19,7 +19,8 @@ if [ -n "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] Phase-2 migration done."
 fi
 
-# Apply Phase-3 migration (idempotent: guarded ALTER + CREATE IF NOT EXISTS + skip-if-has-blocks data move).
+# Apply Phase-3 migration (idempotent: guarded ALTER + CREATE IF NOT EXISTS +
+# marker-gated data move via schema_migrations['phase3_funnel_data'] — runs once per DB).
 if [ -n "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] Running Phase-3 migration against $FUNNELS_DB_PATH"
   node /app/migrate-phase3.cjs
