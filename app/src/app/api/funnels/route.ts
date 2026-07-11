@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { funnelCreateSchema } from '@/lib/validation';
 import { listFunnels, createFunnel } from '@/lib/funnels';
+import { internalError } from '@/lib/http';
 
 export async function GET() {
   try {
     const list = listFunnels(db);
     return NextResponse.json(list);
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Internal error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return internalError('GET /api/funnels', err);
   }
 }
 
@@ -45,6 +45,6 @@ export async function POST(req: NextRequest) {
         { status: 409 }
       );
     }
-    return NextResponse.json({ error: message }, { status: 500 });
+    return internalError('POST /api/funnels', err);
   }
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { funnelUpdateSchema } from '@/lib/validation';
 import { getFunnel, updateFunnel, deleteFunnel } from '@/lib/funnels';
+import { internalError } from '@/lib/http';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -61,7 +62,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         { status: 409 }
       );
     }
-    return NextResponse.json({ error: message }, { status: 500 });
+    return internalError('PATCH /api/funnels/[id]', err);
   }
 }
 

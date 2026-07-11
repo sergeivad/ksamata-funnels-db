@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { refCreateSchema } from '@/lib/validation';
 import { listRefs, createRef, isValidKind, VALID_KINDS } from '@/lib/refs';
+import { internalError } from '@/lib/http';
 
 type Params = { params: Promise<{ kind: string }> };
 
@@ -17,8 +18,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const rows = listRefs(db, kind);
     return NextResponse.json(rows);
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Invalid kind';
-    return NextResponse.json({ error: message }, { status: 400 });
+    // kind is already whitelisted above — any throw here is unexpected.
+    return internalError('GET /api/refs/[kind]', err);
   }
 }
 
@@ -53,7 +54,6 @@ export async function POST(req: NextRequest, { params }: Params) {
     const row = createRef(db, kind, parsed.data.name);
     return NextResponse.json(row, { status: 200 });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Internal error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return internalError('POST /api/refs/[kind]', err);
   }
 }

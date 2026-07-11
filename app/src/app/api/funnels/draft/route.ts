@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { createDraftFunnel } from '@/lib/funnels';
+import { internalError } from '@/lib/http';
 
 /**
  * POST /api/funnels/draft — create a blank draft funnel and return it.
@@ -11,7 +12,6 @@ export async function POST() {
     const funnel = createDraftFunnel(db);
     return NextResponse.json(funnel, { status: 201 });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Internal error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return internalError('POST /api/funnels/draft', err);
   }
 }

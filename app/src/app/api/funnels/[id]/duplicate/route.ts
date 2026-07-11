@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { duplicateFunnel } from '@/lib/funnels';
+import { internalError } from '@/lib/http';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -18,7 +19,6 @@ export async function POST(_req: NextRequest, { params }: Params) {
     }
     return NextResponse.json(duplicated, { status: 201 });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Internal error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return internalError('POST /api/funnels/[id]/duplicate', err);
   }
 }
