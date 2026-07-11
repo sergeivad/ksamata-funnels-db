@@ -7,7 +7,8 @@ import sqlite3
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, 'ksamata_funnels.db')
+ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
+DB_PATH = os.path.join(ROOT_DIR, 'ksamata_funnels.db')
 
 
 def fmt(minutes):
@@ -49,6 +50,7 @@ def main():
         'ЖКТ': 4,
         'СВС': 5,
         'ЩЖ':  6,
+        'ДЫХАНИЕ': 7,
     }
     print()
     for code, expected_id in expected.items():
@@ -64,6 +66,7 @@ def main():
         'ЖКТ': {1: 107, 2: 198, 3: 144},
         'СВС': {1:  90, 2: 146, 3: 155, 4: 153, 5: 180},
         'ЩЖ':  {1:  87, 2: 176, 3: 178},
+        'ДЫХАНИЕ': {1: 100, 2: 137, 3: 143, 4: 150, 5: 173},
     }
 
     # 4. Insert data

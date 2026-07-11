@@ -2,7 +2,7 @@
 """
 Генерация сводной таблицы автоворонок из SQLite базы данных.
 Вход:  ksamata_funnels.db
-Выход: Сводная_таблица_автоворонок.xlsx
+Выход: data/generated/Сводная_таблица_автоворонок.xlsx
 """
 
 import sqlite3
@@ -13,8 +13,9 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, 'ksamata_funnels.db')
-OUT_PATH = os.path.join(BASE_DIR, 'Сводная_таблица_автоворонок.xlsx')
+ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
+DB_PATH = os.path.join(ROOT_DIR, 'ksamata_funnels.db')
+OUT_PATH = os.path.join(ROOT_DIR, 'data', 'generated', 'Сводная_таблица_автоворонок.xlsx')
 
 # ============================================================
 # 1. LOAD DATA FROM DB

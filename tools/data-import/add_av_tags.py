@@ -13,7 +13,8 @@ import sqlite3
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, 'ksamata_funnels.db')
+ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
+DB_PATH = os.path.join(ROOT_DIR, 'ksamata_funnels.db')
 
 # ============================================================
 # МАППИНГ ВОРОНОК: num -> (Продукт, Канал, Направление, Подрядчик)

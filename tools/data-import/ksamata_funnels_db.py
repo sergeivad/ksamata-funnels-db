@@ -12,10 +12,11 @@ import json
 from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, 'ksamata_funnels.db')
-FILE1 = os.path.join(BASE_DIR, 'Ссылки для сбора статы.xlsx')
-FILE2 = os.path.join(BASE_DIR, 'Воронки ссылки-2.xlsx')
-FILE3 = os.path.join(BASE_DIR, 'source_data', 'salebot_calculator_results_20260329-143800.xlsx')
+ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
+DB_PATH = os.path.join(ROOT_DIR, 'ksamata_funnels.db')
+FILE1 = os.path.join(ROOT_DIR, 'data', 'source', 'Ссылки для сбора статы.xlsx')
+FILE2 = os.path.join(ROOT_DIR, 'data', 'source', 'Воронки ссылки-2.xlsx')
+FILE3 = os.path.join(ROOT_DIR, 'data', 'source', 'salebot_calculator_results_20260329-143800.xlsx')
 
 # ============================================================
 # 1. SCHEMA

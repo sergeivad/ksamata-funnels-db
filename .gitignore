@@ -1,9 +1,37 @@
+# OS/editor noise
+.DS_Store
+.claude/
+.vscode/
+.idea/
+
+# Environment files
+.env
+.env.*
+!.env.example
+!app/.env.example
+
+# Node / Next.js local state
+node_modules/
+.next/
+out/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Python local state
+__pycache__/
+*.py[cod]
+
 # SQLite runtime sidecars
 *.db-wal
 *.db-shm
 
 # Local DB backups (keep them out of git; make them before migrations)
 *.bak-before-*
+
+# Generated reports and local raw datasets
+data/generated/
+ksamata-leak-funnels/
 
 # SDD scratch
 .superpowers/
