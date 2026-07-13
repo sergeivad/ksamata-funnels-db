@@ -97,6 +97,12 @@ export default function RefSelect({ kind, label, value, onChange, required, erro
           ].join(' ')}
         >
           <option value="">— выберите —</option>
+          {/* If the stored value isn't in the ref table (e.g. contractor names
+              that live only in AV tags), still show it so the select reflects
+              the real value instead of silently falling back to the placeholder. */}
+          {value && !refs.some((r) => r.name === value) && (
+            <option value={value}>{value}</option>
+          )}
           {refs.map((r) => (
             <option key={r.id} value={r.name}>
               {r.name}
