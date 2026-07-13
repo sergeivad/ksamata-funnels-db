@@ -10,8 +10,30 @@ describe('axesToTagNames', () => {
     expect(r.reg).toContain('АВ Подрядчик: НИМБ');
     expect(r.reg).toContain('АВ Канал: Яндекс');
     expect(r.reg).toContain('АВ Направление: РСЯ');
+    expect(r.reg).toContain('автоворонки');
     expect(r.reg).toContain('АВ Автоворонка');
     expect(r.reg).toContain('АВ Этап: Регистрация');
+  });
+
+  test('every set carries BOTH autofunnel tags', () => {
+    const r = axesToTagNames(axes);
+    for (const set of [r.reg, r.time19, r.time15, r.messenger]) {
+      expect(set).toContain('автоворонки');
+      expect(set).toContain('АВ Автоворонка');
+    }
+  });
+
+  test('builds messenger set with messenger stage tag, axes, no time/other-stage tags', () => {
+    const r = axesToTagNames(axes);
+    expect(r.messenger).toContain('АВ Этап: Мессенджер');
+    expect(r.messenger).toContain('АВ Продукт: ТКМ');
+    expect(r.messenger).toContain('АВ Подрядчик: НИМБ');
+    expect(r.messenger).toContain('АВ Канал: Яндекс');
+    expect(r.messenger).toContain('АВ Направление: РСЯ');
+    expect(r.messenger).not.toContain('АВ Этап: Регистрация');
+    expect(r.messenger).not.toContain('АВ Этап: Оплата');
+    expect(r.messenger).not.toContain('АВ Время: 15');
+    expect(r.messenger).not.toContain('АВ Время: 19');
   });
 
   test('builds time19 tags with time19 tag and payment stage tag', () => {
@@ -43,6 +65,13 @@ describe('axesToTagNames', () => {
     expect(r.reg).not.toContain('АВ Этап: Оплата');
     expect(r.time19).not.toContain('АВ Этап: Регистрация');
     expect(r.time15).not.toContain('АВ Этап: Регистрация');
+  });
+
+  test('messenger stage tag appears only in the messenger set', () => {
+    const r = axesToTagNames(axes);
+    expect(r.reg).not.toContain('АВ Этап: Мессенджер');
+    expect(r.time19).not.toContain('АВ Этап: Мессенджер');
+    expect(r.time15).not.toContain('АВ Этап: Мессенджер');
   });
 
   test('omits placeholder tags for empty axes (no "АВ Продукт: " pollution)', () => {

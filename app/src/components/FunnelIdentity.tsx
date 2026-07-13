@@ -1,11 +1,14 @@
 'use client';
 
-import { useState } from 'react';
-import { Wand2 } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Wand2, Copy, Check } from 'lucide-react';
 import type { FunnelDetail } from '@/lib/funnels';
 import { axesToTagNames } from '@/lib/ab-tags';
 import Segmented from './Segmented';
 import RefSelect from './RefSelect';
+
+type Scenario = 'reg' | 'pay' | 'messenger';
+type TimeSlot = '15' | '19';
 
 export default function FunnelIdentity({ funnel }: { funnel: FunnelDetail }) {
   const [frontCode, setFrontCode] = useState(funnel.frontCode);
@@ -17,12 +20,37 @@ export default function FunnelIdentity({ funnel }: { funnel: FunnelDetail }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // AV-tags block: which offer scenario's tag set to show/copy.
+  const [scenario, setScenario] = useState<Scenario>('reg');
+  const [timeSlot, setTimeSlot] = useState<TimeSlot>('19');
+  const [copiedTag, setCopiedTag] = useState<string | null>(null);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const allEmpty = !axes.product && !axes.contractor && !axes.channel && !axes.direction;
   const name = `${axes.product} / ${axes.contractor} / ${axes.channel} / ${axes.direction}`;
-  // Drop axis chips whose value is still empty (e.g. a fresh draft)
-  const tags = axesToTagNames(axes).reg
-    .map((t) => t.replace(/^АВ /, ''))
-    .filter((t) => !t.endsWith(': '));
+
+  // Tag set for the selected scenario. axesToTagNames already omits empty axes,
+  // so no bare "АВ Продукт: " placeholders leak through; the filter is a guard.
+  const tagSets = axesToTagNames(axes);
+  const currentTags = (
+    scenario === 'reg' ? tagSets.reg
+      : scenario === 'messenger' ? tagSets.messenger
+        : timeSlot === '15' ? tagSets.time15 : tagSets.time19
+  ).filter((t) => !t.endsWith(': '));
+
+  function flagCopied(marker: string) {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    setCopiedTag(marker);
+    copyTimer.current = setTimeout(() => setCopiedTag(null), 1500);
+  }
+  async function copyTag(t: string) {
+    try { await navigator.clipboard.writeText(t); } catch { return; }
+    flagCopied(t);
+  }
+  async function copyAll() {
+    try { await navigator.clipboard.writeText(currentTags.join('\n')); } catch { return; }
+    flagCopied('__all__');
+  }
 
   async function save() {
     setSaving(true);
@@ -78,10 +106,47 @@ export default function FunnelIdentity({ funnel }: { funnel: FunnelDetail }) {
       </label>
 
       <div className="mb-3 rounded-[9px] border border-dashed border-[var(--line)] bg-[var(--cream)] p-2.5">
-        <div className="mb-1.5 text-[10px] uppercase tracking-wide text-[var(--faint)]">АВ-теги · генерируются автоматически</div>
-        <div className="flex flex-wrap gap-1.5">
-          {tags.map((t) => <span key={t} className="rounded-full bg-[var(--chip)] px-2 py-[3px] text-[10px] text-[var(--muted)]">{t}</span>)}
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <span className="text-[10px] uppercase tracking-wide text-[var(--faint)]">АВ-теги · сценарий предложения</span>
+          <button type="button" onClick={copyAll}
+            className={`ml-auto inline-flex items-center gap-1 rounded-[6px] border px-2 py-[3px] text-[10px] font-semibold transition ${
+              copiedTag === '__all__'
+                ? 'border-[#8FD3AE] bg-[#DFF3E7] text-[#087443]'
+                : 'border-[var(--line)] bg-white text-[var(--muted)] hover:border-[var(--ink)] hover:text-[var(--ink)]'
+            }`}>
+            {copiedTag === '__all__' ? <Check size={11} /> : <Copy size={11} />}
+            {copiedTag === '__all__' ? 'Скопировано' : 'Копировать все'}
+          </button>
         </div>
+
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <Segmented
+            options={[{ value: 'reg', label: 'Регистрация' }, { value: 'pay', label: 'Оплата' }, { value: 'messenger', label: 'Мессенджер' }]}
+            value={scenario} onChange={(v) => setScenario(v as Scenario)} />
+          {scenario === 'pay' && (
+            <Segmented
+              options={[{ value: '15', label: ta || '15:00' }, { value: '19', label: tb || '19:00' }]}
+              value={timeSlot} onChange={(v) => setTimeSlot(v as TimeSlot)} />
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          {currentTags.map((t) => {
+            const isCopied = copiedTag === t;
+            return (
+              <button key={t} type="button" onClick={() => copyTag(t)} title="Клик — скопировать тег"
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[10px] transition ${
+                  isCopied
+                    ? 'bg-[#DFF3E7] text-[#087443]'
+                    : 'bg-[var(--chip)] text-[var(--muted)] hover:bg-[var(--line)] hover:text-[var(--ink)]'
+                }`}>
+                {isCopied && <Check size={10} />}
+                {t}
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-1.5 text-[10px] text-[var(--faint)]">Клик по тегу — скопировать</div>
       </div>
 
       <div className="mb-1 flex items-center gap-2">

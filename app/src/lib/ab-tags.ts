@@ -12,16 +12,19 @@ const AXIS_PREFIXES = {
   direction: 'АВ Направление: ',
 } as const satisfies Record<keyof AbAxes, string>;
 
-const COMMON_TAGS = ['АВ Автоворонка'];
+// Both autofunnel tags accompany every scenario set: the legacy plain
+// `автоворонки` tag plus the AV-prefixed `АВ Автоворонка`.
+const COMMON_TAGS = ['автоворонки', 'АВ Автоворонка'];
 
 /**
- * Build АВ tag-name lists for reg, time19, and time15 funnel slots
- * from the 4 axis values.
+ * Build АВ tag-name lists for the reg, time19, time15, and messenger funnel
+ * scenarios from the 4 axis values.
  */
 export function axesToTagNames(axes: AbAxes): {
   reg: string[];
   time19: string[];
   time15: string[];
+  messenger: string[];
 } {
   // Only emit a tag for an axis that actually has a value. An empty axis (e.g. a
   // freshly-created draft, or a partial PATCH that touches only one axis) must
@@ -59,7 +62,13 @@ export function axesToTagNames(axes: AbAxes): {
     ...axisTags,
   ];
 
-  return { reg, time19, time15 };
+  const messenger: string[] = [
+    ...COMMON_TAGS,
+    'АВ Этап: Мессенджер',
+    ...axisTags,
+  ];
+
+  return { reg, time19, time15, messenger };
 }
 
 /**

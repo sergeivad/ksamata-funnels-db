@@ -22,6 +22,7 @@ import {
   duplicateFunnel,
 } from '../src/lib/funnels';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
+import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
 import { replaceDays, listDays } from '../src/lib/funnel-days';
 import { replaceBlock, getBlock } from '../src/lib/funnel-blocks';
 
@@ -36,6 +37,7 @@ const sqlite = new Database(TMP_DB);
 sqlite.pragma('journal_mode = WAL');
 sqlite.pragma('foreign_keys = ON');
 runMigratePhase3(sqlite);
+runMigrateMessengerTagType(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => {

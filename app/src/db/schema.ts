@@ -82,7 +82,7 @@ export const funnelTags = sqliteTable(
     id:       integer('id').primaryKey({ autoIncrement: true }),
     funnelId: integer('funnel_id').notNull().references(() => funnels.id, { onDelete: 'cascade' }),
     tagId:    integer('tag_id').notNull().references(() => tags.id),
-    tagType:  text('tag_type', { enum: ['reg', 'time_19', 'time_15'] }).notNull(),
+    tagType:  text('tag_type', { enum: ['reg', 'time_19', 'time_15', 'messenger'] }).notNull(),
     position: integer('position').notNull().default(0),
   },
   (t) => ({

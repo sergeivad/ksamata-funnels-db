@@ -14,6 +14,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
+import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
 import * as schema from '../src/db/schema';
 
 const REAL_DB = path.resolve(process.cwd(), '..', 'ksamata_funnels.db');
@@ -38,6 +39,7 @@ beforeEach(async () => {
   fs.copyFileSync(REAL_DB, tmp);
   sqlite = new Database(tmp);
   runMigratePhase3(sqlite);
+  runMigrateMessengerTagType(sqlite);
   const rows = sqlite.prepare('SELECT id, num FROM funnels ORDER BY num LIMIT 2').all() as { id: number; num: number }[];
   existingId = rows[0].id;
   numA = rows[0].num;

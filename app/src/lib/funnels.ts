@@ -99,7 +99,7 @@ function syncAvTags(db: AnyDB, funnelId: number, axes: AbAxes): void {
   // Build new tag sets
   const tagSets = axesToTagNames(axes);
 
-  const insertForType = (names: string[], tagType: 'reg' | 'time_19' | 'time_15') => {
+  const insertForType = (names: string[], tagType: 'reg' | 'time_19' | 'time_15' | 'messenger') => {
     names.forEach((name, position) => {
       const tagRow = createRef(db, 'tags', name);
       db
@@ -113,6 +113,7 @@ function syncAvTags(db: AnyDB, funnelId: number, axes: AbAxes): void {
   insertForType(tagSets.reg, 'reg');
   insertForType(tagSets.time19, 'time_19');
   insertForType(tagSets.time15, 'time_15');
+  insertForType(tagSets.messenger, 'messenger');
 }
 
 /**
@@ -433,6 +434,25 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
 }
 
 /**
+ * Re-generate the AV tag sets for a funnel from its CURRENT axes (derived from
+ * existing reg tags), without touching any scalar columns or reference tables.
+ *
+ * Used by backfills to roll new tag-generation rules (extra common tags, new
+ * scenario sets like `messenger`) onto existing funnels. Unlike updateFunnel it
+ * never calls createRef, so empty axes can't spawn blank "" reference rows.
+ * Returns false if the funnel does not exist.
+ */
+export function resyncFunnelAvTags(db: DB, id: number): boolean {
+  const existing = db.select({ id: funnels.id }).from(funnels).where(eq(funnels.id, id)).get();
+  if (!existing) return false;
+  db.transaction((tx) => {
+    const axes = getAxesForFunnel(tx, id);
+    syncAvTags(tx, id, axes);
+  });
+  return true;
+}
+
+/**
  * DELETE /api/funnels/[id] — removes funnel (funnelTags cascade via FK).
  * Returns true on success, false if not found.
  */
@@ -491,7 +511,7 @@ function copyFunnelChildren(tx: AnyDB, srcId: number, dstId: number): void {
     .from(funnelTags)
     .innerJoin(tags, eq(funnelTags.tagId, tags.id))
     .where(and(eq(funnelTags.funnelId, srcId), notLike(tags.name, 'АВ %')))
-    .all() as { tagId: number; tagType: 'reg' | 'time_19' | 'time_15'; position: number }[];
+    .all() as { tagId: number; tagType: 'reg' | 'time_19' | 'time_15' | 'messenger'; position: number }[];
   for (const t of legacyTags) {
     tx.insert(funnelTags)
       .values({ funnelId: dstId, tagId: t.tagId, tagType: t.tagType, position: t.position })
