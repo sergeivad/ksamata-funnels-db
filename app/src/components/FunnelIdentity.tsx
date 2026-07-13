@@ -48,7 +48,7 @@ export default function FunnelIdentity({ funnel }: { funnel: FunnelDetail }) {
     flagCopied(t);
   }
   async function copyAll() {
-    try { await navigator.clipboard.writeText(currentTags.join('\n')); } catch { return; }
+    try { await navigator.clipboard.writeText(currentTags.join('; ')); } catch { return; }
     flagCopied('__all__');
   }
 
