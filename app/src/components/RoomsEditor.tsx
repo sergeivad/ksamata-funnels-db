@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Tv, Plus } from 'lucide-react';
+import { Tv, Plus, X } from 'lucide-react';
 import Switch from './Switch';
+import UrlInput from './UrlInput';
 import type { DayCell } from '@/lib/funnel-days';
 
 interface Props {
@@ -50,6 +51,25 @@ export default function RoomsEditor({ funnelId, initialDays, replayEnabled, time
       return g;
     });
     setDayCount(next);
+  }
+
+  // Remove a day from both slots and renumber the remaining days so they stay
+  // a contiguous 1..N sequence. Never removes the last remaining day.
+  function removeDay(target: number) {
+    if (dayCount <= 1) return;
+    setGrid((p) => {
+      const g: Grid = {};
+      for (const slot of SLOTS) {
+        let newDay = 0;
+        for (let d = 1; d <= dayCount; d++) {
+          if (d === target) continue;
+          newDay += 1;
+          g[key(slot, newDay)] = p[key(slot, d)];
+        }
+      }
+      return g;
+    });
+    setDayCount(dayCount - 1);
   }
 
   async function save() {
@@ -105,6 +125,8 @@ export default function RoomsEditor({ funnelId, initialDays, replayEnabled, time
                 const c = grid[key(slot, day)];
                 return (
                   <FragmentRow key={day} day={day} cell={c} replay={replay}
+                    canRemove={dayCount > 1}
+                    onRemove={() => removeDay(day)}
                     onChange={(f, v) => set(slot, day, f, v)} />
                 );
               })}
@@ -130,17 +152,31 @@ export default function RoomsEditor({ funnelId, initialDays, replayEnabled, time
   );
 }
 
-function FragmentRow({ day, cell, replay, onChange }: {
+function FragmentRow({ day, cell, replay, canRemove, onRemove, onChange }: {
   day: number; cell: { gcRoom: string; webRoom: string; replayUrl: string };
-  replay: boolean; onChange: (field: 'gcRoom' | 'webRoom' | 'replayUrl', value: string) => void;
+  replay: boolean; canRemove: boolean; onRemove: () => void;
+  onChange: (field: 'gcRoom' | 'webRoom' | 'replayUrl', value: string) => void;
 }) {
   const inp = 'h-7 w-full min-w-0 rounded-[5px] border border-[var(--line-soft)] bg-white px-2 font-mono text-[12px] text-[var(--ink)]';
   return (
     <>
-      <span className="rounded-[4px] bg-[var(--chip)] py-[2px] text-center font-mono text-[10px] text-[var(--muted)]">{day}</span>
-      <input className={inp} value={cell.gcRoom} placeholder="gc…" onChange={(e) => onChange('gcRoom', e.target.value)} />
-      <input className={inp} value={cell.webRoom} placeholder="web…" onChange={(e) => onChange('webRoom', e.target.value)} />
-      {replay && <input className={inp} value={cell.replayUrl} placeholder="повтор…" onChange={(e) => onChange('replayUrl', e.target.value)} />}
+      <span className="group/day relative rounded-[4px] bg-[var(--chip)] py-[2px] text-center font-mono text-[10px] text-[var(--muted)]">
+        {day}
+        {canRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label={`Удалить день ${day}`}
+            title="Удалить день"
+            className="absolute -right-1.5 -top-1.5 hidden h-3.5 w-3.5 items-center justify-center rounded-full bg-[#B42318] text-white shadow-sm group-hover/day:flex hover:bg-[#8f1c11]"
+          >
+            <X size={9} strokeWidth={3} />
+          </button>
+        )}
+      </span>
+      <UrlInput className={inp} value={cell.gcRoom} placeholder="gc…" onChange={(v) => onChange('gcRoom', v)} />
+      <UrlInput className={inp} value={cell.webRoom} placeholder="web…" onChange={(v) => onChange('webRoom', v)} />
+      {replay && <UrlInput className={inp} value={cell.replayUrl} placeholder="повтор…" onChange={(v) => onChange('replayUrl', v)} />}
     </>
   );
 }
