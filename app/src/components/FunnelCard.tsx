@@ -29,7 +29,7 @@ export default function FunnelCard({
   onOpen,
 }: FunnelCardProps) {
   const containerClass = [
-    'grid grid-cols-[minmax(0,1fr)_98px_auto_22px] items-center gap-3 rounded-[8px] border px-3 py-2.5 text-left transition max-[760px]:grid-cols-[minmax(0,1fr)_auto]',
+    'grid grid-cols-[minmax(0,1fr)_80px_auto_22px] items-center gap-3 rounded-[8px] border px-3 py-2.5 text-left transition max-[760px]:grid-cols-[minmax(0,1fr)_auto]',
     selected
       ? 'border-[#111111] bg-white shadow-[0_1px_0_rgba(0,0,0,0.04)]'
       : 'border-[var(--color-border-soft)] bg-[rgba(255,255,255,0.38)] hover:bg-white',
@@ -51,8 +51,11 @@ export default function FunnelCard({
         </span>
       </div>
 
-      {/* Status pill */}
-      <StatusPill status={funnel.status} />
+      {/* Status pill — wrapped so the span sizes to its text instead of
+          stretching to fill the grid column (which left a big empty gap). */}
+      <div className="min-w-0">
+        <StatusPill status={funnel.status} />
+      </div>
 
       {/* Action buttons */}
       <div className="flex items-center justify-end gap-1">
