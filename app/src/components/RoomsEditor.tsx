@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Tv, Plus, X } from 'lucide-react';
 import Switch from './Switch';
 import UrlInput from './UrlInput';
@@ -12,6 +12,7 @@ interface Props {
   replayEnabled: boolean;
   timeLabelA: string;
   timeLabelB: string;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 const SLOTS: ('15' | '19')[] = ['15', '19'];
@@ -29,14 +30,43 @@ function buildGrid(days: DayCell[], dayCount: number): Grid {
   return g;
 }
 
-export default function RoomsEditor({ funnelId, initialDays, replayEnabled, timeLabelA, timeLabelB }: Props) {
+// Same shape the PUT /days payload uses — reused both for saving and for
+// diffing the live grid against the last-saved snapshot.
+function cellsFromGrid(grid: Grid, dayCount: number, replay: boolean): DayCell[] {
+  const cells: DayCell[] = [];
+  for (const slot of SLOTS) for (let d = 1; d <= dayCount; d++) {
+    const c = grid[key(slot, d)];
+    cells.push({ timeSlot: slot, dayNum: d, gcRoom: c.gcRoom, webRoom: c.webRoom, replayUrl: replay ? c.replayUrl : '' });
+  }
+  return cells;
+}
+
+type SavedSnapshot = { replay: boolean; cells: DayCell[] };
+
+export default function RoomsEditor({ funnelId, initialDays, replayEnabled, timeLabelA, timeLabelB, onDirtyChange }: Props) {
   const initialDayCount = Math.max(3, ...initialDays.map((d) => d.dayNum), 0) || 3;
-  const [dayCount, setDayCount] = useState(Math.min(MAX_DAYS, initialDayCount));
+  const clampedInitialDayCount = Math.min(MAX_DAYS, initialDayCount);
+  const [dayCount, setDayCount] = useState(clampedInitialDayCount);
   const [replay, setReplay] = useState(replayEnabled);
-  const [grid, setGrid] = useState<Grid>(() => buildGrid(initialDays, Math.min(MAX_DAYS, initialDayCount)));
+  const [grid, setGrid] = useState<Grid>(() => buildGrid(initialDays, clampedInitialDayCount));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const labels = { '15': timeLabelA, '19': timeLabelB } as const;
+
+  // Snapshot of the last successfully persisted state, used to derive the
+  // "unsaved changes" indicator by comparing it against the live grid.
+  const [saved, setSaved] = useState<SavedSnapshot>(() => ({
+    replay: replayEnabled,
+    cells: cellsFromGrid(buildGrid(initialDays, clampedInitialDayCount), clampedInitialDayCount, replayEnabled),
+  }));
+
+  const dirty =
+    replay !== saved.replay ||
+    JSON.stringify(cellsFromGrid(grid, dayCount, replay)) !== JSON.stringify(saved.cells);
+
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  onDirtyChangeRef.current = onDirtyChange;
+  useEffect(() => { onDirtyChangeRef.current?.(dirty); }, [dirty]);
 
   function set(slot: string, day: number, field: keyof Cell, value: string) {
     setGrid((p) => ({ ...p, [key(slot, day)]: { ...p[key(slot, day)], [field]: value } }));
@@ -73,13 +103,12 @@ export default function RoomsEditor({ funnelId, initialDays, replayEnabled, time
   }
 
   async function save() {
+    // Snapshot the values being submitted (not re-read after the await) so a
+    // save started mid-edit doesn't wrongly mark newer edits as "saved".
+    const submittedReplay = replay;
+    const cells = cellsFromGrid(grid, dayCount, submittedReplay);
     setSaving(true);
     setError(null);
-    const cells: DayCell[] = [];
-    for (const slot of SLOTS) for (let d = 1; d <= dayCount; d++) {
-      const c = grid[key(slot, d)];
-      cells.push({ timeSlot: slot, dayNum: d, gcRoom: c.gcRoom, webRoom: c.webRoom, replayUrl: replay ? c.replayUrl : '' });
-    }
     try {
       const daysRes = await fetch(`/api/funnels/${funnelId}/days`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cells }),
@@ -90,12 +119,13 @@ export default function RoomsEditor({ funnelId, initialDays, replayEnabled, time
       }
       // Persist replay flag on the funnel
       const flagRes = await fetch(`/api/funnels/${funnelId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomsReplayEnabled: replay }),
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomsReplayEnabled: submittedReplay }),
       });
       if (!flagRes.ok) {
         const body = await flagRes.json().catch(() => null);
         throw new Error(body?.error ?? `Не удалось сохранить настройку повтора (${flagRes.status})`);
       }
+      setSaved({ replay: submittedReplay, cells });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось сохранить');
     } finally { setSaving(false); }
@@ -142,6 +172,12 @@ export default function RoomsEditor({ funnelId, initialDays, replayEnabled, time
         </button>
         <div className="flex items-center gap-3">
           {error && <span role="alert" className="text-[11px] font-medium text-[#B42318]">{error}</span>}
+          {dirty && (
+            <span className="inline-flex items-center gap-1 text-[10px] text-[var(--orange)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--orange)]" />
+              есть несохранённые изменения
+            </span>
+          )}
           <button type="button" onClick={save} disabled={saving}
             className="rounded-[8px] bg-[var(--orange)] px-4 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">
             {saving ? 'Сохранение…' : 'Сохранить'}

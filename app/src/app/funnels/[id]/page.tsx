@@ -5,9 +5,7 @@ import { db } from '@/db/client';
 import { getFunnel } from '@/lib/funnels';
 import { listDays } from '@/lib/funnel-days';
 import { listBlocks } from '@/lib/funnel-blocks';
-import FunnelIdentity from '@/components/FunnelIdentity';
-import RoomsEditor from '@/components/RoomsEditor';
-import BlockEditor from '@/components/BlockEditor';
+import FunnelSections from '@/components/FunnelSections';
 
 interface PageProps { params: Promise<{ id: string }> }
 
@@ -32,15 +30,7 @@ export default async function FunnelEditPage({ params }: PageProps) {
       >
         <ChevronLeft size={15} /> Все воронки
       </Link>
-      <FunnelIdentity funnel={funnel} />
-      <div className="my-4 h-px bg-[var(--line-soft)]" />
-      {/* Order: landings → rooms → remaining blocks (records, tariffs, ...) */}
-      <BlockEditor funnelId={numId} initial={landings} timeLabelA={funnel.timeLabelA} timeLabelB={funnel.timeLabelB} />
-      <RoomsEditor funnelId={numId} initialDays={initialDays} replayEnabled={funnel.roomsReplayEnabled}
-        timeLabelA={funnel.timeLabelA} timeLabelB={funnel.timeLabelB} />
-      {rest.map((b) => (
-        <BlockEditor key={b.kind} funnelId={numId} initial={b} timeLabelA={funnel.timeLabelA} timeLabelB={funnel.timeLabelB} />
-      ))}
+      <FunnelSections funnel={funnel} funnelId={numId} initialDays={initialDays} landings={landings} rest={rest} />
     </main>
   );
 }

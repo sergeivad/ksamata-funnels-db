@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Wand2, Copy, Check } from 'lucide-react';
 import type { FunnelDetail } from '@/lib/funnels';
 import { axesToTagNames } from '@/lib/ab-tags';
@@ -10,7 +10,21 @@ import RefSelect from './RefSelect';
 type Scenario = 'reg' | 'pay' | 'messenger';
 type TimeSlot = '15' | '19';
 
-export default function FunnelIdentity({ funnel }: { funnel: FunnelDetail }) {
+type IdentitySnapshot = {
+  frontCode: string;
+  status: string;
+  product: string;
+  contractor: string;
+  channel: string;
+  direction: string;
+  comment: string;
+  ta: string;
+  tb: string;
+};
+
+interface Props { funnel: FunnelDetail; onDirtyChange?: (dirty: boolean) => void }
+
+export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   const [frontCode, setFrontCode] = useState(funnel.frontCode);
   const [status, setStatus] = useState(funnel.status === 'active' ? 'active' : 'draft');
   const [axes, setAxes] = useState(funnel.axes);
@@ -19,6 +33,35 @@ export default function FunnelIdentity({ funnel }: { funnel: FunnelDetail }) {
   const [tb, setTb] = useState(funnel.timeLabelB);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Snapshot of the last successfully persisted state, used to derive the
+  // "unsaved changes" indicator by comparing it against the live form state.
+  const [saved, setSaved] = useState<IdentitySnapshot>({
+    frontCode: funnel.frontCode,
+    status: funnel.status === 'active' ? 'active' : 'draft',
+    product: funnel.axes.product,
+    contractor: funnel.axes.contractor,
+    channel: funnel.axes.channel,
+    direction: funnel.axes.direction,
+    comment: funnel.comment,
+    ta: funnel.timeLabelA,
+    tb: funnel.timeLabelB,
+  });
+
+  const dirty =
+    frontCode !== saved.frontCode ||
+    status !== saved.status ||
+    axes.product !== saved.product ||
+    axes.contractor !== saved.contractor ||
+    axes.channel !== saved.channel ||
+    axes.direction !== saved.direction ||
+    comment !== saved.comment ||
+    ta !== saved.ta ||
+    tb !== saved.tb;
+
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  onDirtyChangeRef.current = onDirtyChange;
+  useEffect(() => { onDirtyChangeRef.current?.(dirty); }, [dirty]);
 
   // AV-tags block: which offer scenario's tag set to show/copy.
   const [scenario, setScenario] = useState<Scenario>('reg');
@@ -53,6 +96,13 @@ export default function FunnelIdentity({ funnel }: { funnel: FunnelDetail }) {
   }
 
   async function save() {
+    // Snapshot the values being submitted (not re-read after the await) so a
+    // save started mid-edit doesn't wrongly mark newer edits as "saved".
+    const submitted: IdentitySnapshot = {
+      frontCode, status,
+      product: axes.product, contractor: axes.contractor, channel: axes.channel, direction: axes.direction,
+      comment, ta, tb,
+    };
     setSaving(true);
     setError(null);
     try {
@@ -60,15 +110,16 @@ export default function FunnelIdentity({ funnel }: { funnel: FunnelDetail }) {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          frontCode, status,
-          product: axes.product, contractor: axes.contractor, channel: axes.channel, direction: axes.direction,
-          comment, timeLabelA: ta, timeLabelB: tb,
+          frontCode: submitted.frontCode, status: submitted.status,
+          product: submitted.product, contractor: submitted.contractor, channel: submitted.channel, direction: submitted.direction,
+          comment: submitted.comment, timeLabelA: submitted.ta, timeLabelB: submitted.tb,
         }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
         throw new Error(body?.error ?? `Не удалось сохранить (${res.status})`);
       }
+      setSaved(submitted);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось сохранить');
     } finally { setSaving(false); }
@@ -153,10 +204,18 @@ export default function FunnelIdentity({ funnel }: { funnel: FunnelDetail }) {
         <span className="text-[10px] uppercase tracking-wide text-[var(--faint)]">Время</span>
         <input value={ta} onChange={(e) => setTa(e.target.value)} className={`${inp} w-[62px] text-center font-mono`} />
         <input value={tb} onChange={(e) => setTb(e.target.value)} className={`${inp} w-[62px] text-center font-mono`} />
-        <button type="button" onClick={save} disabled={saving}
-          className="ml-auto rounded-[8px] bg-[var(--orange)] px-4 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">
-          {saving ? 'Сохранение…' : 'Сохранить идентификацию'}
-        </button>
+        <span className="ml-auto flex items-center gap-2">
+          {dirty && (
+            <span className="inline-flex items-center gap-1 text-[10px] text-[var(--orange)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--orange)]" />
+              есть несохранённые изменения
+            </span>
+          )}
+          <button type="button" onClick={save} disabled={saving}
+            className="rounded-[8px] bg-[var(--orange)] px-4 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">
+            {saving ? 'Сохранение…' : 'Сохранить идентификацию'}
+          </button>
+        </span>
       </div>
       {error && (
         <div role="alert" className="mt-2 text-right text-[11px] font-medium text-[#B42318]">{error}</div>
