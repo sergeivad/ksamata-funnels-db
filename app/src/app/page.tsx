@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { X } from 'lucide-react';
+import { Download, X } from 'lucide-react';
 import FunnelCard from '@/components/FunnelCard';
 import Toast from '@/components/Toast';
 import GroupToggle, { type GroupBy } from '@/components/GroupToggle';
@@ -355,11 +355,21 @@ export default function HomePage() {
       {!loading && funnels.length > 0 && (
         <div className="mb-4 flex items-center justify-between gap-3">
           <GroupToggle value={groupBy} onChange={handleGroupByChange} />
-          <span className="text-[12px] text-[var(--color-text-secondary)]">
-            {isFiltered
-              ? `${visibleFunnels.length} из ${funnels.length}`
-              : `${funnels.length} всего`}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-[12px] text-[var(--color-text-secondary)]">
+              {isFiltered
+                ? `${visibleFunnels.length} из ${funnels.length}`
+                : `${funnels.length} всего`}
+            </span>
+            <a
+              href="/api/export"
+              download
+              className="flex items-center gap-1 text-[12px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"
+            >
+              <Download size={15} />
+              Экспорт CSV
+            </a>
+          </div>
         </div>
       )}
 
