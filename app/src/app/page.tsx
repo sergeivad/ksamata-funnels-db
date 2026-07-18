@@ -1,12 +1,27 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { X } from 'lucide-react';
 import FunnelCard from '@/components/FunnelCard';
 import Toast from '@/components/Toast';
 import GroupToggle, { type GroupBy } from '@/components/GroupToggle';
+import Segmented from '@/components/Segmented';
 
 const LS_KEY = 'funnels.groupBy';
+const LS_STATUS_KEY = 'funnels.statusFilter';
+
+type StatusFilter = 'all' | 'active' | 'draft';
+
+const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
+  { value: 'all', label: 'Все' },
+  { value: 'active', label: 'Активные' },
+  { value: 'draft', label: 'Черновики' },
+];
+
+function isStatusFilter(v: unknown): v is StatusFilter {
+  return v === 'all' || v === 'active' || v === 'draft';
+}
 
 interface FunnelAxes {
   product: string;
@@ -35,6 +50,15 @@ function isGroupBy(v: unknown): v is GroupBy {
   return v === 'contractor' || v === 'product' || v === 'none';
 }
 
+function matchesSearch(f: FunnelListItem, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [f.name, f.frontCode, `f${f.num}`, String(f.num)]
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(q);
+}
+
 export default function HomePage() {
   const router = useRouter();
   const [funnels, setFunnels] = useState<FunnelListItem[]>([]);
@@ -42,13 +66,19 @@ export default function HomePage() {
   const [toast, setToast] = useState<ToastState | null>(null);
   const toastKeyRef = useRef(0);
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [search, setSearch] = useState('');
 
-  // Load groupBy from localStorage on mount (client-only)
+  // Load groupBy / statusFilter from localStorage on mount (client-only)
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(LS_KEY);
-      if (isGroupBy(stored)) {
-        setGroupBy(stored);
+      const storedGroupBy = localStorage.getItem(LS_KEY);
+      if (isGroupBy(storedGroupBy)) {
+        setGroupBy(storedGroupBy);
+      }
+      const storedStatus = localStorage.getItem(LS_STATUS_KEY);
+      if (isStatusFilter(storedStatus)) {
+        setStatusFilter(storedStatus);
       }
     } catch {
       // localStorage unavailable — ignore
@@ -59,6 +89,16 @@ export default function HomePage() {
     setGroupBy(value);
     try {
       localStorage.setItem(LS_KEY, value);
+    } catch {
+      // localStorage unavailable — ignore
+    }
+  }
+
+  function handleStatusFilterChange(value: string) {
+    if (!isStatusFilter(value)) return;
+    setStatusFilter(value);
+    try {
+      localStorage.setItem(LS_STATUS_KEY, value);
     } catch {
       // localStorage unavailable — ignore
     }
@@ -136,11 +176,12 @@ export default function HomePage() {
         const duplicated: FunnelListItem = await res.json();
         setFunnels((prev) => [...prev, duplicated]);
         showToast('Воронка дублирована', 'success');
+        router.push(`/funnels/${duplicated.id}`);
       } catch {
         showToast('Не удалось дублировать воронку', 'error');
       }
     },
-    []
+    [router]
   );
 
   const handleDelete = useCallback(
@@ -176,12 +217,15 @@ export default function HomePage() {
     []
   );
 
-  const handleOpen = useCallback(
-    (funnel: FunnelListItem) => {
-      router.push(`/funnels/${funnel.id}`);
-    },
-    [router]
-  );
+  const visibleFunnels = useMemo(() => {
+    return funnels.filter(
+      (f) =>
+        (statusFilter === 'all' || f.status === statusFilter) &&
+        matchesSearch(f, search)
+    );
+  }, [funnels, statusFilter, search]);
+
+  const isFiltered = statusFilter !== 'all' || search.trim() !== '';
 
   function buildTitle(f: FunnelListItem): string {
     const allEmpty =
@@ -224,7 +268,6 @@ export default function HomePage() {
         onActivateToggle={() => handleActivateToggle(funnel)}
         onDuplicate={() => handleDuplicate(funnel)}
         onDelete={() => handleDelete(funnel)}
-        onOpen={() => handleOpen(funnel)}
       />
     );
   }
@@ -233,12 +276,14 @@ export default function HomePage() {
     if (groupBy === 'none') {
       return (
         <div className="grid gap-1.5">
-          {funnels.map(renderCard)}
+          {visibleFunnels.map(renderCard)}
         </div>
       );
     }
 
-    const groups = buildGroups(funnels, groupBy);
+    const groups = buildGroups(visibleFunnels, groupBy).filter(
+      (group) => group.funnels.length > 0
+    );
     return (
       <div className="grid gap-6">
         {groups.map((group) => (
@@ -272,12 +317,48 @@ export default function HomePage() {
         </p>
       </div>
 
+      {/* Search + status filter */}
+      {!loading && funnels.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[220px] flex-1">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setSearch('');
+              }}
+              placeholder="Поиск: имя или f№…"
+              className="w-full rounded-[8px] border border-[var(--color-border-soft)] bg-white px-3 py-1.5 pr-8 text-[13px] text-[var(--color-text)] placeholder:text-[var(--color-text-secondary)] focus:outline-none focus:ring-1 focus:ring-[var(--orange)]"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                aria-label="Очистить поиск"
+                title="Очистить поиск"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <Segmented
+            options={STATUS_OPTIONS}
+            value={statusFilter}
+            onChange={handleStatusFilterChange}
+          />
+        </div>
+      )}
+
       {/* Grouping toggle + count */}
       {!loading && funnels.length > 0 && (
         <div className="mb-4 flex items-center justify-between gap-3">
           <GroupToggle value={groupBy} onChange={handleGroupByChange} />
           <span className="text-[12px] text-[var(--color-text-secondary)]">
-            {funnels.length} всего
+            {isFiltered
+              ? `${visibleFunnels.length} из ${funnels.length}`
+              : `${funnels.length} всего`}
           </span>
         </div>
       )}
@@ -287,6 +368,10 @@ export default function HomePage() {
         <p className="text-[13px] text-[var(--color-text-secondary)]">Загрузка...</p>
       ) : funnels.length === 0 ? (
         <p className="text-[13px] text-[var(--color-text-secondary)]">Нет воронок.</p>
+      ) : visibleFunnels.length === 0 ? (
+        <p className="text-[13px] text-[var(--color-text-secondary)]">
+          Ничего не найдено.
+        </p>
       ) : (
         renderList()
       )}
