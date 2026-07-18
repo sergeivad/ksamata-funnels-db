@@ -1,17 +1,20 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Trash2, Plus, Copy, Check, ExternalLink } from 'lucide-react';
+import { Trash2, Plus, Copy, Check, ExternalLink, ListPlus } from 'lucide-react';
 import type { BlockItem } from '@/lib/funnel-blocks';
+import { parsePastedLine, missingStandardLabels } from '@/lib/block-fill';
 
 interface Props {
   fields: 1 | 2;
   slot: '15' | '19' | null;
   items: BlockItem[];
   onChange: (items: BlockItem[]) => void;
+  /** Only for kind==='links' (fields===2): show the "Стандартный набор" button. */
+  showStandardSet?: boolean;
 }
 
-export default function BlockListField({ fields, slot, items, onChange }: Props) {
+export default function BlockListField({ fields, slot, items, onChange, showStandardSet }: Props) {
   const rows = items.filter((it) => it.slot === slot);
 
   // Which row currently shows the "copied ✓" confirmation (index within `rows`).
@@ -36,6 +39,57 @@ export default function BlockListField({ fields, slot, items, onChange }: Props)
 
   function add() {
     onChange([...items, { slot, label: '', url: '' }]);
+  }
+
+  const missingStandard = showStandardSet ? missingStandardLabels(rows.map((r) => r.label)) : [];
+
+  function addStandardSet() {
+    if (missingStandard.length === 0) return;
+    onChange([...items, ...missingStandard.map((label) => ({ slot, label, url: '' }))]);
+  }
+
+  function handleUrlPaste(indexInRows: number, e: React.ClipboardEvent<HTMLInputElement>) {
+    const text = e.clipboardData.getData('text');
+    if (!text.includes('\n')) return; // single-line paste — default behaviour
+    e.preventDefault();
+
+    const lines = text.split('\n').map((l) => l.trim()).filter((l) => l !== '');
+    if (lines.length === 0) return;
+
+    const parsed = lines.map(parsePastedLine);
+    const [first, ...rest] = parsed;
+    const currentRow = rows[indexInRows];
+
+    let seen = -1;
+    const withFirstApplied = items.map((it) => {
+      if (it.slot !== slot) return it;
+      seen += 1;
+      if (seen !== indexInRows) return it;
+      const nextLabel = fields === 2 && !currentRow.label.trim() && first.label ? first.label : it.label;
+      return { ...it, url: first.url, label: nextLabel };
+    });
+
+    if (rest.length === 0) {
+      onChange(withFirstApplied);
+      return;
+    }
+
+    // Insert the remaining rows right after the current row (within this slot).
+    let insertAt = -1;
+    let seen2 = -1;
+    withFirstApplied.forEach((it, idx) => {
+      if (it.slot === slot) {
+        seen2 += 1;
+        if (seen2 === indexInRows) insertAt = idx;
+      }
+    });
+    const newRows: BlockItem[] = rest.map((p) => ({ slot, label: fields === 2 ? p.label : '', url: p.url }));
+    const next = [
+      ...withFirstApplied.slice(0, insertAt + 1),
+      ...newRows,
+      ...withFirstApplied.slice(insertAt + 1),
+    ];
+    onChange(next);
   }
 
   async function copy(indexInRows: number, url: string) {
@@ -83,6 +137,7 @@ export default function BlockListField({ fields, slot, items, onChange }: Props)
                 value={row.url}
                 onChange={(e) => update(i, { url: e.target.value })}
                 onKeyDown={(e) => e.key === 'Enter' && add()}
+                onPaste={(e) => handleUrlPaste(i, e)}
                 placeholder="ссылка…"
                 title={row.url}
                 className="h-7 w-full min-w-0 rounded-[6px] border border-[var(--line-soft)] bg-white px-2 font-mono text-[12px] text-[var(--ink)]"
@@ -133,9 +188,20 @@ export default function BlockListField({ fields, slot, items, onChange }: Props)
           </div>
         );
       })}
-      <button type="button" onClick={add} className="mt-1 flex w-fit items-center gap-1 text-[12px] font-semibold text-[var(--orange)]">
-        <Plus size={13} /> добавить
-      </button>
+      <div className="mt-1 flex flex-wrap items-center gap-3">
+        <button type="button" onClick={add} className="flex w-fit items-center gap-1 text-[12px] font-semibold text-[var(--orange)]">
+          <Plus size={13} /> добавить
+        </button>
+        {showStandardSet && missingStandard.length > 0 && (
+          <button
+            type="button"
+            onClick={addStandardSet}
+            className="flex w-fit items-center gap-1 text-[12px] font-semibold text-[var(--muted)] transition hover:text-[var(--ink)]"
+          >
+            <ListPlus size={13} /> Стандартный набор
+          </button>
+        )}
+      </div>
     </div>
   );
 }

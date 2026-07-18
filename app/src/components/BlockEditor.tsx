@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import * as Icons from 'lucide-react';
+import { Wand2, Copy, Check } from 'lucide-react';
 import { getBlockDef, type BlockMode } from '@/lib/blocks';
 import type { BlockState, BlockItem } from '@/lib/funnel-blocks';
+import { mirrorSlotUrl, formatBlockLinks } from '@/lib/block-fill';
 import Switch from './Switch';
 import Segmented from './Segmented';
 import BlockListField from './BlockListField';
@@ -32,6 +34,8 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
   const [items, setItems] = useState<BlockItem[]>(initial.items);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copiedAll, setCopiedAll] = useState(false);
+  const copyAllTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Snapshot of the last successfully persisted state (normalized the same
   // way the save payload is), used to derive the "unsaved changes" indicator.
@@ -52,6 +56,34 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const Icon = (Icons as any)[def.icon] ?? Icons.Link;
+
+  function fillSlot19FromSlot15() {
+    const slot15 = items.filter((it) => it.slot === '15');
+    const mirrored: BlockItem[] = slot15.map((it) => ({
+      slot: '19',
+      label: mirrorSlotUrl(it.label),
+      url: mirrorSlotUrl(it.url),
+    }));
+    const next = [...items, ...mirrored];
+    setItems(next);
+  }
+
+  async function copyAllLinks() {
+    const text = formatBlockLinks(items, mode, timeLabelA, timeLabelB);
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      return;
+    }
+    if (copyAllTimer.current) clearTimeout(copyAllTimer.current);
+    setCopiedAll(true);
+    copyAllTimer.current = setTimeout(() => setCopiedAll(false), 1500);
+  }
+
+  const hasAnyLink = items.some((it) => it.url.trim() !== '');
+  const slot19Empty = mode === 'by_time' && items.filter((it) => it.slot === '19').length === 0;
+  const slot15HasRows = mode === 'by_time' && items.filter((it) => it.slot === '15').length > 0;
 
   async function save(next?: { enabled?: boolean; mode?: BlockMode; items?: BlockItem[] }) {
     const payloadEnabled = next?.enabled ?? enabled;
@@ -109,23 +141,50 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
             }}
           />
         )}
-        <span className="ml-auto">
+        <span className="ml-auto flex items-center gap-2">
+          {hasAnyLink && (
+            <button
+              type="button"
+              onClick={copyAllLinks}
+              aria-label={copiedAll ? 'Скопировано' : 'Скопировать все ссылки блока'}
+              title="Скопировать все ссылки блока"
+              className={`flex items-center justify-center transition ${
+                copiedAll ? 'text-[#087443]' : 'text-[var(--faint)] hover:text-[var(--ink)]'
+              }`}
+            >
+              {copiedAll ? <Check size={15} /> : <Copy size={15} />}
+            </button>
+          )}
           <Switch checked={enabled} onChange={(v) => { setEnabled(v); save({ enabled: v }); }} />
         </span>
       </div>
 
       {mode === 'common' ? (
         <BlockListField fields={def.fields} slot={null} items={items}
+          showStandardSet={def.kind === 'links'}
           onChange={(next) => { setItems(next); }} />
       ) : (
         <div className="flex gap-3">
           <div className="min-w-0 flex-1">
             <div className="mb-1 text-[11px] font-medium text-[var(--muted)]">{timeLabelA}</div>
-            <BlockListField fields={def.fields} slot="15" items={items} onChange={(next) => setItems(next)} />
+            <BlockListField fields={def.fields} slot="15" items={items}
+              showStandardSet={def.kind === 'links'}
+              onChange={(next) => setItems(next)} />
           </div>
           <div className="flex-1">
             <div className="mb-1 text-[11px] font-medium text-[var(--muted)]">{timeLabelB}</div>
-            <BlockListField fields={def.fields} slot="19" items={items} onChange={(next) => setItems(next)} />
+            {slot19Empty && slot15HasRows && (
+              <button
+                type="button"
+                onClick={fillSlot19FromSlot15}
+                className="mb-1.5 flex items-center gap-1 text-[12px] font-semibold text-[var(--orange)]"
+              >
+                <Wand2 size={13} /> Заполнить из {timeLabelA}
+              </button>
+            )}
+            <BlockListField fields={def.fields} slot="19" items={items}
+              showStandardSet={def.kind === 'links'}
+              onChange={(next) => setItems(next)} />
           </div>
         </div>
       )}
