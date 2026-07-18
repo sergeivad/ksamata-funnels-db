@@ -4,10 +4,14 @@ import { NextRequest, NextResponse } from 'next/server';
  * Optional HTTP Basic Auth for the whole admin (pages + API).
  *
  * Gate: environment variable ADMIN_BASIC_AUTH = "user:password".
- *  - unset/empty  → auth DISABLED (no-op) so local dev and any already-running
- *    deployment behind a private network keep working unchanged.
- *  - set          → every request must send a matching `Authorization: Basic`
- *    header, otherwise 401 with a WWW-Authenticate challenge.
+ *  - unset/empty/invalid (no ":") in **development** → auth DISABLED (no-op)
+ *    so local dev keeps working unchanged. Logged once via console.warn.
+ *  - unset/empty/invalid (no ":") in **production** (NODE_ENV=production)
+ *    → fail CLOSED: every request (pages + API) gets a 503 rather than being
+ *    silently exposed. A forgotten env var must never mean a public admin.
+ *  - set (valid "user:password") → every request must send a matching
+ *    `Authorization: Basic` header, otherwise 401 with a WWW-Authenticate
+ *    challenge.
  *
  * This is intentionally minimal: a single shared credential for an internal
  * tool. It is NOT a substitute for a real identity provider.
@@ -33,39 +37,82 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+// A configured credential must be non-empty and contain a "user:password"
+// separator. Anything else (unset, empty string, missing ":") is treated as
+// "not configured".
+function isValidCredential(value: string | undefined): value is string {
+  return typeof value === 'string' && value.length > 0 && value.includes(':');
+}
+
+export interface AuthEnv {
+  ADMIN_BASIC_AUTH?: string;
+  NODE_ENV?: string;
+}
+
+export type AuthDecision =
+  | 'open'          // not configured, dev — pass through
+  | 'misconfigured' // not configured, production — fail closed (503)
+  | 'unauthorized'  // configured, credentials missing/wrong — 401
+  | 'ok';           // configured, credentials match — pass through
+
+/**
+ * Pure decision function — no NextRequest/NextResponse dependency — so it can
+ * be unit tested directly without constructing Next.js request objects.
+ */
+export function resolveAuthDecision(env: AuthEnv, authHeader: string | null): AuthDecision {
+  const expected = env.ADMIN_BASIC_AUTH;
+
+  if (!isValidCredential(expected)) {
+    return env.NODE_ENV === 'production' ? 'misconfigured' : 'open';
+  }
+
+  if (authHeader?.startsWith('Basic ')) {
+    try {
+      if (timingSafeEqual(decodeBase64Utf8(authHeader.slice(6)), expected)) {
+        return 'ok';
+      }
+    } catch {
+      // malformed base64 — fall through to unauthorized
+    }
+  }
+
+  return 'unauthorized';
+}
+
 // Warn exactly once per process when auth is disabled, so a forgotten env var
-// in an exposed deployment is at least visible in the logs (fail-open default).
+// in an exposed dev deployment is at least visible in the logs.
 let warnedAuthDisabled = false;
 
 export function middleware(req: NextRequest): NextResponse {
-  const expected = process.env.ADMIN_BASIC_AUTH;
-  if (!expected) {
-    if (!warnedAuthDisabled) {
-      warnedAuthDisabled = true;
-      console.warn(
-        '[middleware] ADMIN_BASIC_AUTH is not set — admin auth is DISABLED and ' +
-        'every page and API route is publicly reachable. Set ADMIN_BASIC_AUTH ' +
-        '="user:password" to require Basic Auth.'
-      );
-    }
-    return NextResponse.next();
-  }
+  const decision = resolveAuthDecision(process.env, req.headers.get('authorization'));
 
-  const header = req.headers.get('authorization');
-  if (header?.startsWith('Basic ')) {
-    try {
-      if (timingSafeEqual(decodeBase64Utf8(header.slice(6)), expected)) {
-        return NextResponse.next();
+  switch (decision) {
+    case 'open':
+      if (!warnedAuthDisabled) {
+        warnedAuthDisabled = true;
+        console.warn(
+          '[middleware] ADMIN_BASIC_AUTH is not set — admin auth is DISABLED and ' +
+          'every page and API route is publicly reachable. Set ADMIN_BASIC_AUTH ' +
+          '="user:password" to require Basic Auth.'
+        );
       }
-    } catch {
-      // malformed base64 — fall through to challenge
-    }
-  }
+      return NextResponse.next();
 
-  return new NextResponse('Authentication required', {
-    status: 401,
-    headers: { 'WWW-Authenticate': 'Basic realm="Ksamata Funnels Admin"' },
-  });
+    case 'misconfigured':
+      return new NextResponse('Admin auth is not configured (ADMIN_BASIC_AUTH)', {
+        status: 503,
+      });
+
+    case 'ok':
+      return NextResponse.next();
+
+    case 'unauthorized':
+    default:
+      return new NextResponse('Authentication required', {
+        status: 401,
+        headers: { 'WWW-Authenticate': 'Basic realm="Ksamata Funnels Admin"' },
+      });
+  }
 }
 
 // Guard everything except Next internals and static assets.
