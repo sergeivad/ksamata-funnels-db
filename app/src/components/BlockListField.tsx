@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Trash2, Plus, Copy, Check } from 'lucide-react';
+import { Trash2, Plus, Copy, Check, ExternalLink } from 'lucide-react';
 import type { BlockItem } from '@/lib/funnel-blocks';
 
 interface Props {
@@ -53,18 +53,19 @@ export default function BlockListField({ fields, slot, items, onChange }: Props)
 
   const gtc =
     fields === 2
-      ? 'minmax(120px,260px) minmax(0,1fr) 24px 24px'
-      : 'minmax(0,1fr) 24px 24px';
+      ? 'minmax(120px,260px) minmax(0,1fr) 24px 24px 24px'
+      : 'minmax(0,1fr) 24px 24px 24px';
 
   return (
     <div className="flex flex-col gap-1.5">
       {fields === 2 && rows.length > 0 && (
         <div className="grid gap-2 text-[10px] uppercase tracking-wide text-[var(--faint)]" style={{ gridTemplateColumns: gtc }}>
-          <span>Описание</span><span>Ссылка</span><span /><span />
+          <span>Описание</span><span>Ссылка</span><span /><span /><span />
         </div>
       )}
       {rows.map((row, i) => {
         const hasUrl = row.url.trim() !== '';
+        const openableUrl = /^https?:\/\//i.test(row.url.trim()) ? row.url.trim() : null;
         const copied = copiedIndex === i;
         return (
           <div key={i} className="grid items-center gap-2" style={{ gridTemplateColumns: gtc }}>
@@ -81,6 +82,7 @@ export default function BlockListField({ fields, slot, items, onChange }: Props)
               <input
                 value={row.url}
                 onChange={(e) => update(i, { url: e.target.value })}
+                onKeyDown={(e) => e.key === 'Enter' && add()}
                 placeholder="ссылка…"
                 title={row.url}
                 className="h-7 w-full min-w-0 rounded-[6px] border border-[var(--line-soft)] bg-white px-2 font-mono text-[12px] text-[var(--ink)]"
@@ -94,6 +96,25 @@ export default function BlockListField({ fields, slot, items, onChange }: Props)
                 </span>
               )}
             </div>
+            {openableUrl ? (
+              <a
+                href={openableUrl}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Открыть в новой вкладке"
+                title="Открыть в новой вкладке"
+                className="flex justify-center text-[var(--faint)] transition hover:text-[var(--ink)]"
+              >
+                <ExternalLink size={15} />
+              </a>
+            ) : (
+              <span
+                aria-hidden
+                className="flex justify-center text-[var(--faint)] opacity-30"
+              >
+                <ExternalLink size={15} />
+              </span>
+            )}
             <button
               type="button"
               onClick={() => copy(i, row.url)}

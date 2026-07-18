@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, ExternalLink } from 'lucide-react';
 
 interface Props {
   value: string;
@@ -21,6 +21,7 @@ export default function UrlInput({ value, onChange, placeholder, className }: Pr
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasUrl = value.trim() !== '';
+  const openableUrl = /^https?:\/\//i.test(value.trim()) ? value.trim() : null;
 
   async function copy() {
     const v = value.trim();
@@ -52,6 +53,19 @@ export default function UrlInput({ value, onChange, placeholder, className }: Pr
           >
             {value}
           </span>
+          {openableUrl && (
+            <a
+              href={openableUrl}
+              target="_blank"
+              rel="noreferrer"
+              tabIndex={-1}
+              aria-label="Открыть в новой вкладке"
+              title="Открыть в новой вкладке"
+              className="absolute right-[26px] top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-[4px] bg-white text-[var(--faint)] opacity-0 transition hover:text-[var(--ink)] group-hover:opacity-100"
+            >
+              <ExternalLink size={13} />
+            </a>
+          )}
           <button
             type="button"
             onClick={copy}
