@@ -42,9 +42,9 @@ const landingUrlSchema = z
   );
 
 // Shared cap for reference-name fields (product/contractor/channel/direction/
-// sourceName). These become rows in the ref tables, so mirror the 120-char cap
-// enforced by the dedicated POST /api/refs/[kind] route (refCreateSchema).
-const REF_MAX = 120;
+// sourceName). These become rows in the ref tables, so every route that
+// writes a ref value (create AND rename) must use this same bound.
+export const REF_MAX = 120;
 
 export const funnelCreateSchema = z.object({
   num: z.number().int().positive(),

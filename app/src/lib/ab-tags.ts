@@ -5,7 +5,7 @@ export type AbAxes = {
   direction: string;
 };
 
-const AXIS_PREFIXES = {
+export const AXIS_PREFIXES = {
   product: 'АВ Продукт: ',
   contractor: 'АВ Подрядчик: ',
   channel: 'АВ Канал: ',

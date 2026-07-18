@@ -77,6 +77,46 @@ export default function RefsPage() {
     });
   }
 
+  async function handleRename(
+    kind: keyof RefsState,
+    id: number,
+    newName: string
+  ): Promise<{ ok: boolean; error?: string }> {
+    const res = await fetch(`/api/refs/${kind}/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: newName }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      return { ok: false, error: body.error ?? 'Не удалось переименовать' };
+    }
+    const row: RefRow = await res.json();
+    setRefs((prev) => ({
+      ...prev,
+      [kind]: prev[kind]
+        .map((r) => (r.id === id ? row : r))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    }));
+    return { ok: true };
+  }
+
+  async function handleDelete(
+    kind: keyof RefsState,
+    id: number
+  ): Promise<{ ok: boolean; error?: string }> {
+    const res = await fetch(`/api/refs/${kind}/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      return { ok: false, error: body.error ?? 'Не удалось удалить' };
+    }
+    setRefs((prev) => ({
+      ...prev,
+      [kind]: prev[kind].filter((r) => r.id !== id),
+    }));
+    return { ok: true };
+  }
+
   return (
     <main className="mx-auto max-w-[900px] px-4 py-8">
       <div className="mb-6 flex items-start justify-between gap-4">
@@ -105,6 +145,9 @@ export default function RefsPage() {
               title={label}
               rows={refs[key]}
               onAdd={(name) => handleAdd(key, name)}
+              onRename={(id, newName) => handleRename(key, id, newName)}
+              onDelete={(id) => handleDelete(key, id)}
+              readOnly={key === 'tags'}
             />
           ))}
         </div>
