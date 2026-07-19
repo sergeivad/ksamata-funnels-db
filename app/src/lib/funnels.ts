@@ -563,7 +563,7 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
         timeLabelA:         source.timeLabelA ?? '15:00',
         timeLabelB:         source.timeLabelB ?? '19:00',
         roomsReplayEnabled: source.roomsReplayEnabled ?? 0,
-        roomsEnabled:       source.roomsEnabled ? 1 : 0,
+        roomsEnabled:       (source.roomsEnabled ?? 1) ? 1 : 0,
       })
       .returning()
       .get() as Funnel;

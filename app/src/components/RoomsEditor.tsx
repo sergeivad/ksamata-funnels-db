@@ -129,8 +129,10 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
   }
 
   // Toggling the block on/off autosaves the flag immediately (like BlockEditor),
-  // without PUTting days — disabling never erases stored rooms.
+  // without PUTting days — disabling never erases stored rooms. The optimistic
+  // flip is rolled back on failure so a rejected PATCH can't masquerade as saved.
   async function setEnabledPersist(v: boolean) {
+    const prev = enabled;
     setEnabled(v);
     setError(null);
     try {
@@ -143,6 +145,7 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
       }
       setSaved((s) => ({ ...s, enabled: v }));
     } catch (e) {
+      setEnabled(prev);
       setError(e instanceof Error ? e.message : 'Не удалось сохранить');
     }
   }
@@ -189,7 +192,8 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
       <div className="mb-2.5 flex items-center gap-2 rounded-[10px] border border-[var(--line-soft)] bg-[var(--card)] px-3.5 py-2.5 opacity-60">
         <Tv size={16} className="text-[var(--faint)]" />
         <span className="text-[13px] font-medium text-[var(--muted)]">Вебинарные комнаты</span>
-        <span className="ml-auto">
+        <span className="ml-auto flex items-center gap-3">
+          {error && <span role="alert" className="text-[11px] font-medium text-[#B42318]">{error}</span>}
           <Switch checked={false} onChange={(v) => setEnabledPersist(v)} />
         </span>
       </div>

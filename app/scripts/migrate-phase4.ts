@@ -19,7 +19,7 @@ export function runMigratePhase4(sqlite: import('better-sqlite3').Database): voi
 }
 
 if (require.main === module) {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const Database = require('better-sqlite3');
   const dbPath = process.env.FUNNELS_DB_PATH ?? '../ksamata_funnels.db';
   const sqlite = new Database(dbPath);
