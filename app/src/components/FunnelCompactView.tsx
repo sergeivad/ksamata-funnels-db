@@ -49,22 +49,32 @@ export default function FunnelCompactView({ funnel, initialDays, landings, rest,
         )}
       </div>
 
-      {/* Rooms */}
+      {/* Rooms. On narrow screens the two time slots stack vertically (each
+          full-width, labelled inline); side-by-side columns from sm up. */}
       {dayGroups.length > 0 && (
         <div className="mb-3">
-          <div className="mb-1.5 grid grid-cols-[28px_1fr_1fr] gap-x-3 text-[10px] uppercase tracking-wide text-[var(--faint)]">
+          <div className="mb-1.5 hidden grid-cols-[28px_1fr_1fr] gap-x-3 text-[10px] uppercase tracking-wide text-[var(--faint)] sm:grid">
             <span />
             <span>{funnel.timeLabelA}</span>
             <span>{funnel.timeLabelB}</span>
           </div>
           <div className="flex flex-col divide-y divide-[var(--line-soft)]">
             {dayGroups.map((g) => (
-              <div key={g.dayNum} className="grid grid-cols-[28px_1fr_1fr] gap-x-3 py-1">
+              <div key={g.dayNum} className="grid grid-cols-[28px_1fr] gap-x-3 py-1 sm:grid-cols-[28px_1fr_1fr]">
                 <span className="self-start rounded-[4px] bg-[var(--chip)] py-[2px] text-center font-mono text-[10px] text-[var(--muted)]">
                   {g.dayNum}
                 </span>
-                <RoomSlotCell slot={g.slots['15']} replayEnabled={funnel.roomsReplayEnabled} />
-                <RoomSlotCell slot={g.slots['19']} replayEnabled={funnel.roomsReplayEnabled} />
+                <RoomSlotCell
+                  slot={g.slots['15']}
+                  replayEnabled={funnel.roomsReplayEnabled}
+                  timeLabel={funnel.timeLabelA}
+                />
+                <RoomSlotCell
+                  slot={g.slots['19']}
+                  replayEnabled={funnel.roomsReplayEnabled}
+                  timeLabel={funnel.timeLabelB}
+                  className="col-start-2 sm:col-start-auto"
+                />
               </div>
             ))}
           </div>
@@ -98,13 +108,26 @@ export default function FunnelCompactView({ funnel, initialDays, landings, rest,
   );
 }
 
-function RoomSlotCell({ slot, replayEnabled }: { slot?: { gcRoom: string; webRoom: string; replayUrl: string }; replayEnabled: boolean }) {
-  if (!slot) return <span />;
+function RoomSlotCell({
+  slot,
+  replayEnabled,
+  timeLabel,
+  className = '',
+}: {
+  slot?: { gcRoom: string; webRoom: string; replayUrl: string };
+  replayEnabled: boolean;
+  timeLabel: string;
+  className?: string;
+}) {
+  if (!slot) return <span className={className} />;
   return (
-    <div className="flex min-w-0 flex-col">
-      {slot.gcRoom.trim() !== '' && <CopyableUrlRow label="GC" url={slot.gcRoom} narrowLabel />}
-      {slot.webRoom.trim() !== '' && <CopyableUrlRow label="Web" url={slot.webRoom} narrowLabel />}
-      {replayEnabled && slot.replayUrl.trim() !== '' && <CopyableUrlRow label="Повтор" url={slot.replayUrl} narrowLabel />}
+    <div className={`flex min-w-0 flex-col ${className}`}>
+      {/* Inline time label for the stacked (mobile) layout; the column header
+          covers it from sm up. */}
+      <span className="text-[10px] uppercase tracking-wide text-[var(--faint)] sm:hidden">{timeLabel}</span>
+      {slot.gcRoom.trim() !== '' && <CopyableUrlRow label="GC" url={slot.gcRoom} narrowLabel wrap />}
+      {slot.webRoom.trim() !== '' && <CopyableUrlRow label="Web" url={slot.webRoom} narrowLabel wrap />}
+      {replayEnabled && slot.replayUrl.trim() !== '' && <CopyableUrlRow label="Повтор" url={slot.replayUrl} narrowLabel wrap />}
     </div>
   );
 }
@@ -155,11 +178,19 @@ function CompactBlock({ block, timeLabelA, timeLabelB }: { block: BlockState; ti
   );
 }
 
-function CopyableUrlRow({ label, url, narrowLabel = false }: { label?: string; url: string; narrowLabel?: boolean }) {
+/**
+ * One link row. `wrap` shows the full URL across multiple lines instead of
+ * truncating — used for rooms, where the distinguishing part is the URL tail
+ * and truncation makes every row look identical.
+ */
+function CopyableUrlRow({ label, url, narrowLabel = false, wrap = false }: { label?: string; url: string; narrowLabel?: boolean; wrap?: boolean }) {
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const trimmed = url.trim();
   const openable = isOpenableUrl(trimmed);
+  // Display without the scheme (like browser address bars) — the interesting
+  // part of a link is its tail. Copy and open still use the full URL.
+  const display = trimmed.replace(/^https?:\/\//i, '');
 
   async function copy() {
     if (!trimmed) return;
@@ -174,7 +205,11 @@ function CopyableUrlRow({ label, url, narrowLabel = false }: { label?: string; u
   }
 
   return (
-    <div className="flex h-6 min-w-0 items-center gap-1.5 border-b border-[var(--line-soft)] last:border-b-0">
+    <div
+      className={`flex min-w-0 gap-1.5 border-b border-[var(--line-soft)] last:border-b-0 ${
+        wrap ? 'min-h-6 items-start py-1' : 'h-6 items-center'
+      }`}
+    >
       {label !== undefined && (
         <span
           className={`${narrowLabel ? 'w-[48px]' : 'w-[128px]'} shrink-0 truncate text-[10px] ${label.trim() === '' ? 'text-[var(--faint)]' : 'text-[var(--muted)]'}`}
@@ -189,13 +224,13 @@ function CopyableUrlRow({ label, url, narrowLabel = false }: { label?: string; u
           target="_blank"
           rel="noreferrer"
           title={trimmed}
-          className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--ink)] hover:underline"
+          className={`min-w-0 flex-1 font-mono text-[11px] text-[var(--ink)] hover:underline ${wrap ? 'break-all' : 'truncate'}`}
         >
-          {trimmed}
+          {display}
         </a>
       ) : (
-        <span title={trimmed} className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--muted)]">
-          {trimmed}
+        <span title={trimmed} className={`min-w-0 flex-1 font-mono text-[11px] text-[var(--muted)] ${wrap ? 'break-all' : 'truncate'}`}>
+          {display}
         </span>
       )}
       <button

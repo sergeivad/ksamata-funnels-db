@@ -34,12 +34,23 @@ afterAll(() => {
   if (existsSync(TMP_DB)) unlinkSync(TMP_DB);
 });
 
+// The live DB keeps growing (funnels are created from the UI), so assertions
+// are relative to the pre-seed count instead of a hardcoded total.
+const countBeforeSeed = testDb.select().from(funnels).all().length;
+const seededNums = [33, 34, 35, 36, 37, 38];
+const missingBeforeSeed = seededNums.filter(
+  (num) => !testDb.select().from(funnels).where(eq(funnels.num, num)).get()
+).length;
+
 describe('runSeed (Phase-1)', () => {
-  it('inserts 6 new funnels so total count == 38', () => {
+  it('inserts exactly the missing seeded funnels (num 33–38)', () => {
     runSeed(testDb);
 
     const rows = testDb.select().from(funnels).all();
-    expect(rows.length).toBe(38);
+    expect(rows.length).toBe(countBeforeSeed + missingBeforeSeed);
+    for (const num of seededNums) {
+      expect(testDb.select().from(funnels).where(eq(funnels.num, num)).get()).toBeDefined();
+    }
   });
 
   it('creates product ТКМ', () => {
@@ -83,10 +94,13 @@ describe('runSeed (Phase-1)', () => {
     expect(tagNames).toContain('АВ Подрядчик: NR');
   });
 
-  it('is idempotent — re-running keeps count at 38', () => {
+  it('is idempotent — re-running adds nothing', () => {
+    runSeed(testDb);
+    const countAfterFirstRun = testDb.select().from(funnels).all().length;
+
     runSeed(testDb);
 
     const rows = testDb.select().from(funnels).all();
-    expect(rows.length).toBe(38);
+    expect(rows.length).toBe(countAfterFirstRun);
   });
 });
