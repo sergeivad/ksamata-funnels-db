@@ -268,11 +268,11 @@ git commit -m "feat(tags): phase-5 schema — tag_templates + funnel_tag_overrid
 
 ## Task 2: ab-tags.ts — layer types + computeTagSet
 
-Replace the axes→tags generator with pure layer helpers. `axesToTagNames` (which hardcoded the static tags) is removed; the static tags now come from the DB template.
+Add pure layer helpers alongside the existing generator. This task is **purely additive**: the legacy `axesToTagNames` (which hardcoded the static tags) is **kept in place** because `funnels.ts` (`syncAvTags`) and `FunnelIdentity.tsx` still import it on the current base — they are migrated off it in Tasks 5 and 9, and Task 9 deletes `axesToTagNames` once its last caller is gone. Removing it here would break the build/suite.
 
 **Files:**
-- Modify: `app/src/lib/ab-tags.ts`
-- Test: `app/tests/ab-tags.test.ts` (rewrite the removed-function tests)
+- Modify: `app/src/lib/ab-tags.ts` (additive — keep `axesToTagNames`)
+- Test: `app/tests/ab-tags.test.ts` (replace body with the new tests below; `axesToTagNames`'s dedicated tests are dropped now and the function is removed in Task 9 — it stays exercised via the funnels/backfill integration tests until then)
 
 **Interfaces:**
 - Consumes: `AbAxes`, `AXIS_PREFIXES`, `tagNamesToAxes` (kept).
@@ -406,9 +406,9 @@ describe('tagNamesToAxes (unchanged)', () => {
 Run: `npx vitest run tests/ab-tags.test.ts`
 Expected: FAIL — `axisTagNames`/`computeTagSet`/`isAxisTag` not exported.
 
-- [ ] **Step 3: Rewrite ab-tags.ts**
+- [ ] **Step 3: Edit ab-tags.ts additively**
 
-Replace the whole file `app/src/lib/ab-tags.ts` with:
+Set the file contents to the block below, **then append the existing `axesToTagNames` function verbatim** at the end (copy it unchanged — e.g. `git show main:app/src/lib/ab-tags.ts` — it must keep its current `{ reg, time19, time15, messenger }` return shape so `funnels.ts`/`FunnelIdentity.tsx` keep compiling). Do NOT delete `axesToTagNames`; Task 9 removes it. The new-code block:
 
 ```ts
 export type AbAxes = {
@@ -1715,23 +1715,29 @@ The default set depends on saved axes. Directly under the scenario `Segmented` r
 )}
 ```
 
-- [ ] **Step 7: Verify in the browser**
+- [ ] **Step 7: Remove the now-orphaned `axesToTagNames`**
+
+After this task, `FunnelIdentity.tsx` was the last caller of the legacy `axesToTagNames` (Task 5 already migrated `funnels.ts`). Delete it now:
+- In `app/src/lib/ab-tags.ts`, delete the `axesToTagNames` function (kept transitionally in Task 2). Leave everything else (`AbAxes`, `AXIS_PREFIXES`, `isAxisTag`, `axisTagNames`, `computeTagSet`, `tagNamesToAxes`, all types) untouched.
+- Confirm nothing else imports it: `grep -rn "axesToTagNames" app/src app/tests` must return no hits (the Task 2 test replacement already dropped its unit tests). If any hit remains, STOP and report it — do not edit unrelated files blindly.
+
+- [ ] **Step 8: Verify in the browser**
 
 Start the dev server and check the funnel card renders, chips have `×`, adding/removing/restoring works, and "Сохранить теги" persists (reload keeps changes).
 
 Run: use `preview_start` with the dev server, open a funnel detail page, exercise the block, then `read_console_messages` for errors.
 Expected: no console errors; edits persist across reload.
 
-- [ ] **Step 8: Lint + full suite**
+- [ ] **Step 9: Lint + full suite**
 
 Run: `npm run lint && npx vitest run`
-Expected: clean + green.
+Expected: clean + green (including `tests/ab-tags.test.ts` after the `axesToTagNames` removal).
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add app/src/components/FunnelIdentity.tsx
-git commit -m "feat(tags): editable AV-tags block — add/remove/restore + save"
+git add app/src/components/FunnelIdentity.tsx app/src/lib/ab-tags.ts
+git commit -m "feat(tags): editable AV-tags block — add/remove/restore + save; drop legacy axesToTagNames"
 ```
 
 ---
