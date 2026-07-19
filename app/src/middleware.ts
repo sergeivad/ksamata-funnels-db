@@ -15,6 +15,13 @@ import { NextRequest, NextResponse } from 'next/server';
  *
  * This is intentionally minimal: a single shared credential for an internal
  * tool. It is NOT a substitute for a real identity provider.
+ *
+ * Kill-switch: environment variable ADMIN_AUTH_DISABLED = "true" turns auth
+ * OFF entirely — every page and API route is served without any credential,
+ * even in production and even when ADMIN_BASIC_AUTH is set. This is an explicit,
+ * greppable opt-out (reversible by removing the variable). Because it makes the
+ * admin publicly reachable, it must be set deliberately; it is never the
+ * default.
  */
 // Decode a base64 credential as UTF-8 (Edge-runtime safe — no Node Buffer).
 // `atob` yields a Latin1 binary string, so re-decode the bytes as UTF-8 to
@@ -46,10 +53,12 @@ function isValidCredential(value: string | undefined): value is string {
 
 export interface AuthEnv {
   ADMIN_BASIC_AUTH?: string;
+  ADMIN_AUTH_DISABLED?: string;
   NODE_ENV?: string;
 }
 
 export type AuthDecision =
+  | 'disabled'      // kill-switch on — auth OFF everywhere, pass through
   | 'open'          // not configured, dev — pass through
   | 'misconfigured' // not configured, production — fail closed (503)
   | 'unauthorized'  // configured, credentials missing/wrong — 401
@@ -60,6 +69,13 @@ export type AuthDecision =
  * be unit tested directly without constructing Next.js request objects.
  */
 export function resolveAuthDecision(env: AuthEnv, authHeader: string | null): AuthDecision {
+  // Explicit kill-switch takes precedence over everything, including the
+  // production fail-closed path. Auth is only disabled when set to exactly
+  // "true", so a stray/typo'd value can never accidentally open the admin.
+  if (env.ADMIN_AUTH_DISABLED === 'true') {
+    return 'disabled';
+  }
+
   const expected = env.ADMIN_BASIC_AUTH;
 
   if (!isValidCredential(expected)) {
@@ -82,11 +98,23 @@ export function resolveAuthDecision(env: AuthEnv, authHeader: string | null): Au
 // Warn exactly once per process when auth is disabled, so a forgotten env var
 // in an exposed dev deployment is at least visible in the logs.
 let warnedAuthDisabled = false;
+let warnedAuthKilled = false;
 
 export function middleware(req: NextRequest): NextResponse {
   const decision = resolveAuthDecision(process.env, req.headers.get('authorization'));
 
   switch (decision) {
+    case 'disabled':
+      if (!warnedAuthKilled) {
+        warnedAuthKilled = true;
+        console.warn(
+          '[middleware] ADMIN_AUTH_DISABLED=true — admin auth is turned OFF and ' +
+          'every page and API route is publicly reachable, regardless of ' +
+          'ADMIN_BASIC_AUTH. Remove ADMIN_AUTH_DISABLED to restore Basic Auth.'
+        );
+      }
+      return NextResponse.next();
+
     case 'open':
       if (!warnedAuthDisabled) {
         warnedAuthDisabled = true;

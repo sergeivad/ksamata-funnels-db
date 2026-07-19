@@ -14,6 +14,7 @@ Dokploy builds the image directly from the Git repo. Point the build context at 
 | `FUNNELS_DB_PATH` | `/data/ksamata_funnels.db` |
 | `NODE_ENV` | `production` (set in Dockerfile) |
 | `ADMIN_BASIC_AUTH` | `login:password` — **required in production**: without it every request gets 503 (fail-closed) |
+| `ADMIN_AUTH_DISABLED` | `true` turns auth OFF everywhere (overrides `ADMIN_BASIC_AUTH` and the production fail-closed). ⚠️ makes the admin publicly reachable. Remove to restore auth. |
 
 ## Persistent volume
 

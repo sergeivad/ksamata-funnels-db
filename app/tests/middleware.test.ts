@@ -7,6 +7,7 @@ import { NextRequest } from 'next/server';
 import { middleware, resolveAuthDecision } from '../src/middleware';
 
 const ORIGINAL_AUTH = process.env.ADMIN_BASIC_AUTH;
+const ORIGINAL_AUTH_DISABLED = process.env.ADMIN_AUTH_DISABLED;
 const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
 
 // NODE_ENV is a readonly-typed property in @types/node; go through
@@ -22,6 +23,8 @@ function setNodeEnv(value: string | undefined) {
 afterEach(() => {
   if (ORIGINAL_AUTH === undefined) delete process.env.ADMIN_BASIC_AUTH;
   else process.env.ADMIN_BASIC_AUTH = ORIGINAL_AUTH;
+  if (ORIGINAL_AUTH_DISABLED === undefined) delete process.env.ADMIN_AUTH_DISABLED;
+  else process.env.ADMIN_AUTH_DISABLED = ORIGINAL_AUTH_DISABLED;
   setNodeEnv(ORIGINAL_NODE_ENV);
 });
 
@@ -70,6 +73,31 @@ describe('auth middleware', () => {
     expect(middleware(req(basic('админ', 'пароль'))).status).toBe(401);
   });
 
+  describe('ADMIN_AUTH_DISABLED kill-switch', () => {
+    it('lets every request through when set to "true", even in production with valid creds', () => {
+      process.env.ADMIN_AUTH_DISABLED = 'true';
+      process.env.ADMIN_BASIC_AUTH = 'admin:s3cret';
+      setNodeEnv('production');
+      const res = middleware(req());
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(503);
+    });
+
+    it('overrides production fail-closed when ADMIN_BASIC_AUTH is unset', () => {
+      process.env.ADMIN_AUTH_DISABLED = 'true';
+      delete process.env.ADMIN_BASIC_AUTH;
+      setNodeEnv('production');
+      expect(middleware(req()).status).not.toBe(503);
+    });
+
+    it('only "true" disables — other values still enforce auth', () => {
+      process.env.ADMIN_AUTH_DISABLED = '1';
+      process.env.ADMIN_BASIC_AUTH = 'admin:s3cret';
+      setNodeEnv('production');
+      expect(middleware(req()).status).toBe(401);
+    });
+  });
+
   describe('production fail-closed (no valid ADMIN_BASIC_AUTH)', () => {
     it('returns 503 in production when ADMIN_BASIC_AUTH is unset', () => {
       delete process.env.ADMIN_BASIC_AUTH;
@@ -116,6 +144,24 @@ describe('auth middleware', () => {
 });
 
 describe('resolveAuthDecision (pure decision logic)', () => {
+  it('is "disabled" when ADMIN_AUTH_DISABLED=true, overriding all else', () => {
+    expect(
+      resolveAuthDecision({ ADMIN_AUTH_DISABLED: 'true', ADMIN_BASIC_AUTH: 'admin:s3cret', NODE_ENV: 'production' }, null)
+    ).toBe('disabled');
+    expect(
+      resolveAuthDecision({ ADMIN_AUTH_DISABLED: 'true', ADMIN_BASIC_AUTH: undefined, NODE_ENV: 'production' }, null)
+    ).toBe('disabled');
+  });
+
+  it('ignores non-"true" ADMIN_AUTH_DISABLED values', () => {
+    expect(
+      resolveAuthDecision({ ADMIN_AUTH_DISABLED: 'false', ADMIN_BASIC_AUTH: undefined, NODE_ENV: 'production' }, null)
+    ).toBe('misconfigured');
+    expect(
+      resolveAuthDecision({ ADMIN_AUTH_DISABLED: '1', ADMIN_BASIC_AUTH: 'admin:s3cret', NODE_ENV: 'production' }, null)
+    ).toBe('unauthorized');
+  });
+
   it('is "open" when unset and not production', () => {
     expect(resolveAuthDecision({ ADMIN_BASIC_AUTH: undefined, NODE_ENV: 'development' }, null)).toBe('open');
     expect(resolveAuthDecision({ ADMIN_BASIC_AUTH: undefined, NODE_ENV: 'test' }, null)).toBe('open');
