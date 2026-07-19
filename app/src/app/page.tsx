@@ -376,7 +376,7 @@ export default function HomePage() {
             <span className="text-[12px] text-[var(--color-text-secondary)]">
               {isFiltered
                 ? `${visibleFunnels.length} из ${funnels.length}`
-                : `${funnels.length} всего`}
+                : `${visibleFunnels.length} всего`}
             </span>
             <a
               href="/api/export"
