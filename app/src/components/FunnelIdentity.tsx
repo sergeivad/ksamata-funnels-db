@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Wand2, Copy, Check } from 'lucide-react';
+import { Wand2, Copy, Check, AlertCircle } from 'lucide-react';
 import type { FunnelDetail } from '@/lib/funnels';
 import { axesToTagNames } from '@/lib/ab-tags';
+import { copyText } from '@/lib/clipboard';
 import Segmented from './Segmented';
 import RefSelect from './RefSelect';
 
@@ -66,7 +67,8 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   // AV-tags block: which offer scenario's tag set to show/copy.
   const [scenario, setScenario] = useState<Scenario>('reg');
   const [timeSlot, setTimeSlot] = useState<TimeSlot>('19');
-  const [copiedTag, setCopiedTag] = useState<string | null>(null);
+  // Which tag (or '__all__') currently flashes its copy result.
+  const [copyFlash, setCopyFlash] = useState<{ marker: string; ok: boolean } | null>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const allEmpty = !axes.product && !axes.contractor && !axes.channel && !axes.direction;
@@ -81,18 +83,16 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
         : timeSlot === '15' ? tagSets.time15 : tagSets.time19
   ).filter((t) => !t.endsWith(': '));
 
-  function flagCopied(marker: string) {
+  function flagCopied(marker: string, ok: boolean) {
     if (copyTimer.current) clearTimeout(copyTimer.current);
-    setCopiedTag(marker);
-    copyTimer.current = setTimeout(() => setCopiedTag(null), 1500);
+    setCopyFlash({ marker, ok });
+    copyTimer.current = setTimeout(() => setCopyFlash(null), 1500);
   }
   async function copyTag(t: string) {
-    try { await navigator.clipboard.writeText(t); } catch { return; }
-    flagCopied(t);
+    flagCopied(t, await copyText(t));
   }
   async function copyAll() {
-    try { await navigator.clipboard.writeText(currentTags.join('; ')); } catch { return; }
-    flagCopied('__all__');
+    flagCopied('__all__', await copyText(currentTags.join('; ')));
   }
 
   async function save() {
@@ -161,12 +161,14 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
           <span className="text-[10px] uppercase tracking-wide text-[var(--faint)]">АВ-теги · сценарий предложения</span>
           <button type="button" onClick={copyAll}
             className={`ml-auto inline-flex items-center gap-1 rounded-[6px] border px-2 py-[3px] text-[10px] font-semibold transition ${
-              copiedTag === '__all__'
-                ? 'border-[#8FD3AE] bg-[#DFF3E7] text-[#087443]'
+              copyFlash?.marker === '__all__'
+                ? copyFlash.ok
+                  ? 'border-[#8FD3AE] bg-[#DFF3E7] text-[#087443]'
+                  : 'border-[#F3B2AA] bg-[#FEF3F2] text-[#B42318]'
                 : 'border-[var(--line)] bg-white text-[var(--muted)] hover:border-[var(--ink)] hover:text-[var(--ink)]'
             }`}>
-            {copiedTag === '__all__' ? <Check size={11} /> : <Copy size={11} />}
-            {copiedTag === '__all__' ? 'Скопировано' : 'Копировать все'}
+            {copyFlash?.marker === '__all__' ? (copyFlash.ok ? <Check size={11} /> : <AlertCircle size={11} />) : <Copy size={11} />}
+            {copyFlash?.marker === '__all__' ? (copyFlash.ok ? 'Скопировано' : 'Не удалось скопировать') : 'Копировать все'}
           </button>
         </div>
 
@@ -183,15 +185,18 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
 
         <div className="flex flex-wrap gap-1.5">
           {currentTags.map((t) => {
-            const isCopied = copiedTag === t;
+            const flash = copyFlash?.marker === t ? copyFlash : null;
             return (
-              <button key={t} type="button" onClick={() => copyTag(t)} title="Клик — скопировать тег"
+              <button key={t} type="button" onClick={() => copyTag(t)}
+                title={flash && !flash.ok ? 'Не удалось скопировать' : 'Клик — скопировать тег'}
                 className={`inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[10px] transition ${
-                  isCopied
-                    ? 'bg-[#DFF3E7] text-[#087443]'
+                  flash
+                    ? flash.ok
+                      ? 'bg-[#DFF3E7] text-[#087443]'
+                      : 'bg-[#FEF3F2] text-[#B42318]'
                     : 'bg-[var(--chip)] text-[var(--muted)] hover:bg-[var(--line)] hover:text-[var(--ink)]'
                 }`}>
-                {isCopied && <Check size={10} />}
+                {flash && (flash.ok ? <Check size={10} /> : <AlertCircle size={10} />)}
                 {t}
               </button>
             );

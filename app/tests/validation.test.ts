@@ -3,6 +3,7 @@ import {
   funnelCreateSchema,
   funnelUpdateSchema,
   refCreateSchema,
+  parseRouteId,
 } from '../src/lib/validation';
 
 const validFunnel = {
@@ -157,5 +158,43 @@ describe('refCreateSchema', () => {
     expect(
       refCreateSchema.safeParse({ name: 'a'.repeat(120) }).success
     ).toBe(true);
+  });
+
+  test('whitespace-only name is rejected', () => {
+    expect(refCreateSchema.safeParse({ name: '   ' }).success).toBe(false);
+  });
+
+  test('surrounding whitespace is trimmed away', () => {
+    const parsed = refCreateSchema.safeParse({ name: '  Яндекс  ' });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.name).toBe('Яндекс');
+  });
+});
+
+describe('funnelCreateSchema axis trimming', () => {
+  test('whitespace-only axis is rejected', () => {
+    expect(
+      funnelCreateSchema.safeParse({ ...validFunnel, product: '   ' }).success
+    ).toBe(false);
+  });
+
+  test('axis surrounding whitespace is trimmed away', () => {
+    const parsed = funnelCreateSchema.safeParse({ ...validFunnel, contractor: ' НИМБ ' });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.contractor).toBe('НИМБ');
+  });
+});
+
+describe('parseRouteId', () => {
+  test('parses plain digits', () => {
+    expect(parseRouteId('12')).toBe(12);
+  });
+
+  test('rejects trailing garbage, floats, negatives and empty', () => {
+    expect(parseRouteId('12abc')).toBeNull();
+    expect(parseRouteId('12.9')).toBeNull();
+    expect(parseRouteId('-1')).toBeNull();
+    expect(parseRouteId('')).toBeNull();
+    expect(parseRouteId('abc')).toBeNull();
   });
 });

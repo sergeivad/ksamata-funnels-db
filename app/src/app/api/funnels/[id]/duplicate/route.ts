@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { duplicateFunnel } from '@/lib/funnels';
 import { internalError } from '@/lib/http';
+import { parseRouteId } from '@/lib/validation';
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function POST(_req: NextRequest, { params }: Params) {
   const { id } = await params;
-  const numId = parseInt(id, 10);
-  if (isNaN(numId)) {
+  const numId = parseRouteId(id);
+  if (numId === null) {
     return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
   }
 

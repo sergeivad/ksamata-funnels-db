@@ -1,8 +1,8 @@
 'use client';
 
-import { useRef, useState } from 'react';
 import * as Icons from 'lucide-react';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, AlertCircle } from 'lucide-react';
+import { useCopyFlash } from '@/lib/clipboard';
 import type { FunnelDetail } from '@/lib/funnels';
 import type { DayCell } from '@/lib/funnel-days';
 import type { BlockState } from '@/lib/funnel-blocks';
@@ -184,25 +184,12 @@ function CompactBlock({ block, timeLabelA, timeLabelB }: { block: BlockState; ti
  * and truncation makes every row look identical.
  */
 function CopyableUrlRow({ label, url, narrowLabel = false, wrap = false }: { label?: string; url: string; narrowLabel?: boolean; wrap?: boolean }) {
-  const [copied, setCopied] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { status, copy } = useCopyFlash(1500);
   const trimmed = url.trim();
   const openable = isOpenableUrl(trimmed);
   // Display without the scheme (like browser address bars) — the interesting
   // part of a link is its tail. Copy and open still use the full URL.
   const display = trimmed.replace(/^https?:\/\//i, '');
-
-  async function copy() {
-    if (!trimmed) return;
-    try {
-      await navigator.clipboard.writeText(trimmed);
-    } catch {
-      return; // clipboard unavailable (insecure context) — no confirmation
-    }
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setCopied(true);
-    timerRef.current = setTimeout(() => setCopied(false), 1500);
-  }
 
   return (
     <div
@@ -235,14 +222,18 @@ function CopyableUrlRow({ label, url, narrowLabel = false, wrap = false }: { lab
       )}
       <button
         type="button"
-        onClick={copy}
-        aria-label={copied ? 'Скопировано' : 'Копировать ссылку'}
-        title={copied ? 'Скопировано' : 'Копировать ссылку'}
+        onClick={() => copy(trimmed)}
+        aria-label={status === 'copied' ? 'Скопировано' : status === 'failed' ? 'Не удалось скопировать' : 'Копировать ссылку'}
+        title={status === 'copied' ? 'Скопировано' : status === 'failed' ? 'Не удалось скопировать' : 'Копировать ссылку'}
         className={`flex shrink-0 items-center justify-center transition ${
-          copied ? 'text-[#087443]' : 'text-[var(--faint)] hover:text-[var(--ink)]'
+          status === 'copied'
+            ? 'text-[#087443]'
+            : status === 'failed'
+              ? 'text-[#B42318]'
+              : 'text-[var(--faint)] hover:text-[var(--ink)]'
         }`}
       >
-        {copied ? <Check size={13} /> : <Copy size={13} />}
+        {status === 'copied' ? <Check size={13} /> : status === 'failed' ? <AlertCircle size={13} /> : <Copy size={13} />}
       </button>
     </div>
   );

@@ -4,6 +4,7 @@ import { getBlock, replaceBlock, type BlockItem } from '@/lib/funnel-blocks';
 import { funnelExists } from '@/lib/funnel-days';
 import { isBlockKind, getBlockDef, type BlockKind } from '@/lib/blocks';
 import { internalError } from '@/lib/http';
+import { parseRouteId } from '@/lib/validation';
 
 // Upper bound on items per block — guards against insert-amplification from a
 // pathological payload. A real block has at most a handful of links.
@@ -13,8 +14,8 @@ const MAX_STR = 2000;
 type Params = { params: Promise<{ id: string; kind: string }> };
 
 function parse(id: string, kind: string): { error: NextResponse } | { numId: number; kind: BlockKind } {
-  const numId = parseInt(id, 10);
-  if (isNaN(numId)) return { error: NextResponse.json({ error: 'Invalid id' }, { status: 400 }) };
+  const numId = parseRouteId(id);
+  if (numId === null) return { error: NextResponse.json({ error: 'Invalid id' }, { status: 400 }) };
   if (!isBlockKind(kind)) return { error: NextResponse.json({ error: 'Invalid kind' }, { status: 400 }) };
   return { numId, kind };
 }

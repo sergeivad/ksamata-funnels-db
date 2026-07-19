@@ -60,13 +60,19 @@ export default function RefsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleAdd(kind: keyof RefsState, name: string) {
+  async function handleAdd(
+    kind: keyof RefsState,
+    name: string
+  ): Promise<{ ok: boolean; error?: string }> {
     const res = await fetch(`/api/refs/${kind}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      return { ok: false, error: body.error ?? 'Не удалось добавить' };
+    }
     const row: RefRow = await res.json();
     setRefs((prev) => {
       const list = prev[kind];
@@ -76,6 +82,7 @@ export default function RefsPage() {
         [kind]: [...list, row].sort((a, b) => a.name.localeCompare(b.name)),
       };
     });
+    return { ok: true };
   }
 
   async function handleRename(

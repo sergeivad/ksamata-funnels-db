@@ -167,7 +167,9 @@ export default function RoomsEditor({ funnelId, initialDays, replayEnabled, time
         <span className="ml-auto"><Switch checked={replay} onChange={setReplay} label="повтор" /></span>
       </div>
 
-      <div className="flex gap-2.5">
+      {/* Two slot columns side by side; stacked on narrow screens where a
+          half-width column leaves each URL input only ~55px. */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:gap-2.5">
         {SLOTS.map((slot) => (
           <div key={slot} className="min-w-0 flex-1">
             <div className="mb-1 text-[11px] font-medium text-[var(--muted)]">{labels[slot]}</div>
@@ -229,6 +231,10 @@ function FragmentRow({ day, cell, replay, canRemove, onRemove, onChange, onGcBlu
   onGcBlur: () => void;
 }) {
   const inp = 'h-7 w-full min-w-0 rounded-[5px] border border-[var(--line-soft)] bg-white px-2 font-mono text-[12px] text-[var(--ink)]';
+  // Autofill Web only when the GC value actually changed during this focus —
+  // tabbing through an untouched GC field must not resurrect a Web link the
+  // employee deliberately cleared.
+  const gcOnFocus = useRef<string | null>(null);
   return (
     <>
       <span className="group/day relative rounded-[4px] bg-[var(--chip)] py-[2px] text-center font-mono text-[10px] text-[var(--muted)]">
@@ -239,13 +245,18 @@ function FragmentRow({ day, cell, replay, canRemove, onRemove, onChange, onGcBlu
             onClick={onRemove}
             aria-label={`Удалить день ${day}`}
             title="Удалить день"
-            className="absolute -right-1.5 -top-1.5 hidden h-3.5 w-3.5 items-center justify-center rounded-full bg-[#B42318] text-white shadow-sm group-hover/day:flex hover:bg-[#8f1c11]"
+            className="absolute -right-1.5 -top-1.5 hidden h-3.5 w-3.5 items-center justify-center rounded-full bg-[#B42318] text-white shadow-sm group-hover/day:flex hover:bg-[#8f1c11] [@media(hover:none)]:flex"
           >
             <X size={9} strokeWidth={3} />
           </button>
         )}
       </span>
-      <UrlInput className={inp} value={cell.gcRoom} placeholder="gc…" onChange={(v) => onChange('gcRoom', v)} onBlur={onGcBlur} />
+      <UrlInput className={inp} value={cell.gcRoom} placeholder="gc…" onChange={(v) => onChange('gcRoom', v)}
+        onFocus={() => { gcOnFocus.current = cell.gcRoom; }}
+        onBlur={() => {
+          if (gcOnFocus.current !== cell.gcRoom) onGcBlur();
+          gcOnFocus.current = null;
+        }} />
       <UrlInput className={inp} value={cell.webRoom} placeholder="web…" onChange={(v) => onChange('webRoom', v)} />
       {replay && <UrlInput className={inp} value={cell.replayUrl} placeholder="повтор…" onChange={(v) => onChange('replayUrl', v)} />}
     </>

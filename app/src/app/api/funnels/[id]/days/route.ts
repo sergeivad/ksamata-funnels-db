@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { listDays, replaceDays, funnelExists, type DayCell } from '@/lib/funnel-days';
 import { ValidationError } from '@/lib/errors';
+import { parseRouteId } from '@/lib/validation';
 import { internalError } from '@/lib/http';
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const { id } = await params;
-  const numId = parseInt(id, 10);
-  if (isNaN(numId)) {
+  const numId = parseRouteId(id);
+  if (numId === null) {
     return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
   }
 
@@ -23,8 +24,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 export async function PUT(req: NextRequest, { params }: Params) {
   const { id } = await params;
-  const numId = parseInt(id, 10);
-  if (isNaN(numId)) {
+  const numId = parseRouteId(id);
+  if (numId === null) {
     return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
   }
 

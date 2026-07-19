@@ -38,13 +38,27 @@ export default function RefSelect({ kind, label, value, onChange, required, erro
   const [newName, setNewName] = useState('');
   const [addError, setAddError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    fetchRefs(kind).then((rows) => {
-      setRefs(rows);
-      setLoading(false);
-    });
-  }, [kind]);
+    let cancelled = false;
+    setLoading(true);
+    setLoadFailed(false);
+    fetchRefs(kind)
+      .then((rows) => {
+        if (cancelled) return;
+        setRefs(rows);
+        setLoading(false);
+      })
+      .catch(() => {
+        // Network failure — without this the select is stuck on «Загрузка...»
+        if (cancelled) return;
+        setLoading(false);
+        setLoadFailed(true);
+      });
+    return () => { cancelled = true; };
+  }, [kind, reloadKey]);
 
   async function handleAdd() {
     const trimmed = newName.trim();
@@ -78,6 +92,17 @@ export default function RefSelect({ kind, label, value, onChange, required, erro
       {loading ? (
         <div className="h-9 rounded-[8px] border border-[var(--color-border-soft)] bg-white/60 px-3 py-2 text-[13px] text-[var(--color-text-secondary)]">
           Загрузка...
+        </div>
+      ) : loadFailed ? (
+        <div className="flex h-9 items-center gap-2 rounded-[8px] border border-[#F3B2AA] bg-[#FEF3F2] px-3 text-[13px] text-[#B42318]">
+          Не удалось загрузить
+          <button
+            type="button"
+            onClick={() => setReloadKey((k) => k + 1)}
+            className="ml-auto text-[12px] font-semibold underline hover:no-underline"
+          >
+            Повторить
+          </button>
         </div>
       ) : (
         <select

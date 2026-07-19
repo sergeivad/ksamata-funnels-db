@@ -64,6 +64,8 @@ export default function HomePage() {
   const router = useRouter();
   const [funnels, setFunnels] = useState<FunnelListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
   const toastKeyRef = useRef(0);
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
@@ -111,17 +113,30 @@ export default function HomePage() {
   }
 
   useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadFailed(false);
     fetch('/api/funnels')
-      .then((r) => r.json())
+      .then(async (r) => {
+        // A 500 also returns JSON ({error: …}); without these checks it would
+        // land in setFunnels and crash the page on funnels.filter.
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        if (!Array.isArray(data)) throw new Error('unexpected payload');
+        return data;
+      })
       .then((data) => {
+        if (cancelled) return;
         setFunnels(data);
         setLoading(false);
       })
       .catch(() => {
+        if (cancelled) return;
         setLoading(false);
-        showToast('Не удалось загрузить воронки', 'error');
+        setLoadFailed(true);
       });
-  }, []);
+    return () => { cancelled = true; };
+  }, [reloadKey]);
 
   const handleActivateToggle = useCallback(
     async (funnel: FunnelListItem) => {
@@ -380,6 +395,17 @@ export default function HomePage() {
       {/* List */}
       {loading ? (
         <p className="text-[13px] text-[var(--color-text-secondary)]">Загрузка...</p>
+      ) : loadFailed ? (
+        <p className="text-[13px] text-[#B42318]">
+          Не удалось загрузить воронки.{' '}
+          <button
+            type="button"
+            onClick={() => setReloadKey((k) => k + 1)}
+            className="font-semibold underline hover:no-underline"
+          >
+            Повторить
+          </button>
+        </p>
       ) : funnels.length === 0 ? (
         <p className="text-[13px] text-[var(--color-text-secondary)]">Нет воронок.</p>
       ) : visibleFunnels.length === 0 ? (

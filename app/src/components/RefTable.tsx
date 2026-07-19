@@ -11,25 +11,37 @@ interface RefRow {
 interface RefTableProps {
   title: string;
   rows: RefRow[];
-  onAdd: (name: string) => void;
+  onAdd: (name: string) => Promise<{ ok: boolean; error?: string }>;
   onRename: (id: number, newName: string) => Promise<{ ok: boolean; error?: string }>;
   onDelete: (id: number) => Promise<{ ok: boolean; error?: string }>;
   /** Hide rename/delete (e.g. tags: system АВ-rows are managed by the app). */
   readOnly?: boolean;
 }
 
+// Row action icons are hover-revealed on pointer devices; on touch (no hover)
+// they stay visible, and while hidden they don't intercept taps.
+const REVEAL =
+  'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto [@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto';
+
 export default function RefTable({ title, rows, onAdd, onRename, onDelete, readOnly }: RefTableProps) {
   const [inputValue, setInputValue] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
   const [rowError, setRowError] = useState<{ id: number; message: string } | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
-  function handleAdd() {
+  async function handleAdd() {
     const trimmed = inputValue.trim();
     if (!trimmed) return;
-    onAdd(trimmed);
-    setInputValue('');
+    setAddError(null);
+    const result = await onAdd(trimmed);
+    if (result.ok) {
+      setInputValue('');
+    } else {
+      // Keep the typed name so the employee can fix it instead of retyping.
+      setAddError(result.error ?? 'Не удалось добавить');
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -70,6 +82,7 @@ export default function RefTable({ title, rows, onAdd, onRename, onDelete, readO
   }
 
   async function handleDelete(row: RefRow) {
+    if (!window.confirm(`Удалить «${row.name}»?`)) return;
     setBusyId(row.id);
     setRowError(null);
     const result = await onDelete(row.id);
@@ -132,7 +145,7 @@ export default function RefTable({ title, rows, onAdd, onRename, onDelete, readO
                       <button
                         type="button"
                         onClick={() => startEdit(row)}
-                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-[var(--color-text-secondary)] opacity-0 transition hover:text-[var(--color-text)] group-hover:opacity-100"
+                        className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-[var(--color-text-secondary)] transition hover:text-[var(--color-text)] ${REVEAL}`}
                         aria-label="Переименовать"
                         title="Переименовать"
                       >
@@ -142,7 +155,7 @@ export default function RefTable({ title, rows, onAdd, onRename, onDelete, readO
                         type="button"
                         onClick={() => handleDelete(row)}
                         disabled={isBusy}
-                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-[var(--color-text-secondary)] opacity-0 transition hover:text-[#c0392b] group-hover:opacity-100 disabled:opacity-50"
+                        className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-[var(--color-text-secondary)] transition hover:text-[#c0392b] disabled:opacity-50 ${REVEAL}`}
                         aria-label="Удалить"
                         title="Удалить"
                       >
@@ -171,7 +184,7 @@ export default function RefTable({ title, rows, onAdd, onRename, onDelete, readO
         <input
           type="text"
           value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
+          onChange={(e) => { setInputValue(e.target.value); setAddError(null); }}
           onKeyDown={handleKeyDown}
           placeholder="Добавить..."
           className="min-w-0 flex-1 rounded-[6px] border border-[var(--color-border-soft)] bg-white px-2.5 py-1.5 text-[12px] text-[var(--color-text)] placeholder:text-[var(--color-text-secondary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
@@ -186,6 +199,7 @@ export default function RefTable({ title, rows, onAdd, onRename, onDelete, readO
           <Plus className="h-4 w-4" />
         </button>
       </div>
+      {addError && <p className="mt-1 text-[11px] text-[#c0392b]">{addError}</p>}
     </div>
   );
 }

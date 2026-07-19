@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useCopyFlash } from '@/lib/clipboard';
 
 interface CodeChipProps {
   code: string;
@@ -8,35 +8,32 @@ interface CodeChipProps {
 
 /**
  * Funnel code chip (f1, f2, …). Click copies the code to the clipboard;
- * the chip flashes green for ~1.2s as confirmation. Click never bubbles,
- * so the chip can sit inside a clickable card row without navigating.
+ * the chip flashes green for ~1.2s as confirmation (red if copying failed).
+ * Click never bubbles, so the chip can sit inside a clickable card row
+ * without navigating.
  */
 export default function CodeChip({ code }: CodeChipProps) {
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { status, copy } = useCopyFlash(1200);
 
-  async function copy(e: React.MouseEvent) {
+  function handleClick(e: React.MouseEvent) {
     e.stopPropagation();
     e.preventDefault();
-    try {
-      await navigator.clipboard.writeText(code);
-    } catch {
-      return; // clipboard unavailable (insecure context) — skip confirmation
-    }
-    if (timer.current) clearTimeout(timer.current);
-    setCopied(true);
-    timer.current = setTimeout(() => setCopied(false), 1200);
+    copy(code);
   }
 
   return (
     <button
       type="button"
-      onClick={copy}
-      title={copied ? 'Скопировано' : 'Клик — скопировать код'}
+      onClick={handleClick}
+      title={
+        status === 'copied' ? 'Скопировано' : status === 'failed' ? 'Не удалось скопировать' : 'Клик — скопировать код'
+      }
       className={`rounded-[5px] border px-1.5 py-0.5 font-mono text-[10px] font-black uppercase leading-none transition ${
-        copied
+        status === 'copied'
           ? 'border-[#087443] bg-[#EDFBF3] text-[#087443]'
-          : 'border-[var(--color-border-soft)] bg-white/60 text-[var(--color-text-secondary)] hover:border-[var(--color-text-secondary)]'
+          : status === 'failed'
+            ? 'border-[#B42318] bg-[#FEF3F2] text-[#B42318]'
+            : 'border-[var(--color-border-soft)] bg-white/60 text-[var(--color-text-secondary)] hover:border-[var(--color-text-secondary)]'
       }`}
     >
       {code}

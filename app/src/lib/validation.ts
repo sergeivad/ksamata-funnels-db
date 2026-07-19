@@ -55,11 +55,12 @@ export const funnelCreateSchema = z.object({
   landingUrl: landingUrlSchema,
   startDate: startDateSchema,
   blockName: z.string().max(200).optional(),
-  // AV axes — must be non-empty; become ref rows so bound them like refs
-  product: z.string().min(1).max(REF_MAX),
-  contractor: z.string().min(1).max(REF_MAX),
-  channel: z.string().min(1).max(REF_MAX),
-  direction: z.string().min(1).max(REF_MAX),
+  // AV axes — must be non-empty after trimming (whitespace-only names would
+  // become junk ref rows); become ref rows so bound them like refs
+  product: z.string().trim().min(1).max(REF_MAX),
+  contractor: z.string().trim().min(1).max(REF_MAX),
+  channel: z.string().trim().min(1).max(REF_MAX),
+  direction: z.string().trim().min(1).max(REF_MAX),
   comment: z.string().max(2000).optional(),
   timeLabelA: z.string().max(20).optional(),
   timeLabelB: z.string().max(20).optional(),
@@ -71,8 +72,18 @@ export const funnelCreateSchema = z.object({
 export const funnelUpdateSchema = funnelCreateSchema.partial();
 
 export const refCreateSchema = z.object({
-  name: z.string().min(1).max(120),
+  // Trim like refRenameSchema does — the two must stay consistent, or a
+  // whitespace-only name passes create but not rename.
+  name: z.string().trim().min(1).max(120),
 });
+
+/**
+ * Strict route-param id parser: digits only. parseInt would accept trailing
+ * garbage ("12abc" → funnel 12), which masks bad URLs as valid lookups.
+ */
+export function parseRouteId(raw: string): number | null {
+  return /^\d+$/.test(raw) ? Number(raw) : null;
+}
 
 // Inferred TypeScript types
 export type FunnelCreate = z.infer<typeof funnelCreateSchema>;

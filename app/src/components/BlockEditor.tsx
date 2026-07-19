@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import * as Icons from 'lucide-react';
-import { Wand2, Copy, Check } from 'lucide-react';
+import { Wand2, Copy, Check, AlertCircle } from 'lucide-react';
 import { getBlockDef, type BlockMode } from '@/lib/blocks';
 import type { BlockState, BlockItem } from '@/lib/funnel-blocks';
 import { mirrorSlotUrl, formatBlockLinks, flattenToCommon, restoreByTime } from '@/lib/block-fill';
+import { copyText } from '@/lib/clipboard';
 import Switch from './Switch';
 import Segmented from './Segmented';
 import BlockListField from './BlockListField';
@@ -34,7 +35,7 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
   const [items, setItems] = useState<BlockItem[]>(initial.items);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copiedAll, setCopiedAll] = useState(false);
+  const [copiedAll, setCopiedAll] = useState<'ok' | 'failed' | null>(null);
   const copyAllTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Items as they were before the last by_time → common switch, so toggling
   // back restores the 15/19 split instead of dumping every row into slot 15.
@@ -74,14 +75,10 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
   async function copyAllLinks() {
     const text = formatBlockLinks(items, mode, timeLabelA, timeLabelB);
     if (!text) return;
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      return;
-    }
+    const ok = await copyText(text);
     if (copyAllTimer.current) clearTimeout(copyAllTimer.current);
-    setCopiedAll(true);
-    copyAllTimer.current = setTimeout(() => setCopiedAll(false), 1500);
+    setCopiedAll(ok ? 'ok' : 'failed');
+    copyAllTimer.current = setTimeout(() => setCopiedAll(null), 1500);
   }
 
   const hasAnyLink = items.some((it) => it.url.trim() !== '');
@@ -163,13 +160,19 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
             <button
               type="button"
               onClick={copyAllLinks}
-              aria-label={copiedAll ? 'Скопировано' : 'Скопировать все ссылки блока'}
-              title="Скопировать все ссылки блока"
+              aria-label={
+                copiedAll === 'ok' ? 'Скопировано' : copiedAll === 'failed' ? 'Не удалось скопировать' : 'Скопировать все ссылки блока'
+              }
+              title={copiedAll === 'failed' ? 'Не удалось скопировать' : 'Скопировать все ссылки блока'}
               className={`flex items-center justify-center transition ${
-                copiedAll ? 'text-[#087443]' : 'text-[var(--faint)] hover:text-[var(--ink)]'
+                copiedAll === 'ok'
+                  ? 'text-[#087443]'
+                  : copiedAll === 'failed'
+                    ? 'text-[#B42318]'
+                    : 'text-[var(--faint)] hover:text-[var(--ink)]'
               }`}
             >
-              {copiedAll ? <Check size={15} /> : <Copy size={15} />}
+              {copiedAll === 'ok' ? <Check size={15} /> : copiedAll === 'failed' ? <AlertCircle size={15} /> : <Copy size={15} />}
             </button>
           )}
           <Switch checked={enabled} onChange={(v) => { setEnabled(v); save({ enabled: v }); }} />
@@ -181,7 +184,9 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
           showStandardSet={def.kind === 'links'}
           onChange={(next) => { setItems(next); }} />
       ) : (
-        <div className="flex gap-3">
+        // 15:00/19:00 side by side; stacked on narrow screens where two
+        // half-width columns leave the URL inputs unusably small.
+        <div className="flex flex-col gap-3 sm:flex-row">
           <div className="min-w-0 flex-1">
             <div className="mb-1 text-[11px] font-medium text-[var(--muted)]">{timeLabelA}</div>
             <BlockListField fields={def.fields} slot="15" items={items}

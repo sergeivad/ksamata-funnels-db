@@ -1,9 +1,10 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Trash2, Plus, Copy, Check, ExternalLink, ListPlus } from 'lucide-react';
+import { Trash2, Plus, Copy, Check, AlertCircle, ExternalLink, ListPlus } from 'lucide-react';
 import type { BlockItem } from '@/lib/funnel-blocks';
 import { parsePastedLine, missingStandardLabels } from '@/lib/block-fill';
+import { copyText } from '@/lib/clipboard';
 
 interface Props {
   fields: 1 | 2;
@@ -17,8 +18,8 @@ interface Props {
 export default function BlockListField({ fields, slot, items, onChange, showStandardSet }: Props) {
   const rows = items.filter((it) => it.slot === slot);
 
-  // Which row currently shows the "copied ✓" confirmation (index within `rows`).
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  // Which row currently flashes a copy result (index within `rows`).
+  const [copyFlash, setCopyFlash] = useState<{ index: number; ok: boolean } | null>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function update(indexInRows: number, patch: Partial<BlockItem>) {
@@ -50,7 +51,9 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
 
   function handleUrlPaste(indexInRows: number, e: React.ClipboardEvent<HTMLInputElement>) {
     const text = e.clipboardData.getData('text');
-    if (!text.includes('\n')) return; // single-line paste — default behaviour
+    // Single line — default behaviour. Trim first: a copied spreadsheet cell
+    // ends with "\n" but is still one line, not a multi-row paste.
+    if (!text.trim().includes('\n')) return;
     e.preventDefault();
 
     const lines = text.split('\n').map((l) => l.trim()).filter((l) => l !== '');
@@ -95,14 +98,10 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
   async function copy(indexInRows: number, url: string) {
     const value = url.trim();
     if (!value) return;
-    try {
-      await navigator.clipboard.writeText(value);
-    } catch {
-      return; // clipboard unavailable (insecure context) — no confirmation
-    }
+    const ok = await copyText(value);
     if (copyTimer.current) clearTimeout(copyTimer.current);
-    setCopiedIndex(indexInRows);
-    copyTimer.current = setTimeout(() => setCopiedIndex(null), 1500);
+    setCopyFlash({ index: indexInRows, ok });
+    copyTimer.current = setTimeout(() => setCopyFlash(null), 1500);
   }
 
   const gtc =
@@ -120,7 +119,7 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
       {rows.map((row, i) => {
         const hasUrl = row.url.trim() !== '';
         const openableUrl = /^https?:\/\//i.test(row.url.trim()) ? row.url.trim() : null;
-        const copied = copiedIndex === i;
+        const flash = copyFlash?.index === i ? copyFlash : null;
         return (
           <div key={i} className="grid items-center gap-2" style={{ gridTemplateColumns: gtc }}>
             {fields === 2 && (
@@ -174,13 +173,17 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
               type="button"
               onClick={() => copy(i, row.url)}
               disabled={!hasUrl}
-              aria-label={copied ? 'Скопировано' : 'Копировать ссылку'}
-              title={copied ? 'Скопировано' : 'Копировать ссылку'}
+              aria-label={flash ? (flash.ok ? 'Скопировано' : 'Не удалось скопировать') : 'Копировать ссылку'}
+              title={flash ? (flash.ok ? 'Скопировано' : 'Не удалось скопировать') : 'Копировать ссылку'}
               className={`flex justify-center transition disabled:cursor-default disabled:opacity-30 ${
-                copied ? 'text-[#087443]' : 'text-[var(--faint)] hover:text-[var(--ink)]'
+                flash
+                  ? flash.ok
+                    ? 'text-[#087443]'
+                    : 'text-[#B42318]'
+                  : 'text-[var(--faint)] hover:text-[var(--ink)]'
               }`}
             >
-              {copied ? <Check size={15} /> : <Copy size={15} />}
+              {flash ? (flash.ok ? <Check size={15} /> : <AlertCircle size={15} />) : <Copy size={15} />}
             </button>
             <button type="button" onClick={() => remove(i)} aria-label="Удалить строку" className="flex justify-center text-[var(--faint)] hover:text-[var(--ink)]">
               <Trash2 size={15} />

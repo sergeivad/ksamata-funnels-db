@@ -1,47 +1,44 @@
 'use client';
 
-import { useRef, useState } from 'react';
-import { Copy, Check, ExternalLink } from 'lucide-react';
+import { Copy, Check, AlertCircle, ExternalLink } from 'lucide-react';
+import { useCopyFlash } from '@/lib/clipboard';
 
 interface Props {
   value: string;
   onChange: (value: string) => void;
+  onFocus?: () => void;
   onBlur?: () => void;
   placeholder?: string;
   /** Classes for the underlying <input> (sizing, border, font, etc.). */
   className?: string;
 }
 
+// Icons are hover-revealed on pointer devices; on touch (no hover) they stay
+// visible, and while hidden they don't intercept taps aimed at the input.
+const REVEAL =
+  'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto [@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto';
+
 /**
  * URL text field for dense layouts: shows the full link in a hover tooltip
  * (the field itself truncates) and a copy icon that appears inside the field
- * on hover, flipping to a green check for ~1.5s after copying. Copy state is
- * self-contained, so any number of these can live in one grid without wiring.
+ * on hover, flipping to a green check (or a red alert on failure) for ~1.5s
+ * after copying. Copy state is self-contained, so any number of these can
+ * live in one grid without wiring.
  */
-export default function UrlInput({ value, onChange, onBlur, placeholder, className }: Props) {
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+export default function UrlInput({ value, onChange, onFocus, onBlur, placeholder, className }: Props) {
+  const { status, copy } = useCopyFlash(1500);
   const hasUrl = value.trim() !== '';
   const openableUrl = /^https?:\/\//i.test(value.trim()) ? value.trim() : null;
 
-  async function copy() {
-    const v = value.trim();
-    if (!v) return;
-    try {
-      await navigator.clipboard.writeText(v);
-    } catch {
-      return; // clipboard unavailable (insecure context) — skip confirmation
-    }
-    if (timer.current) clearTimeout(timer.current);
-    setCopied(true);
-    timer.current = setTimeout(() => setCopied(false), 1500);
-  }
+  const copyTitle =
+    status === 'copied' ? 'Скопировано' : status === 'failed' ? 'Не удалось скопировать' : 'Копировать ссылку';
 
   return (
     <div className="group relative min-w-0">
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onFocus={onFocus}
         onBlur={onBlur}
         placeholder={placeholder}
         title={value}
@@ -63,24 +60,26 @@ export default function UrlInput({ value, onChange, onBlur, placeholder, classNa
               tabIndex={-1}
               aria-label="Открыть в новой вкладке"
               title="Открыть в новой вкладке"
-              className="absolute right-[26px] top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-[4px] bg-white text-[var(--faint)] opacity-0 transition hover:text-[var(--ink)] group-hover:opacity-100"
+              className={`absolute right-[26px] top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-[4px] bg-white text-[var(--faint)] transition hover:text-[var(--ink)] ${REVEAL}`}
             >
               <ExternalLink size={13} />
             </a>
           )}
           <button
             type="button"
-            onClick={copy}
+            onClick={() => copy(value)}
             tabIndex={-1}
-            aria-label={copied ? 'Скопировано' : 'Копировать ссылку'}
-            title={copied ? 'Скопировано' : 'Копировать ссылку'}
+            aria-label={copyTitle}
+            title={copyTitle}
             className={`absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-[4px] bg-white transition ${
-              copied
-                ? 'text-[#087443] opacity-100'
-                : 'text-[var(--faint)] opacity-0 hover:text-[var(--ink)] group-hover:opacity-100'
+              status === 'copied'
+                ? 'pointer-events-auto text-[#087443] opacity-100'
+                : status === 'failed'
+                  ? 'pointer-events-auto text-[#B42318] opacity-100'
+                  : `text-[var(--faint)] hover:text-[var(--ink)] ${REVEAL}`
             }`}
           >
-            {copied ? <Check size={13} /> : <Copy size={13} />}
+            {status === 'copied' ? <Check size={13} /> : status === 'failed' ? <AlertCircle size={13} /> : <Copy size={13} />}
           </button>
         </>
       )}
