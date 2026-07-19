@@ -8,21 +8,23 @@ import Toast from '@/components/Toast';
 import GroupToggle, { type GroupBy } from '@/components/GroupToggle';
 import Segmented from '@/components/Segmented';
 import { confirmUnsavedNavigation } from '@/lib/useUnsavedGuard';
+import {
+  type FunnelStatus,
+  type StatusFilter,
+  isStatusFilter,
+  matchesStatusFilter,
+  STATUS_TOAST,
+} from '@/lib/status';
 
 const LS_KEY = 'funnels.groupBy';
 const LS_STATUS_KEY = 'funnels.statusFilter';
-
-type StatusFilter = 'all' | 'active' | 'draft';
 
 const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: 'Все' },
   { value: 'active', label: 'Активные' },
   { value: 'draft', label: 'Черновики' },
+  { value: 'archive', label: 'Архив' },
 ];
-
-function isStatusFilter(v: unknown): v is StatusFilter {
-  return v === 'all' || v === 'active' || v === 'draft';
-}
 
 interface FunnelAxes {
   product: string;
@@ -35,7 +37,7 @@ interface FunnelListItem {
   id: number;
   num: number;
   frontCode: string;
-  status: 'active' | 'draft';
+  status: FunnelStatus;
   productName: string;
   name: string;
   axes: FunnelAxes;
@@ -138,9 +140,10 @@ export default function HomePage() {
     return () => { cancelled = true; };
   }, [reloadKey]);
 
-  const handleActivateToggle = useCallback(
-    async (funnel: FunnelListItem) => {
-      const newStatus = funnel.status === 'active' ? 'draft' : 'active';
+  const handleSetStatus = useCallback(
+    async (funnel: FunnelListItem, newStatus: FunnelStatus) => {
+      if (funnel.status === newStatus) return;
+      const prevStatus = funnel.status;
 
       // Optimistic update
       setFunnels((prev) =>
@@ -163,14 +166,11 @@ export default function HomePage() {
           prev.map((f) => (f.id === funnel.id ? { ...f, status: updated.status } : f))
         );
 
-        showToast(
-          newStatus === 'active' ? 'Воронка активирована' : 'Воронка переведена в черновик',
-          'success'
-        );
+        showToast(STATUS_TOAST[newStatus], 'success');
       } catch {
         // Rollback
         setFunnels((prev) =>
-          prev.map((f) => (f.id === funnel.id ? { ...f, status: funnel.status } : f))
+          prev.map((f) => (f.id === funnel.id ? { ...f, status: prevStatus } : f))
         );
         showToast('Не удалось изменить статус', 'error');
       }
@@ -238,9 +238,7 @@ export default function HomePage() {
 
   const visibleFunnels = useMemo(() => {
     return funnels.filter(
-      (f) =>
-        (statusFilter === 'all' || f.status === statusFilter) &&
-        matchesSearch(f, search)
+      (f) => matchesStatusFilter(f.status, statusFilter) && matchesSearch(f, search)
     );
   }, [funnels, statusFilter, search]);
 
@@ -284,7 +282,7 @@ export default function HomePage() {
           status: funnel.status,
           title: buildTitle(funnel),
         }}
-        onActivateToggle={() => handleActivateToggle(funnel)}
+        onSetStatus={(s) => handleSetStatus(funnel, s)}
         onDuplicate={() => handleDuplicate(funnel)}
         onDelete={() => handleDelete(funnel)}
       />
@@ -378,7 +376,7 @@ export default function HomePage() {
             <span className="text-[12px] text-[var(--color-text-secondary)]">
               {isFiltered
                 ? `${visibleFunnels.length} из ${funnels.length}`
-                : `${funnels.length} всего`}
+                : `${visibleFunnels.length} всего`}
             </span>
             <a
               href="/api/export"
