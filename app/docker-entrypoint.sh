@@ -27,4 +27,12 @@ if [ -n "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] Phase-3 migration done."
 fi
 
+# Apply Phase-4 migration (idempotent: guarded ALTER + marker-gated one-time
+# backfill of rooms_enabled via schema_migrations['phase4_rooms_enabled']).
+if [ -n "$FUNNELS_DB_PATH" ]; then
+  echo "[entrypoint] Running Phase-4 migration against $FUNNELS_DB_PATH"
+  node /app/migrate-phase4.cjs
+  echo "[entrypoint] Phase-4 migration done."
+fi
+
 exec node server.js

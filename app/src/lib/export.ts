@@ -99,7 +99,10 @@ export function buildExportRows(db: DB): ExportRow[] {
       }
     }
 
-    for (const cell of listDays(db, f.id)) {
+    // Skip room links when the block is disabled, mirroring the UI (view mode
+    // hides rooms on !roomsEnabled). Disable is non-destructive, so day rows may
+    // still exist for a funnel the user marked as having no webinar rooms.
+    for (const cell of detail.roomsEnabled ? listDays(db, f.id) : []) {
       const time = timeLabelFor(cell.timeSlot);
       if (cell.gcRoom.trim()) {
         rows.push({

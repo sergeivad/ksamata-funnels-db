@@ -67,6 +67,7 @@ export const funnels = sqliteTable(
     timeLabelA:         text('time_label_a').default('15:00'),
     timeLabelB:         text('time_label_b').default('19:00'),
     roomsReplayEnabled: integer('rooms_replay_enabled').default(0),
+    roomsEnabled:       integer('rooms_enabled').default(1),
   },
   (t) => ({
     productIdx:    index('idx_funnels_product').on(t.productId),

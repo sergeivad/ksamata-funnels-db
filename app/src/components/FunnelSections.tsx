@@ -127,6 +127,7 @@ export default function FunnelSections({ funnel, funnelId, initialDays, landings
         <RoomsEditor
           funnelId={funnelId}
           initialDays={initialDays}
+          enabled={funnel.roomsEnabled}
           replayEnabled={funnel.roomsReplayEnabled}
           timeLabelA={funnel.timeLabelA}
           timeLabelB={funnel.timeLabelB}

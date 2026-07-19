@@ -51,6 +51,7 @@ export type FunnelDetail = FunnelListItem & {
   timeLabelA: string;
   timeLabelB: string;
   roomsReplayEnabled: boolean;
+  roomsEnabled: boolean;
 };
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -188,6 +189,7 @@ export function getFunnel(db: DB, id: number): FunnelDetail | null {
     timeLabelA:   row.timeLabelA   ?? '15:00',
     timeLabelB:   row.timeLabelB   ?? '19:00',
     roomsReplayEnabled: (row.roomsReplayEnabled ?? 0) === 1,
+    roomsEnabled: (row.roomsEnabled ?? 1) === 1,
     axes,
   };
 }
@@ -238,6 +240,7 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
         timeLabelA:         data.timeLabelA         ?? '15:00',
         timeLabelB:         data.timeLabelB         ?? '19:00',
         roomsReplayEnabled: data.roomsReplayEnabled ? 1 : 0,
+        roomsEnabled:       data.roomsEnabled === false ? 0 : 1,
       })
       .returning()
       .get() as Funnel;
@@ -308,6 +311,7 @@ export function createDraftFunnel(db: DB): FunnelListItem {
         timeLabelA:   '15:00',
         timeLabelB:   '19:00',
         roomsReplayEnabled: 0,
+        roomsEnabled: 1,
       })
       .returning()
       .get() as Funnel;
@@ -364,6 +368,7 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
     if (data.timeLabelA         !== undefined) scalarUpdate.timeLabelA         = data.timeLabelA;
     if (data.timeLabelB         !== undefined) scalarUpdate.timeLabelB         = data.timeLabelB;
     if (data.roomsReplayEnabled !== undefined) scalarUpdate.roomsReplayEnabled = data.roomsReplayEnabled ? 1 : 0;
+    if (data.roomsEnabled       !== undefined) scalarUpdate.roomsEnabled       = data.roomsEnabled ? 1 : 0;
 
     // If product/contractor/source names change, update FKs too
     if (data.product !== undefined) {
@@ -558,6 +563,7 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
         timeLabelA:         source.timeLabelA ?? '15:00',
         timeLabelB:         source.timeLabelB ?? '19:00',
         roomsReplayEnabled: source.roomsReplayEnabled ?? 0,
+        roomsEnabled:       source.roomsEnabled ? 1 : 0,
       })
       .returning()
       .get() as Funnel;

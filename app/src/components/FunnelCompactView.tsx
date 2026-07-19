@@ -28,6 +28,7 @@ interface Props {
  */
 export default function FunnelCompactView({ funnel, initialDays, landings, rest, onSwitchToEdit }: Props) {
   const dayGroups = groupDaysByDay(initialDays);
+  const showRooms = funnel.roomsEnabled && dayGroups.length > 0;
   const blocks = visibleBlocks([landings, ...rest]);
   const allEmpty = !funnel.axes.product && !funnel.axes.contractor && !funnel.axes.channel && !funnel.axes.direction;
 
@@ -51,7 +52,7 @@ export default function FunnelCompactView({ funnel, initialDays, landings, rest,
 
       {/* Rooms. On narrow screens the two time slots stack vertically (each
           full-width, labelled inline); side-by-side columns from sm up. */}
-      {dayGroups.length > 0 && (
+      {showRooms && (
         <div className="mb-3">
           <div className="mb-1.5 hidden grid-cols-[28px_1fr_1fr] gap-x-3 text-[10px] uppercase tracking-wide text-[var(--faint)] sm:grid">
             <span />
@@ -90,7 +91,7 @@ export default function FunnelCompactView({ funnel, initialDays, landings, rest,
         </div>
       )}
 
-      {dayGroups.length === 0 && blocks.length === 0 && (
+      {!showRooms && blocks.length === 0 && (
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--faint)]">
           Нет заполненных комнат или блоков
           {onSwitchToEdit && (

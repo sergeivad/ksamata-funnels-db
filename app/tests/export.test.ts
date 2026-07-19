@@ -63,6 +63,37 @@ describe('GET /api/export', () => {
   });
 });
 
+// ── roomsEnabled gating ──────────────────────────────────────────────────────
+
+describe('buildExportRows — roomsEnabled gating', () => {
+  it('omits Комнаты rows for a funnel that has day rows but roomsEnabled=false', async () => {
+    const Database = (await import('better-sqlite3')).default;
+    const { drizzle } = await import('drizzle-orm/better-sqlite3');
+    const schema = await import('../src/db/schema');
+    const { buildExportRows } = await import('../src/lib/export');
+    const { updateFunnel } = await import('../src/lib/funnels');
+
+    const tmp = join(tmpdir(), `ksamata_export_gate_${Date.now()}.db`);
+    copyFileSync(REAL_DB, tmp);
+    const sqlite = new Database(tmp);
+    const db = drizzle(sqlite, { schema });
+
+    const roomsRowsFor = (num: number) =>
+      buildExportRows(db).filter((r) => r.num === num && r.section.startsWith('Комнаты'));
+
+    // Funnel #1 has day rows and is enabled by the Phase-4 backfill.
+    expect(roomsRowsFor(1).length).toBeGreaterThan(0);
+
+    // Manually disabling rooms is non-destructive (day rows stay), but the
+    // export must mirror the UI and stop emitting room links.
+    updateFunnel(db, 1, { roomsEnabled: false });
+    expect(roomsRowsFor(1).length).toBe(0);
+
+    sqlite.close();
+    unlinkSync(tmp);
+  });
+});
+
 // ── Pure helpers ─────────────────────────────────────────────────────────────
 
 describe('toCsv (unit)', () => {
