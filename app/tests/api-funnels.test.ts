@@ -575,3 +575,23 @@ describe('deleteFunnel', () => {
     expect(result).toBe(false);
   });
 });
+
+describe('roomsEnabled flag', () => {
+  it('defaults to true on create and round-trips through update', () => {
+    const created = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9955 });
+    expect(getFunnel(testDb, created.id)!.roomsEnabled).toBe(true);
+
+    updateFunnel(testDb, created.id, { roomsEnabled: false });
+    expect(getFunnel(testDb, created.id)!.roomsEnabled).toBe(false);
+
+    updateFunnel(testDb, created.id, { roomsEnabled: true });
+    expect(getFunnel(testDb, created.id)!.roomsEnabled).toBe(true);
+  });
+
+  it('duplicateFunnel copies roomsEnabled from the source', () => {
+    const src = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9956 });
+    updateFunnel(testDb, src.id, { roomsEnabled: false });
+    const dup = duplicateFunnel(testDb, src.id)!;
+    expect(getFunnel(testDb, dup.id)!.roomsEnabled).toBe(false);
+  });
+});
