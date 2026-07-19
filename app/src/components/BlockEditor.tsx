@@ -85,7 +85,9 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
   const slot19Empty = mode === 'by_time' && items.filter((it) => it.slot === '19').length === 0;
   const slot15HasRows = mode === 'by_time' && items.filter((it) => it.slot === '15').length > 0;
 
-  async function save(next?: { enabled?: boolean; mode?: BlockMode; items?: BlockItem[] }) {
+  // Returns whether the save persisted, so callers (the toggle) can roll back
+  // optimistic state on failure. A cancelled confirm counts as "not saved".
+  async function save(next?: { enabled?: boolean; mode?: BlockMode; items?: BlockItem[] }): Promise<boolean> {
     const payloadEnabled = next?.enabled ?? enabled;
     const payloadMode = next?.mode ?? mode;
     const payloadItems = normalizeItems(next?.items ?? items, payloadMode);
@@ -96,7 +98,7 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
       saved.mode === 'by_time' &&
       !window.confirm('Сохранение в режиме «Общее» объединит ссылки по времени и сотрёт разбивку 15:00/19:00. Продолжить?')
     ) {
-      return;
+      return false;
     }
     setSaving(true);
     setError(null);
@@ -111,11 +113,24 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
         throw new Error(body?.error ?? `Не удалось сохранить (${res.status})`);
       }
       setSaved({ enabled: payloadEnabled, mode: payloadMode, items: payloadItems });
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось сохранить');
+      return false;
     } finally {
       setSaving(false);
     }
+  }
+
+  // Toggling the block on/off autosaves the flag immediately. The optimistic
+  // flip is rolled back when the save fails so a rejected request can't
+  // masquerade as persisted. Scoped to the toggle — the explicit «Сохранить»
+  // must not revert `enabled`, so the rollback lives here, not inside save().
+  async function toggleEnabled(v: boolean) {
+    const prev = enabled;
+    setEnabled(v);
+    const ok = await save({ enabled: v });
+    if (!ok) setEnabled(prev);
   }
 
   if (!enabled) {
@@ -123,8 +138,9 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
       <div className="mb-2.5 flex items-center gap-2 rounded-[10px] border border-[var(--line-soft)] bg-[var(--card)] px-3.5 py-2.5 opacity-60">
         <Icon size={16} className="text-[var(--faint)]" />
         <span className="text-[13px] font-medium text-[var(--muted)]">{def.title}</span>
-        <span className="ml-auto">
-          <Switch checked={false} onChange={(v) => { setEnabled(v); save({ enabled: v }); }} />
+        <span className="ml-auto flex items-center gap-3">
+          {error && <span role="alert" className="text-[11px] font-medium text-[#B42318]">{error}</span>}
+          <Switch checked={false} onChange={(v) => toggleEnabled(v)} />
         </span>
       </div>
     );
@@ -175,7 +191,7 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
               {copiedAll === 'ok' ? <Check size={15} /> : copiedAll === 'failed' ? <AlertCircle size={15} /> : <Copy size={15} />}
             </button>
           )}
-          <Switch checked={enabled} onChange={(v) => { setEnabled(v); save({ enabled: v }); }} />
+          <Switch checked={enabled} onChange={(v) => toggleEnabled(v)} />
         </span>
       </div>
 
