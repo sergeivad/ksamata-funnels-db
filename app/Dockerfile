@@ -45,6 +45,14 @@ RUN npx esbuild scripts/migrate-phase3-runner.ts \
       --external:better-sqlite3 \
       --outfile=migrate-phase3.cjs
 
+# Compile the standalone Phase-4 migration for the runner image.
+# better-sqlite3 is kept external so the runner's native .node binary is used.
+RUN npx esbuild scripts/migrate-phase4-runner.ts \
+      --bundle \
+      --platform=node \
+      --external:better-sqlite3 \
+      --outfile=migrate-phase4.cjs
+
 # ──────────────────────────────────────────────
 # Stage 2: runner
 # ──────────────────────────────────────────────
@@ -76,6 +84,9 @@ COPY --from=builder /build/migrate-phase2.cjs /app/migrate-phase2.cjs
 
 # Copy the compiled Phase-3 migration bundle into the runner image.
 COPY --from=builder /build/migrate-phase3.cjs /app/migrate-phase3.cjs
+
+# Copy the compiled Phase-4 migration bundle into the runner image.
+COPY --from=builder /build/migrate-phase4.cjs /app/migrate-phase4.cjs
 
 # Copy and make the entrypoint executable
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
