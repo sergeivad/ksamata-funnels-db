@@ -7,6 +7,7 @@ import { axesToTagNames } from '@/lib/ab-tags';
 import { copyText } from '@/lib/clipboard';
 import Segmented from './Segmented';
 import RefSelect from './RefSelect';
+import { STATUS_META } from '@/lib/status';
 
 type Scenario = 'reg' | 'pay' | 'messenger';
 type TimeSlot = '15' | '19';
@@ -27,7 +28,7 @@ interface Props { funnel: FunnelDetail; onDirtyChange?: (dirty: boolean) => void
 
 export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   const [frontCode, setFrontCode] = useState(funnel.frontCode);
-  const [status, setStatus] = useState(funnel.status === 'active' ? 'active' : 'draft');
+  const [status, setStatus] = useState<string>(funnel.status);
   const [axes, setAxes] = useState(funnel.axes);
   const [comment, setComment] = useState(funnel.comment);
   const [ta, setTa] = useState(funnel.timeLabelA);
@@ -39,7 +40,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   // "unsaved changes" indicator by comparing it against the live form state.
   const [saved, setSaved] = useState<IdentitySnapshot>({
     frontCode: funnel.frontCode,
-    status: funnel.status === 'active' ? 'active' : 'draft',
+    status: funnel.status,
     product: funnel.axes.product,
     contractor: funnel.axes.contractor,
     channel: funnel.axes.channel,
@@ -136,7 +137,15 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
           {allEmpty ? 'Новая воронка — заполните продукт и подрядчика' : name}
         </span>
         <span className="ml-auto">
-          <Segmented options={[{ value: 'active', label: 'Активна' }, { value: 'draft', label: 'Черновик' }]} value={status} onChange={setStatus} />
+          <Segmented
+            options={[
+              { value: 'active', label: STATUS_META.active.label },
+              { value: 'draft', label: STATUS_META.draft.label },
+              { value: 'archive', label: STATUS_META.archive.label },
+            ]}
+            value={status}
+            onChange={setStatus}
+          />
         </span>
       </div>
       <div className="mb-3 flex items-center gap-1.5 text-[10px] text-[var(--faint)]">
