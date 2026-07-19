@@ -41,6 +41,29 @@ export function mirrorSlotUrl(s: string): string {
   return s.replace(/(^|[-_/.:\s])15(?=[-_/.:\s]|$)/g, '$119');
 }
 
+/**
+ * Derive the Web-room URL from a GC-room URL: the slug is shared between
+ * platforms (295/299 historical pairs). Only single-segment gc.ksamata.ru
+ * paths qualify — course pages like gc.ksamata.ru/svs/bonus1 are not rooms.
+ * Returns '' when the value doesn't look like a GC room link.
+ */
+const GC_ROOM_RE = /^https?:\/\/gc\.ksamata\.ru\/([^\s/]+)$/i;
+
+export function webRoomFromGc(gc: string): string {
+  const m = GC_ROOM_RE.exec(gc.trim());
+  return m ? `https://web.ksamatacenter.com/room/${m[1]}` : '';
+}
+
+/**
+ * Mirror a day-1 room url into another day by replacing the standalone day
+ * digit: 1dbo-bookv → 2dbo-bookv, dih1-15-rsya → dih2-15-rsya. "Standalone"
+ * means not adjacent to another digit, so the 15/19 time tokens survive.
+ * (Verified against history: 232/235 rows follow this rule.)
+ */
+export function mirrorDayUrl(s: string, fromDay: number, toDay: number): string {
+  return s.replace(new RegExp(`(?<!\\d)${fromDay}(?!\\d)`, 'g'), String(toDay));
+}
+
 /** The 6 labels ever used in the `links` block, in canonical order. */
 export const STANDARD_LINKS_LABELS: string[] = [
   'Дашборд продаж',

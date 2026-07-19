@@ -6,6 +6,7 @@ import { Copy, Check, ExternalLink } from 'lucide-react';
 interface Props {
   value: string;
   onChange: (value: string) => void;
+  onBlur?: () => void;
   placeholder?: string;
   /** Classes for the underlying <input> (sizing, border, font, etc.). */
   className?: string;
@@ -17,7 +18,7 @@ interface Props {
  * on hover, flipping to a green check for ~1.5s after copying. Copy state is
  * self-contained, so any number of these can live in one grid without wiring.
  */
-export default function UrlInput({ value, onChange, placeholder, className }: Props) {
+export default function UrlInput({ value, onChange, onBlur, placeholder, className }: Props) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasUrl = value.trim() !== '';
@@ -41,6 +42,7 @@ export default function UrlInput({ value, onChange, placeholder, className }: Pr
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
         placeholder={placeholder}
         title={value}
         className={className}

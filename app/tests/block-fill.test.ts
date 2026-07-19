@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   parsePastedLine,
   mirrorSlotUrl,
+  webRoomFromGc,
+  mirrorDayUrl,
   missingStandardLabels,
   formatBlockLinks,
   STANDARD_LINKS_LABELS,
@@ -76,6 +78,52 @@ describe('mirrorSlotUrl', () => {
 
   it('mirrors a trailing /15', () => {
     expect(mirrorSlotUrl('https://example.com/15')).toBe('https://example.com/19');
+  });
+});
+
+describe('webRoomFromGc', () => {
+  it('derives the web room from a gc room by sharing the slug', () => {
+    expect(webRoomFromGc('https://gc.ksamata.ru/1dbo-bookv')).toBe(
+      'https://web.ksamatacenter.com/room/1dbo-bookv',
+    );
+  });
+
+  it('trims whitespace around the gc url', () => {
+    expect(webRoomFromGc('  https://gc.ksamata.ru/dih1-15-rsya ')).toBe(
+      'https://web.ksamatacenter.com/room/dih1-15-rsya',
+    );
+  });
+
+  it('rejects multi-segment gc paths (course pages, not rooms)', () => {
+    expect(webRoomFromGc('https://gc.ksamata.ru/svs/bonus1')).toBe('');
+  });
+
+  it('rejects non-gc hosts and empty values', () => {
+    expect(webRoomFromGc('https://t.ksamata.ru/dih/rsya/a')).toBe('');
+    expect(webRoomFromGc('https://gc.ksamata.ru/')).toBe('');
+    expect(webRoomFromGc('')).toBe('');
+  });
+});
+
+describe('mirrorDayUrl', () => {
+  it('replaces a leading day digit (15:00 style)', () => {
+    expect(mirrorDayUrl('https://gc.ksamata.ru/1dbo-bookv', 1, 3)).toBe('https://gc.ksamata.ru/3dbo-bookv');
+  });
+
+  it('replaces a trailing day digit (19:00 style)', () => {
+    expect(mirrorDayUrl('https://gc.ksamata.ru/dbo1-bookv', 1, 5)).toBe('https://gc.ksamata.ru/dbo5-bookv');
+  });
+
+  it('keeps the 15/19 time tokens intact', () => {
+    expect(mirrorDayUrl('https://gc.ksamata.ru/dih1-15-rsya', 1, 2)).toBe('https://gc.ksamata.ru/dih2-15-rsya');
+    expect(mirrorDayUrl('https://gc.ksamata.ru/dih1-19-rsya', 1, 4)).toBe('https://gc.ksamata.ru/dih4-19-rsya');
+  });
+
+  it('leaves urls without a standalone day digit untouched', () => {
+    expect(mirrorDayUrl('https://gc.ksamata.ru/dbo2-bookv', 1, 3)).toBe('https://gc.ksamata.ru/dbo2-bookv');
+    expect(mirrorDayUrl('https://web.ksamatacenter.com/room/svs-15', 1, 2)).toBe(
+      'https://web.ksamatacenter.com/room/svs-15',
+    );
   });
 });
 

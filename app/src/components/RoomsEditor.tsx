@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Tv, Plus, X } from 'lucide-react';
+import { Tv, Plus, X, Wand2 } from 'lucide-react';
 import Switch from './Switch';
 import UrlInput from './UrlInput';
 import type { DayCell } from '@/lib/funnel-days';
+import { webRoomFromGc, mirrorDayUrl } from '@/lib/block-fill';
 
 interface Props {
   funnelId: number;
@@ -70,6 +71,50 @@ export default function RoomsEditor({ funnelId, initialDays, replayEnabled, time
 
   function set(slot: string, day: number, field: keyof Cell, value: string) {
     setGrid((p) => ({ ...p, [key(slot, day)]: { ...p[key(slot, day)], [field]: value } }));
+  }
+
+  // When the GC field is filled and Web left empty, derive Web from the GC
+  // slug on blur (the slug is shared between the two platforms).
+  function autofillWeb(slot: string, day: number) {
+    setGrid((p) => {
+      const c = p[key(slot, day)];
+      if (c.webRoom.trim() !== '') return p;
+      const web = webRoomFromGc(c.gcRoom);
+      if (!web) return p;
+      return { ...p, [key(slot, day)]: { ...c, webRoom: web } };
+    });
+  }
+
+  const FILL_FIELDS: (keyof Cell)[] = replay ? ['gcRoom', 'webRoom', 'replayUrl'] : ['gcRoom', 'webRoom'];
+
+  // Day-1 rows can seed the rest: later-day urls differ from day 1 only by
+  // the day digit (see mirrorDayUrl). Offer the button while there is at
+  // least one empty later-day field whose day-1 counterpart is filled.
+  const canFillFromDay1 =
+    dayCount > 1 &&
+    SLOTS.some((slot) =>
+      FILL_FIELDS.some((f) => {
+        if (grid[key(slot, 1)][f].trim() === '') return false;
+        for (let d = 2; d <= dayCount; d++) if (grid[key(slot, d)][f].trim() === '') return true;
+        return false;
+      }),
+    );
+
+  function fillFromDay1() {
+    setGrid((p) => {
+      const g = { ...p };
+      for (const slot of SLOTS) {
+        const src = p[key(slot, 1)];
+        for (let d = 2; d <= dayCount; d++) {
+          const cell = { ...g[key(slot, d)] };
+          for (const f of FILL_FIELDS) {
+            if (src[f].trim() !== '' && cell[f].trim() === '') cell[f] = mirrorDayUrl(src[f].trim(), 1, d);
+          }
+          g[key(slot, d)] = cell;
+        }
+      }
+      return g;
+    });
   }
 
   function addDay() {
@@ -157,7 +202,8 @@ export default function RoomsEditor({ funnelId, initialDays, replayEnabled, time
                   <FragmentRow key={day} day={day} cell={c} replay={replay}
                     canRemove={dayCount > 1}
                     onRemove={() => removeDay(day)}
-                    onChange={(f, v) => set(slot, day, f, v)} />
+                    onChange={(f, v) => set(slot, day, f, v)}
+                    onGcBlur={() => autofillWeb(slot, day)} />
                 );
               })}
             </div>
@@ -166,10 +212,19 @@ export default function RoomsEditor({ funnelId, initialDays, replayEnabled, time
       </div>
 
       <div className="mt-2 flex items-center justify-between">
-        <button type="button" onClick={addDay} disabled={dayCount >= MAX_DAYS}
-          className="flex items-center gap-1 text-[12px] font-semibold text-[var(--orange)] disabled:opacity-40">
-          <Plus size={13} /> добавить день
-        </button>
+        <div className="flex items-center gap-4">
+          <button type="button" onClick={addDay} disabled={dayCount >= MAX_DAYS}
+            className="flex items-center gap-1 text-[12px] font-semibold text-[var(--orange)] disabled:opacity-40">
+            <Plus size={13} /> добавить день
+          </button>
+          {canFillFromDay1 && (
+            <button type="button" onClick={fillFromDay1}
+              title="Заполнить пустые дни ссылками дня 1 с заменой номера дня"
+              className="flex items-center gap-1 text-[12px] font-semibold text-[var(--orange)]">
+              <Wand2 size={13} /> Заполнить из дня 1
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           {error && <span role="alert" className="text-[11px] font-medium text-[#B42318]">{error}</span>}
           {dirty && (
@@ -188,10 +243,11 @@ export default function RoomsEditor({ funnelId, initialDays, replayEnabled, time
   );
 }
 
-function FragmentRow({ day, cell, replay, canRemove, onRemove, onChange }: {
+function FragmentRow({ day, cell, replay, canRemove, onRemove, onChange, onGcBlur }: {
   day: number; cell: { gcRoom: string; webRoom: string; replayUrl: string };
   replay: boolean; canRemove: boolean; onRemove: () => void;
   onChange: (field: 'gcRoom' | 'webRoom' | 'replayUrl', value: string) => void;
+  onGcBlur: () => void;
 }) {
   const inp = 'h-7 w-full min-w-0 rounded-[5px] border border-[var(--line-soft)] bg-white px-2 font-mono text-[12px] text-[var(--ink)]';
   return (
@@ -210,7 +266,7 @@ function FragmentRow({ day, cell, replay, canRemove, onRemove, onChange }: {
           </button>
         )}
       </span>
-      <UrlInput className={inp} value={cell.gcRoom} placeholder="gc…" onChange={(v) => onChange('gcRoom', v)} />
+      <UrlInput className={inp} value={cell.gcRoom} placeholder="gc…" onChange={(v) => onChange('gcRoom', v)} onBlur={onGcBlur} />
       <UrlInput className={inp} value={cell.webRoom} placeholder="web…" onChange={(v) => onChange('webRoom', v)} />
       {replay && <UrlInput className={inp} value={cell.replayUrl} placeholder="повтор…" onChange={(v) => onChange('replayUrl', v)} />}
     </>
