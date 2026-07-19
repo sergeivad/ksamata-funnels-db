@@ -86,7 +86,30 @@ export function parseRouteId(raw: string): number | null {
   return /^\d+$/.test(raw) ? Number(raw) : null;
 }
 
+const tagNameSchema = z.string().trim().min(1).max(REF_MAX);
+
+export const tagTemplatePutSchema = z.object({
+  names: z.array(tagNameSchema),
+});
+
+const scenarioOverrideSchema = z.object({
+  add: z.array(tagNameSchema).default([]),
+  remove: z.array(tagNameSchema).default([]),
+});
+
+// All four scenarios optional; unknown keys rejected (strict).
+export const tagsPatchSchema = z
+  .object({
+    reg: scenarioOverrideSchema.optional(),
+    time_15: scenarioOverrideSchema.optional(),
+    time_19: scenarioOverrideSchema.optional(),
+    messenger: scenarioOverrideSchema.optional(),
+  })
+  .strict();
+
 // Inferred TypeScript types
 export type FunnelCreate = z.infer<typeof funnelCreateSchema>;
 export type FunnelUpdate = z.infer<typeof funnelUpdateSchema>;
 export type RefCreate = z.infer<typeof refCreateSchema>;
+export type TagTemplatePut = z.infer<typeof tagTemplatePutSchema>;
+export type TagsPatch = z.infer<typeof tagsPatchSchema>;

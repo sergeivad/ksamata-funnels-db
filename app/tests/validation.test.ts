@@ -1,9 +1,11 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, it } from 'vitest';
 import {
   funnelCreateSchema,
   funnelUpdateSchema,
   refCreateSchema,
   parseRouteId,
+  tagTemplatePutSchema,
+  tagsPatchSchema,
 } from '../src/lib/validation';
 
 const validFunnel = {
@@ -208,5 +210,26 @@ describe('parseRouteId', () => {
     expect(parseRouteId('-1')).toBeNull();
     expect(parseRouteId('')).toBeNull();
     expect(parseRouteId('abc')).toBeNull();
+  });
+});
+
+describe('tagTemplatePutSchema', () => {
+  it('accepts a list of trimmed names', () => {
+    const r = tagTemplatePutSchema.safeParse({ names: ['автоворонки', 'АВ Этап: Регистрация'] });
+    expect(r.success).toBe(true);
+  });
+  it('rejects empty and over-long names', () => {
+    expect(tagTemplatePutSchema.safeParse({ names: [''] }).success).toBe(false);
+    expect(tagTemplatePutSchema.safeParse({ names: ['x'.repeat(121)] }).success).toBe(false);
+  });
+});
+
+describe('tagsPatchSchema', () => {
+  it('accepts a partial per-scenario add/remove map', () => {
+    const r = tagsPatchSchema.safeParse({ reg: { add: ['промо'], remove: ['автоворонки'] } });
+    expect(r.success).toBe(true);
+  });
+  it('rejects unknown scenario keys', () => {
+    expect(tagsPatchSchema.safeParse({ nope: { add: [], remove: [] } }).success).toBe(false);
   });
 });
