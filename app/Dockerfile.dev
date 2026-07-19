@@ -1,0 +1,25 @@
+# ──────────────────────────────────────────────
+# Dev image: Next.js with hot-reload (next dev).
+# Source is bind-mounted at runtime via docker-compose; this image only needs
+# a Linux-native node_modules (better-sqlite3 is compiled here, NOT on the host).
+# ──────────────────────────────────────────────
+FROM node:20-bookworm-slim
+
+# Native build tools required to compile better-sqlite3
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install deps first for layer caching. package*.json rarely changes, so
+# `docker compose up` reuses this layer and skips the native rebuild.
+COPY package.json package-lock.json ./
+RUN npm ci
+
+EXPOSE 3000
+
+# Bind to all interfaces so the port is reachable from the host.
+CMD ["npm", "run", "dev", "--", "-H", "0.0.0.0", "-p", "3000"]

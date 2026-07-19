@@ -27,6 +27,25 @@ npm run build
 
 The local dev server uses `FUNNELS_DB_PATH` when set. Without it, the app code defaults to the repository database path configured in `app/src/db/client.ts`.
 
+## Local Development in Docker
+
+Hot-reload dev stack (run from the repository root):
+
+```sh
+docker compose up            # first run builds the image (compiles better-sqlite3)
+docker compose up --build    # rebuild after changing app/package.json or the lockfile
+docker compose down          # stop
+```
+
+Open http://localhost:3000. Editing files under `app/` hot-reloads inside the
+container (polling is enabled for macOS bind mounts). The container uses your
+real `ksamata_funnels.db` (live-mounted from the repo root at `/data`), so data
+edited in the admin UI persists to your local file.
+
+Config lives in [docker-compose.yml](docker-compose.yml) and
+[app/Dockerfile.dev](app/Dockerfile.dev). This is the dev image; the production
+image (`app/Dockerfile`) is unchanged — see [Deployment](#deployment).
+
 ## Database Notes
 
 Keep `ksamata_funnels.db` at the repository root unless you intentionally update all scripts, tests, seed steps, and environment defaults. Several test fixtures copy this file directly.

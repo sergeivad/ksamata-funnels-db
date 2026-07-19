@@ -1,0 +1,35 @@
+# Local development stack for the Ksamata Funnels admin.
+#
+#   docker compose up          # start (first run builds the image)
+#   docker compose up --build  # rebuild after changing package.json / lockfile
+#   docker compose down        # stop
+#
+# Edit files under ./app on the host — changes hot-reload inside the container.
+# The app uses your real local ./ksamata_funnels.db (live-mounted), so data
+# edited in the UI persists to your repo just like `npm run dev` would.
+services:
+  web:
+    build:
+      context: ./app
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    environment:
+      # Point the app at the DB mounted from the repo root (see volumes below).
+      FUNNELS_DB_PATH: /data/ksamata_funnels.db
+      # macOS bind mounts don't forward fs events — poll for HMR to work.
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+      # Leave empty to disable Basic Auth locally (set "user:pass" to enable).
+      ADMIN_BASIC_AUTH: ""
+    volumes:
+      # Live source for hot-reload.
+      - ./app:/app
+      # Keep the container's Linux-native node_modules (don't let the host's
+      # macOS build shadow the compiled better-sqlite3 binary).
+      - /app/node_modules
+      # Keep the Next.js dev build cache inside the container.
+      - /app/.next
+      # Mount the repo root so the SQLite DB + its WAL/-shm sidecars live on the
+      # host. Directory (not single-file) mount so WAL checkpoints persist.
+      - ./:/data
