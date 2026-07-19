@@ -204,6 +204,37 @@ export const funnelBlockItems = sqliteTable(
   }),
 );
 
+// ─── tag_templates / funnel_tag_overrides (Phase 5) ──────────────────────────
+
+export const tagTemplates = sqliteTable(
+  'tag_templates',
+  {
+    id:       integer('id').primaryKey({ autoIncrement: true }),
+    scenario: text('scenario', { enum: ['reg', 'time_15', 'time_19', 'messenger'] }).notNull(),
+    name:     text('name').notNull(),
+    position: integer('position').notNull().default(0),
+  },
+  (t) => ({
+    scenarioIdx: index('idx_tag_templates_scenario').on(t.scenario),
+  }),
+);
+
+export const funnelTagOverrides = sqliteTable(
+  'funnel_tag_overrides',
+  {
+    id:       integer('id').primaryKey({ autoIncrement: true }),
+    funnelId: integer('funnel_id').notNull().references(() => funnels.id, { onDelete: 'cascade' }),
+    tagType:  text('tag_type', { enum: ['reg', 'time_15', 'time_19', 'messenger'] }).notNull(),
+    name:     text('name').notNull(),
+    op:       text('op', { enum: ['add', 'remove'] }).notNull(),
+    position: integer('position').notNull().default(0),
+  },
+  (t) => ({
+    uniq:      uniqueIndex('funnel_tag_overrides_unique').on(t.funnelId, t.tagType, t.name),
+    funnelIdx: index('idx_fto_funnel').on(t.funnelId),
+  }),
+);
+
 // ─── Type exports ─────────────────────────────────────────────────────────────
 
 export type Source           = typeof sources.$inferSelect;
@@ -221,3 +252,5 @@ export type Direction        = typeof directions.$inferSelect;
 export type NewFunnel        = typeof funnels.$inferInsert;
 export type FunnelBlock     = typeof funnelBlocks.$inferSelect;
 export type FunnelBlockItem = typeof funnelBlockItems.$inferSelect;
+export type TagTemplate       = typeof tagTemplates.$inferSelect;
+export type FunnelTagOverride = typeof funnelTagOverrides.$inferSelect;
