@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { FUNNEL_STATUS_VALUES } from './status';
 
 // Matches ^f\d+$ or empty string ''
 const frontCodeSchema = z
@@ -49,7 +50,7 @@ export const REF_MAX = 120;
 export const funnelCreateSchema = z.object({
   num: z.number().int().positive(),
   frontCode: frontCodeSchema,
-  status: z.enum(['active', 'draft']),
+  status: z.enum(FUNNEL_STATUS_VALUES),
   productName: z.string().max(200),
   variant: z.string().max(200),
   landingUrl: landingUrlSchema,

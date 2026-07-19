@@ -57,6 +57,12 @@ describe('funnelCreateSchema', () => {
     ).toBe(true);
   });
 
+  test('status="archive" passes', () => {
+    expect(
+      funnelCreateSchema.safeParse({ ...validFunnel, status: 'archive' }).success
+    ).toBe(true);
+  });
+
   test('empty product is rejected', () => {
     expect(
       funnelCreateSchema.safeParse({ ...validFunnel, product: '' }).success
@@ -123,6 +129,12 @@ describe('funnelUpdateSchema', () => {
   test('partial valid update passes', () => {
     expect(
       funnelUpdateSchema.safeParse({ status: 'draft', productName: 'Позвоночник' }).success
+    ).toBe(true);
+  });
+
+  test('status="archive" passes in partial update', () => {
+    expect(
+      funnelUpdateSchema.safeParse({ status: 'archive' }).success
     ).toBe(true);
   });
 
