@@ -95,6 +95,30 @@ describe('computeTagSet', () => {
     expect(s.messenger.tags.map((t) => t.name)).toContain('АВ Этап: Мессенджер');
     expect(s.time_15.tags.map((t) => t.name)).toContain('АВ Время: 15');
   });
+
+  test('an axis-prefixed template static is not emitted as a chip (axis layer only)', () => {
+    const badTemplate: TemplateMap = {
+      ...template,
+      reg: [...template.reg, 'АВ Продукт: СЛУЧАЙНЫЙ'],
+    };
+    const s = computeTagSet(badTemplate, axes, emptyOverrides());
+    // The real axis value still comes through once, from the axis layer.
+    expect(s.reg.tags.filter((t) => t.name.startsWith('АВ Продукт: '))).toEqual([
+      { name: 'АВ Продукт: ТКМ', source: 'axis' },
+    ]);
+    expect(s.reg.tags.map((t) => t.name)).not.toContain('АВ Продукт: СЛУЧАЙНЫЙ');
+  });
+
+  test('an add of an axis-prefixed name is dropped (axis layer still emits the real value)', () => {
+    const ov = emptyOverrides();
+    ov.reg.add = ['АВ Продукт: WRONG'];
+    const s = computeTagSet(template, axes, ov);
+    expect(s.reg.tags.map((t) => t.name)).not.toContain('АВ Продукт: WRONG');
+    expect(s.reg.tags.find((t) => t.name === 'АВ Продукт: ТКМ')).toEqual({
+      name: 'АВ Продукт: ТКМ',
+      source: 'axis',
+    });
+  });
 });
 
 describe('tagNamesToAxes (unchanged)', () => {

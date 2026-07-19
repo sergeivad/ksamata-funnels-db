@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Wand2, Copy, Check, AlertCircle, X, RotateCcw } from 'lucide-react';
 import type { FunnelDetail } from '@/lib/funnels';
 import { copyText } from '@/lib/clipboard';
+import { isAxisTag } from '@/lib/ab-tags';
 import Segmented from './Segmented';
 import RefSelect from './RefSelect';
 import { STATUS_META } from '@/lib/status';
@@ -143,6 +144,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   function addTag() {
     const name = tagInput.trim();
     if (!name) return;
+    if (isAxisTag(name)) return; // axis tags are auto-managed — never manually added
     setOv((prev) => {
       const s = prev[activeScenario];
       // Re-adding a suppressed default = restore; a brand-new name = custom add.

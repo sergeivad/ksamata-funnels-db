@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import { isAxisTag } from '@/lib/ab-tags';
 
 interface Props {
   label: string;
@@ -21,6 +22,7 @@ export default function TagTemplateEditor({ label, scenario, initial }: Props) {
   function add() {
     const n = input.trim();
     if (!n || names.includes(n)) { setInput(''); return; }
+    if (isAxisTag(n)) return; // axis tags are auto-managed — never manually added
     setNames([...names, n]);
     setInput('');
   }

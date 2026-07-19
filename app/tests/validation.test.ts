@@ -222,6 +222,11 @@ describe('tagTemplatePutSchema', () => {
     expect(tagTemplatePutSchema.safeParse({ names: [''] }).success).toBe(false);
     expect(tagTemplatePutSchema.safeParse({ names: ['x'.repeat(121)] }).success).toBe(false);
   });
+  it('rejects an axis-prefixed name (axis tags are auto-managed, not template-editable)', () => {
+    expect(
+      tagTemplatePutSchema.safeParse({ names: ['автоворонки', 'АВ Продукт: Нечто'] }).success
+    ).toBe(false);
+  });
 });
 
 describe('tagsPatchSchema', () => {
@@ -231,5 +236,13 @@ describe('tagsPatchSchema', () => {
   });
   it('rejects unknown scenario keys', () => {
     expect(tagsPatchSchema.safeParse({ nope: { add: [], remove: [] } }).success).toBe(false);
+  });
+  it('rejects an axis-prefixed name in add', () => {
+    const r = tagsPatchSchema.safeParse({ reg: { add: ['АВ Продукт: Нечто'], remove: [] } });
+    expect(r.success).toBe(false);
+  });
+  it('still accepts an axis-prefixed name in remove (dropped defensively downstream)', () => {
+    const r = tagsPatchSchema.safeParse({ reg: { add: [], remove: ['АВ Продукт: Нечто'] } });
+    expect(r.success).toBe(true);
   });
 });

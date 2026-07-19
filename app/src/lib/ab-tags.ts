@@ -73,13 +73,17 @@ export function computeTagSet(template: TemplateMap, axes: AbAxes, overrides: Ov
     };
 
     for (const name of staticTags) {
+      if (isAxisTag(name)) continue; // axis tags only ever enter via the axis layer
       if (removeSet.has(name)) continue;
       pushIfNew(name, 'default');
     }
     for (const name of axisTags) pushIfNew(name, 'axis');
-    for (const name of ov.add) pushIfNew(name, 'custom');
+    for (const name of ov.add) {
+      if (isAxisTag(name)) continue; // axis tags only ever enter via the axis layer
+      pushIfNew(name, 'custom');
+    }
 
-    const suppressed = staticTags.filter((n) => removeSet.has(n));
+    const suppressed = staticTags.filter((n) => !isAxisTag(n) && removeSet.has(n));
     out[scenario] = { tags, suppressed };
   }
 
