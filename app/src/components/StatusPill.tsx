@@ -1,18 +1,16 @@
+import { isFunnelStatus, STATUS_META } from '@/lib/status';
+
 interface StatusPillProps {
-  status: 'active' | 'draft';
+  // string, а не FunnelStatus: часть источников (FunnelDetail.status) типизированы
+  // как string; неизвестное значение безопасно падает в «Черновик».
+  status: string;
 }
 
 export default function StatusPill({ status }: StatusPillProps) {
-  if (status === 'active') {
-    return (
-      <span className="rounded-full bg-[#DFF3E7] px-2 py-1 text-[11px] font-semibold text-[#087443]">
-        Активна
-      </span>
-    );
-  }
+  const meta = isFunnelStatus(status) ? STATUS_META[status] : STATUS_META.draft;
   return (
-    <span className="rounded-full bg-[#E8E4DA] px-2 py-1 text-[11px] font-semibold text-[#5E5A52]">
-      Черновик
+    <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${meta.className}`}>
+      {meta.label}
     </span>
   );
 }

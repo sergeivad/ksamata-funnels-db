@@ -41,7 +41,7 @@ export default function FunnelCompactView({ funnel, initialDays, landings, rest,
         <span className={`text-[13px] font-medium ${allEmpty ? 'text-[var(--faint)]' : 'text-[var(--ink)]'}`}>
           {allEmpty ? 'Новая воронка' : funnel.name}
         </span>
-        <StatusPill status={funnel.status === 'active' ? 'active' : 'draft'} />
+        <StatusPill status={funnel.status} />
         {funnel.comment.trim() !== '' && (
           <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--muted)]" title={funnel.comment}>
             — {funnel.comment}
