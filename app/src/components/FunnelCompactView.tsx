@@ -7,7 +7,7 @@ import type { FunnelDetail } from '@/lib/funnels';
 import type { DayCell } from '@/lib/funnel-days';
 import type { BlockState } from '@/lib/funnel-blocks';
 import { getBlockDef } from '@/lib/blocks';
-import { groupDaysByDay, visibleBlocks, isOpenableUrl } from '@/lib/funnel-compact';
+import { groupDaysByDay, visibleBlocks, blockHasLabels, isOpenableUrl } from '@/lib/funnel-compact';
 import StatusPill from './StatusPill';
 
 interface Props {
@@ -15,6 +15,8 @@ interface Props {
   initialDays: DayCell[];
   landings: BlockState;
   rest: BlockState[];
+  /** Switches the card to «Редактирование» — offered when there's nothing to view yet. */
+  onSwitchToEdit?: () => void;
 }
 
 /**
@@ -24,7 +26,7 @@ interface Props {
  * Pulls exclusively from the initial server-fetched props: it never reflects
  * unsaved edits made in the "Редактирование" sections (see FunnelSections).
  */
-export default function FunnelCompactView({ funnel, initialDays, landings, rest }: Props) {
+export default function FunnelCompactView({ funnel, initialDays, landings, rest, onSwitchToEdit }: Props) {
   const dayGroups = groupDaysByDay(initialDays);
   const blocks = visibleBlocks([landings, ...rest]);
   const allEmpty = !funnel.axes.product && !funnel.axes.contractor && !funnel.axes.channel && !funnel.axes.direction;
@@ -79,7 +81,18 @@ export default function FunnelCompactView({ funnel, initialDays, landings, rest 
       )}
 
       {dayGroups.length === 0 && blocks.length === 0 && (
-        <div className="text-[11px] text-[var(--faint)]">Нет заполненных комнат или блоков</div>
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--faint)]">
+          Нет заполненных комнат или блоков
+          {onSwitchToEdit && (
+            <button
+              type="button"
+              onClick={onSwitchToEdit}
+              className="rounded-[6px] border border-[var(--line)] bg-[var(--chip)] px-2 py-0.5 text-[11px] text-[var(--muted)] transition hover:text-[var(--ink)]"
+            >
+              Перейти к редактированию
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -89,9 +102,9 @@ function RoomSlotCell({ slot, replayEnabled }: { slot?: { gcRoom: string; webRoo
   if (!slot) return <span />;
   return (
     <div className="flex min-w-0 flex-col">
-      {slot.gcRoom.trim() !== '' && <CopyableUrlRow label="GC" url={slot.gcRoom} />}
-      {slot.webRoom.trim() !== '' && <CopyableUrlRow label="Web" url={slot.webRoom} />}
-      {replayEnabled && slot.replayUrl.trim() !== '' && <CopyableUrlRow label="Повтор" url={slot.replayUrl} />}
+      {slot.gcRoom.trim() !== '' && <CopyableUrlRow label="GC" url={slot.gcRoom} narrowLabel />}
+      {slot.webRoom.trim() !== '' && <CopyableUrlRow label="Web" url={slot.webRoom} narrowLabel />}
+      {replayEnabled && slot.replayUrl.trim() !== '' && <CopyableUrlRow label="Повтор" url={slot.replayUrl} narrowLabel />}
     </div>
   );
 }
@@ -102,6 +115,9 @@ function CompactBlock({ block, timeLabelA, timeLabelB }: { block: BlockState; ti
   const Icon = (Icons as any)[def.icon] ?? Icons.Link;
 
   const rows = block.items.filter((it) => it.url.trim() !== '');
+  // Show the label column only when the block actually uses labels — a column
+  // of "—" placeholders (e.g. Процессы with bare URLs) just wastes width.
+  const showLabels = def.fields === 2 && blockHasLabels(block.items);
 
   return (
     <div className="mb-3 break-inside-avoid-column rounded-[10px] border border-[var(--line-soft)] bg-[var(--paper)] p-2.5">
@@ -112,7 +128,7 @@ function CompactBlock({ block, timeLabelA, timeLabelB }: { block: BlockState; ti
       {block.mode === 'common' ? (
         <div className="flex flex-col">
           {rows.map((it, i) => (
-            <CopyableUrlRow key={i} label={def.fields === 2 ? it.label : undefined} url={it.url} />
+            <CopyableUrlRow key={i} label={showLabels ? it.label : undefined} url={it.url} />
           ))}
         </div>
       ) : (
@@ -127,7 +143,7 @@ function CompactBlock({ block, timeLabelA, timeLabelB }: { block: BlockState; ti
                 </div>
                 <div className="flex flex-col">
                   {slotRows.map((it, i) => (
-                    <CopyableUrlRow key={i} label={def.fields === 2 ? it.label : undefined} url={it.url} />
+                    <CopyableUrlRow key={i} label={showLabels ? it.label : undefined} url={it.url} />
                   ))}
                 </div>
               </div>
@@ -139,7 +155,7 @@ function CompactBlock({ block, timeLabelA, timeLabelB }: { block: BlockState; ti
   );
 }
 
-function CopyableUrlRow({ label, url }: { label?: string; url: string }) {
+function CopyableUrlRow({ label, url, narrowLabel = false }: { label?: string; url: string; narrowLabel?: boolean }) {
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const trimmed = url.trim();
@@ -161,7 +177,7 @@ function CopyableUrlRow({ label, url }: { label?: string; url: string }) {
     <div className="flex h-6 min-w-0 items-center gap-1.5 border-b border-[var(--line-soft)] last:border-b-0">
       {label !== undefined && (
         <span
-          className={`w-[70px] shrink-0 truncate text-[10px] ${label.trim() === '' ? 'text-[var(--faint)]' : 'text-[var(--muted)]'}`}
+          className={`${narrowLabel ? 'w-[48px]' : 'w-[128px]'} shrink-0 truncate text-[10px] ${label.trim() === '' ? 'text-[var(--faint)]' : 'text-[var(--muted)]'}`}
           title={label || undefined}
         >
           {label.trim() || '—'}

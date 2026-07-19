@@ -40,6 +40,15 @@ export function visibleBlocks(blocks: BlockState[]): BlockState[] {
   return blocks.filter((b) => b.enabled && blockHasContent(b.items));
 }
 
+/**
+ * True if any visible (non-empty url) item carries a non-empty label.
+ * When false, the compact view drops the label column entirely instead of
+ * rendering a column of "—" placeholders.
+ */
+export function blockHasLabels(items: BlockItem[]): boolean {
+  return items.some((it) => it.url.trim() !== '' && it.label.trim() !== '');
+}
+
 /** Matches http(s) URLs eligible for click-to-open (same rule as BlockListField). */
 export function isOpenableUrl(url: string): boolean {
   return /^https?:\/\//i.test(url.trim());

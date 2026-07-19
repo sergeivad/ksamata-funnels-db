@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { groupDaysByDay, blockHasContent, visibleBlocks, isOpenableUrl } from '../src/lib/funnel-compact';
+import { groupDaysByDay, blockHasContent, visibleBlocks, blockHasLabels, isOpenableUrl } from '../src/lib/funnel-compact';
 import type { DayCell } from '../src/lib/funnel-days';
 import type { BlockState } from '../src/lib/funnel-blocks';
 
@@ -51,6 +51,26 @@ describe('blockHasContent / visibleBlocks', () => {
     ];
     const visible = visibleBlocks(blocks);
     expect(visible.map((b) => b.kind)).toEqual(['landings']);
+  });
+});
+
+describe('blockHasLabels', () => {
+  test('false when no item has a label', () => {
+    expect(blockHasLabels([
+      { slot: null, label: '', url: 'https://a.test' },
+      { slot: null, label: '  ', url: 'https://b.test' },
+    ])).toBe(false);
+  });
+
+  test('true when a filled row carries a label', () => {
+    expect(blockHasLabels([
+      { slot: null, label: '', url: 'https://a.test' },
+      { slot: null, label: 'Дашборд продаж', url: 'https://b.test' },
+    ])).toBe(true);
+  });
+
+  test('ignores labels on rows with empty urls', () => {
+    expect(blockHasLabels([{ slot: null, label: 'черновик', url: '' }])).toBe(false);
   });
 });
 

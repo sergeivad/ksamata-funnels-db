@@ -6,6 +6,7 @@ import type { FunnelDetail } from '@/lib/funnels';
 import type { DayCell } from '@/lib/funnel-days';
 import type { BlockState } from '@/lib/funnel-blocks';
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard';
+import { groupDaysByDay, visibleBlocks } from '@/lib/funnel-compact';
 import FunnelIdentity from './FunnelIdentity';
 import RoomsEditor from './RoomsEditor';
 import BlockEditor from './BlockEditor';
@@ -46,15 +47,28 @@ export default function FunnelSections({ funnel, funnelId, initialDays, landings
   const anyDirty = useMemo(() => Object.values(dirtyMap).some(Boolean), [dirtyMap]);
   useUnsavedGuard(anyDirty);
 
+  // A card with no rooms and no filled blocks has nothing to show in
+  // «Просмотр» — e.g. right after «Новая воронка» / «Дублировать» — so it
+  // always opens in «Редактирование», ignoring the stored preference.
+  const cardIsEmpty =
+    groupDaysByDay(initialDays).length === 0 && visibleBlocks([landings, ...rest]).length === 0;
+
   // Load the last-used card mode from localStorage on mount (client-only).
-  // Defaults to 'edit' so existing users' workflow isn't disrupted.
+  // First-time visitors get «Просмотр»: most employees come to grab links,
+  // not to edit. The choice is remembered per browser.
   useEffect(() => {
+    if (cardIsEmpty) {
+      setCardMode('edit');
+      return;
+    }
+    let stored: string | null = null;
     try {
-      const stored = localStorage.getItem(LS_CARD_MODE_KEY);
-      if (isCardMode(stored)) setCardMode(stored);
+      stored = localStorage.getItem(LS_CARD_MODE_KEY);
     } catch {
       // localStorage unavailable — ignore
     }
+    setCardMode(isCardMode(stored) ? stored : 'view');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleCardModeChange(value: string) {
@@ -87,7 +101,14 @@ export default function FunnelSections({ funnel, funnelId, initialDays, landings
       </div>
 
       {cardMode === 'view' && (
-        <FunnelCompactView funnel={funnel} initialDays={initialDays} landings={landings} rest={rest} />
+        <FunnelCompactView
+          funnel={funnel}
+          initialDays={initialDays}
+          landings={landings}
+          rest={rest}
+          // Contextual jump, not a preference change — don't persist it.
+          onSwitchToEdit={() => setCardMode('edit')}
+        />
       )}
 
       {/* Kept mounted (just hidden) rather than unmounted on mode switch, so
