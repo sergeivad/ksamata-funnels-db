@@ -22,6 +22,11 @@ sqlite.pragma('foreign_keys = ON');
 runMigratePhase3(sqlite);
 runMigrateMessengerTagType(sqlite);
 runMigratePhase5(sqlite);
+// The real DB this fixture is copied from has already been through the
+// legacy-overrides backfill in production (Task 12 bakes the marker into
+// the committed ksamata_funnels.db). Clear it here so this test exercises
+// a fresh first run regardless of the source DB's own migration state.
+sqlite.prepare(`DELETE FROM schema_migrations WHERE name = 'phase5_legacy_overrides_backfill'`).run();
 const db = drizzle(sqlite, { schema });
 
 afterAll(() => { sqlite.close(); if (existsSync(TMP_DB)) unlinkSync(TMP_DB); });

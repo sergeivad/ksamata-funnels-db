@@ -27,4 +27,14 @@ if [ -n "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] Phase-3 migration done."
 fi
 
+# Apply Phase-5 migration (idempotent: CREATE IF NOT EXISTS + marker-gated seed).
+if [ -n "$FUNNELS_DB_PATH" ]; then
+  echo "[entrypoint] Running Phase-5 migration against $FUNNELS_DB_PATH"
+  node /app/migrate-phase5.cjs
+  echo "[entrypoint] Phase-5 migration done."
+  echo "[entrypoint] Backfilling legacy tags into overrides against $FUNNELS_DB_PATH"
+  node /app/backfill-legacy-tag-overrides.cjs
+  echo "[entrypoint] Legacy tag-override backfill done."
+fi
+
 exec node server.js
