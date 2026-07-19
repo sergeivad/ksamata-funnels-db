@@ -15,6 +15,7 @@ import * as schema from '../src/db/schema';
 import { listFunnels } from '../src/lib/funnels';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
+import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { runBackfillMessengerTags } from '../scripts/backfill-messenger-tags';
 
 // __dirname = app/tests/ → go up 2 levels to repo root for the DB
@@ -29,6 +30,7 @@ sqlite.pragma('journal_mode = WAL');
 sqlite.pragma('foreign_keys = ON');
 runMigratePhase3(sqlite);
 runMigrateMessengerTagType(sqlite);
+runMigratePhase5(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => {

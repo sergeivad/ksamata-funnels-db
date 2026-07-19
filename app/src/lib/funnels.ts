@@ -7,11 +7,12 @@
  * This module NEVER imports the singleton `db` from client.ts.
  */
 
-import { eq, sql, inArray, like, notLike, and } from 'drizzle-orm';
+import { eq, sql, and } from 'drizzle-orm';
 import { type AnyDB, type DB } from '../db/client';
 import {
   funnels,
   funnelTags,
+  funnelTagOverrides,
   funnelDays,
   funnelBlocks,
   funnelBlockItems,
@@ -19,7 +20,16 @@ import {
   tags,
   type Funnel,
 } from '../db/schema';
-import { type AbAxes, axesToTagNames, tagNamesToAxes } from './ab-tags';
+import {
+  type AbAxes,
+  type TagSets,
+  type Scenario,
+  SCENARIOS,
+  computeTagSet,
+  tagNamesToAxes,
+} from './ab-tags';
+import { listTemplate } from './tag-templates';
+import { listOverrides } from './tag-overrides';
 import { createRef, listRefs } from './refs';
 import { type FunnelCreate, type FunnelUpdate } from './validation';
 
@@ -51,6 +61,7 @@ export type FunnelDetail = FunnelListItem & {
   timeLabelA: string;
   timeLabelB: string;
   roomsReplayEnabled: boolean;
+  tagSets: TagSets;
 };
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -70,50 +81,29 @@ function getAxesForFunnel(db: AnyDB, funnelId: number): AbAxes {
 }
 
 /**
- * Sync AV tags for a funnel for all three tag types.
- * - Deletes existing funnelTags whose tag.name starts with 'АВ ' for this funnel.
- * - Re-inserts based on axesToTagNames(axes).
- * - Legacy non-AV tags are preserved.
- *
+ * Rebuild a funnel's materialized tags in `funnel_tags` from the three layers:
+ * global template + axis tags + per-funnel overrides (see computeTagSet).
+ * Wipes ALL funnel_tags for the funnel and rewrites — the effective set is
+ * self-contained. Axes MUST be passed by the caller, read BEFORE any rewrite
+ * (channel/direction live only in these tags).
  * Must be called INSIDE a transaction.
  */
-function syncAvTags(db: AnyDB, funnelId: number, axes: AbAxes): void {
-  // Find all funnel_tags for this funnel that join to an 'АВ '-prefixed tag
-  const existingAvTags = db
-    .select({ id: funnelTags.id })
-    .from(funnelTags)
-    .innerJoin(tags, eq(funnelTags.tagId, tags.id))
-    .where(
-      and(
-        eq(funnelTags.funnelId, funnelId),
-        like(tags.name, 'АВ %'),
-      )
-    )
-    .all();
+function materializeFunnelTags(db: AnyDB, funnelId: number, axes: AbAxes): void {
+  const template = listTemplate(db);
+  const overrides = listOverrides(db, funnelId);
+  const sets: TagSets = computeTagSet(template, axes, overrides);
 
-  if (existingAvTags.length > 0) {
-    const ids = (existingAvTags as { id: number }[]).map((r) => r.id);
-    db.delete(funnelTags).where(inArray(funnelTags.id, ids)).run();
-  }
+  db.delete(funnelTags).where(eq(funnelTags.funnelId, funnelId)).run();
 
-  // Build new tag sets
-  const tagSets = axesToTagNames(axes);
-
-  const insertForType = (names: string[], tagType: 'reg' | 'time_19' | 'time_15' | 'messenger') => {
-    names.forEach((name, position) => {
-      const tagRow = createRef(db, 'tags', name);
-      db
-        .insert(funnelTags)
-        .values({ funnelId, tagId: tagRow.id, tagType, position })
+  for (const scenario of SCENARIOS) {
+    sets[scenario].tags.forEach((chip, position) => {
+      const tagRow = createRef(db, 'tags', chip.name);
+      db.insert(funnelTags)
+        .values({ funnelId, tagId: tagRow.id, tagType: scenario as Scenario, position })
         .onConflictDoNothing()
         .run();
     });
-  };
-
-  insertForType(tagSets.reg, 'reg');
-  insertForType(tagSets.time19, 'time_19');
-  insertForType(tagSets.time15, 'time_15');
-  insertForType(tagSets.messenger, 'messenger');
+  }
 }
 
 /**
@@ -170,6 +160,9 @@ export function getFunnel(db: DB, id: number): FunnelDetail | null {
   if (!row) return null;
 
   const axes = getAxesForFunnel(db, row.id);
+  const template = listTemplate(db);
+  const overrides = listOverrides(db, row.id);
+  const tagSets = computeTagSet(template, axes, overrides);
   return {
     id:           row.id,
     num:          row.num,
@@ -188,6 +181,7 @@ export function getFunnel(db: DB, id: number): FunnelDetail | null {
     timeLabelA:   row.timeLabelA   ?? '15:00',
     timeLabelB:   row.timeLabelB   ?? '19:00',
     roomsReplayEnabled: (row.roomsReplayEnabled ?? 0) === 1,
+    tagSets,
     axes,
   };
 }
@@ -242,8 +236,8 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
       .returning()
       .get() as Funnel;
 
-    // Sync AV tags
-    syncAvTags(tx, inserted.id, axes);
+    // Materialize AV tags
+    materializeFunnelTags(tx, inserted.id, axes);
 
     createdFunnel = {
       id:          inserted.id,
@@ -327,7 +321,10 @@ export function createDraftFunnel(db: DB): FunnelListItem {
 /**
  * PATCH /api/funnels/[id] — update scalar fields and/or re-sync axes.
  * Returns null if funnel not found.
- * Preserves non-AV tags when axes are re-synced.
+ * When axes are re-synced, funnel_tags is fully re-materialized from the
+ * layer model (template + axes + overrides, see materializeFunnelTags) —
+ * per-funnel custom tags survive only via the override 'add' layer, not as
+ * raw funnel_tags rows.
  */
 export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelListItem | null {
   const existing = db.select().from(funnels).where(eq(funnels.id, id)).get();
@@ -414,7 +411,7 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
         channel:    data.channel    ?? currentAxes.channel,
         direction:  data.direction  ?? currentAxes.direction,
       };
-      syncAvTags(tx, id, axes);
+      materializeFunnelTags(tx, id, axes);
     }
 
     const finalRow = tx.select().from(funnels).where(eq(funnels.id, id)).get()!;
@@ -447,9 +444,24 @@ export function resyncFunnelAvTags(db: DB, id: number): boolean {
   if (!existing) return false;
   db.transaction((tx) => {
     const axes = getAxesForFunnel(tx, id);
-    syncAvTags(tx, id, axes);
+    materializeFunnelTags(tx, id, axes);
   });
   return true;
+}
+
+/**
+ * Re-materialize every funnel's tags. Used after a global template change so
+ * new defaults propagate everywhere; per-funnel overrides are preserved
+ * (they are read fresh inside materializeFunnelTags). Cheap at this DB's scale.
+ */
+export function resyncAllFunnels(db: DB): void {
+  const rows = db.select({ id: funnels.id }).from(funnels).all() as { id: number }[];
+  db.transaction((tx) => {
+    for (const { id } of rows) {
+      const axes = getAxesForFunnel(tx, id);
+      materializeFunnelTags(tx, id, axes);
+    }
+  });
 }
 
 /**
@@ -504,17 +516,22 @@ function copyFunnelChildren(tx: AnyDB, srcId: number, dstId: number): void {
     tx.insert(salebotConfigs).values({ ...rest, funnelId: dstId }).run();
   }
 
-  // Legacy non-AV funnel_tags. AV tags are re-synced from axes by the caller,
-  // but any manually-attached non-AV tags would otherwise be silently dropped.
-  const legacyTags = tx
-    .select({ tagId: funnelTags.tagId, tagType: funnelTags.tagType, position: funnelTags.position })
-    .from(funnelTags)
-    .innerJoin(tags, eq(funnelTags.tagId, tags.id))
-    .where(and(eq(funnelTags.funnelId, srcId), notLike(tags.name, 'АВ %')))
-    .all() as { tagId: number; tagType: 'reg' | 'time_19' | 'time_15' | 'messenger'; position: number }[];
-  for (const t of legacyTags) {
-    tx.insert(funnelTags)
-      .values({ funnelId: dstId, tagId: t.tagId, tagType: t.tagType, position: t.position })
+  // Copy per-funnel tag overrides so a duplicate keeps the source's custom
+  // additions and removed defaults (AV tags themselves are re-materialized
+  // from the copied axes by the caller).
+  const overrideRows = tx
+    .select({
+      tagType: funnelTagOverrides.tagType,
+      name: funnelTagOverrides.name,
+      op: funnelTagOverrides.op,
+      position: funnelTagOverrides.position,
+    })
+    .from(funnelTagOverrides)
+    .where(eq(funnelTagOverrides.funnelId, srcId))
+    .all() as { tagType: 'reg' | 'time_15' | 'time_19' | 'messenger'; name: string; op: 'add' | 'remove'; position: number }[];
+  for (const o of overrideRows) {
+    tx.insert(funnelTagOverrides)
+      .values({ funnelId: dstId, tagType: o.tagType, name: o.name, op: o.op, position: o.position })
       .onConflictDoNothing()
       .run();
   }
@@ -562,11 +579,12 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
       .returning()
       .get() as Funnel;
 
-    // Sync AV tags from source axes
-    syncAvTags(tx, inserted.id, sourceAxes);
-
     // Deep-copy child rows so a duplicate is a faithful copy, not an empty draft.
+    // Must run BEFORE materialize so the copied overrides are applied.
     copyFunnelChildren(tx, id, inserted.id);
+
+    // Materialize AV tags from source axes (reads the just-copied overrides)
+    materializeFunnelTags(tx, inserted.id, sourceAxes);
 
     return {
       id:          inserted.id,

@@ -23,8 +23,10 @@ import {
 } from '../src/lib/funnels';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
+import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { replaceDays, listDays } from '../src/lib/funnel-days';
 import { replaceBlock, getBlock } from '../src/lib/funnel-blocks';
+import { replaceOverrides } from '../src/lib/tag-overrides';
 
 // __dirname = app/tests/ → go up 2 levels to repo root for the DB
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
@@ -38,6 +40,7 @@ sqlite.pragma('journal_mode = WAL');
 sqlite.pragma('foreign_keys = ON');
 runMigratePhase3(sqlite);
 runMigrateMessengerTagType(sqlite);
+runMigratePhase5(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => {
@@ -180,26 +183,22 @@ describe('updateFunnel', () => {
     expect(updated!.status).toBe('draft');
   });
 
-  it('PATCH axes re-syncs: old AV product tag gone, new present', () => {
+  it('PATCH axes re-syncs: old AV product tag gone, new present, custom override tag survives', () => {
     const list = listFunnels(testDb);
     const found = list.find((f) => f.num === 9900)!;
 
-    // Attach a legacy (non-AV) tag to this funnel
-    const legacyTagName = 'LEGACY_TAG_NOT_AV';
-    const { tags: tagsTable, funnelTags: funnelTagsTable } = schema;
-    const { eq } = require('drizzle-orm');
-
-    // Insert legacy tag into tags table
-    testDb.insert(tagsTable).values({ name: legacyTagName }).run();
-    const legacyTag = testDb.select().from(tagsTable).where(eq(tagsTable.name, legacyTagName)).get()!;
-
-    // Insert into funnelTags with type 'reg'
-    testDb.insert(funnelTagsTable).values({
-      funnelId: found.id,
-      tagId: legacyTag.id,
-      tagType: 'reg',
-      position: 99,
-    }).run();
+    // Under the materialize-from-layers model (Variant A), a persistent extra
+    // tag is attached via the per-funnel override 'add' layer — NOT by a raw
+    // funnel_tags insert, which materializeFunnelTags now wipes wholesale on
+    // every re-sync (see copyFunnelChildren's override-copy for the analogous
+    // duplicate-time behavior).
+    const customTagName = 'LEGACY_TAG_NOT_AV';
+    replaceOverrides(testDb, found.id, {
+      reg: { add: [customTagName], remove: [] },
+      time_15: { add: [], remove: [] },
+      time_19: { add: [], remove: [] },
+      messenger: { add: [], remove: [] },
+    });
 
     // Now patch axes: change product from ТКМ to БОО
     updateFunnel(testDb, found.id, {
@@ -213,18 +212,11 @@ describe('updateFunnel', () => {
     expect(updated!.axes.product).toBe('БОО');
     expect(updated!.axes.contractor).toBe('НИМБ');
 
-    // Legacy tag MUST still be there (non-AV tags are preserved)
-    const remainingTags = testDb
-      .select()
-      .from(funnelTagsTable)
-      .where(eq(funnelTagsTable.funnelId, found.id))
-      .all();
-    const remainingTagIds = remainingTags.map((t) => t.tagId);
-
-    const allTags = testDb.select().from(tagsTable).all();
-    const legacyTagRow = allTags.find((t) => t.name === legacyTagName);
-    expect(legacyTagRow).toBeDefined();
-    expect(remainingTagIds).toContain(legacyTagRow!.id);
+    // Custom override-added tag MUST still be there (overrides survive a re-materialize)
+    const names = updated!.tagSets.reg.tags.map((t) => t.name);
+    expect(names).toContain(customTagName);
+    expect(names).toContain('АВ Продукт: БОО');
+    expect(names).not.toContain('АВ Продукт: ТКМ');
   });
 
   it('returns null for non-existent funnel', () => {
