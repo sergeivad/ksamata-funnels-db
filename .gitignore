@@ -35,3 +35,7 @@ ksamata-leak-funnels/
 
 # SDD scratch
 .superpowers/
+
+# DB backups from data-actualization runs
+ksamata_funnels.db.bak_*
+srv_ksamata_funnels.db*

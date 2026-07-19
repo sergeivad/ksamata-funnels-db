@@ -2,6 +2,10 @@
 
 Internal service for collecting, normalizing, and editing Ksamata autofunnel data with a convenient admin UI.
 
+> **AI agents & contributors:** [CLAUDE.md](CLAUDE.md) is the canonical guide
+> (architecture, data model, migrations, auth, conventions). This README is a
+> high-level orientation.
+
 ## Current Shape
 
 - `app/` - Next.js 15 admin application, API routes, Drizzle schema, tests, Docker files.
@@ -54,4 +58,10 @@ SQLite WAL sidecars (`*.db-wal`, `*.db-shm`) are ignored. Before copying or baki
 
 ## Deployment
 
-Dokploy deployment notes live in `app/DEPLOY.md`. The Docker image seeds `/data/ksamata_funnels.db` on first start and runs idempotent Phase 2/Phase 3 migrations through `app/docker-entrypoint.sh`.
+Dokploy deployment notes live in [app/DEPLOY.md](app/DEPLOY.md). The production
+Docker image seeds `/data/ksamata_funnels.db` on first start, then on every start
+runs the idempotent migration chain (Phase 2 → 3 → 4 → 5 + legacy tag-override
+backfill) through `app/docker-entrypoint.sh`.
+
+Note: the root `docker-compose.yml` is a **dev** stack (hot-reload, real repo DB)
+and does not run the seed/migration entrypoint — that path is production-only.

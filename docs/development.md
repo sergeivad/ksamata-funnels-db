@@ -1,5 +1,8 @@
 # Development Notes
 
+> Canonical architecture/commands/conventions live in [CLAUDE.md](../CLAUDE.md).
+> This file is the local-setup and database-contract detail.
+
 ## Local Setup
 
 Run application commands from `app/`:
