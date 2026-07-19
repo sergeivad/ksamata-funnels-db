@@ -74,6 +74,7 @@ export default function AppHeader() {
         <nav className="ml-1 flex items-center gap-1 sm:ml-4">
           {navLink('/', 'Воронки')}
           {navLink('/refs', 'Справочники')}
+          {navLink('/tags', 'Теги')}
         </nav>
 
         <button

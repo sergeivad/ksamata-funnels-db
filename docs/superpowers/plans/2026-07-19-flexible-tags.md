@@ -268,11 +268,11 @@ git commit -m "feat(tags): phase-5 schema — tag_templates + funnel_tag_overrid
 
 ## Task 2: ab-tags.ts — layer types + computeTagSet
 
-Replace the axes→tags generator with pure layer helpers. `axesToTagNames` (which hardcoded the static tags) is removed; the static tags now come from the DB template.
+Add pure layer helpers alongside the existing generator. This task is **purely additive**: the legacy `axesToTagNames` (which hardcoded the static tags) is **kept in place** because `funnels.ts` (`syncAvTags`) and `FunnelIdentity.tsx` still import it on the current base — they are migrated off it in Tasks 5 and 9, and Task 9 deletes `axesToTagNames` once its last caller is gone. Removing it here would break the build/suite.
 
 **Files:**
-- Modify: `app/src/lib/ab-tags.ts`
-- Test: `app/tests/ab-tags.test.ts` (rewrite the removed-function tests)
+- Modify: `app/src/lib/ab-tags.ts` (additive — keep `axesToTagNames`)
+- Test: `app/tests/ab-tags.test.ts` (replace body with the new tests below; `axesToTagNames`'s dedicated tests are dropped now and the function is removed in Task 9 — it stays exercised via the funnels/backfill integration tests until then)
 
 **Interfaces:**
 - Consumes: `AbAxes`, `AXIS_PREFIXES`, `tagNamesToAxes` (kept).
@@ -406,9 +406,9 @@ describe('tagNamesToAxes (unchanged)', () => {
 Run: `npx vitest run tests/ab-tags.test.ts`
 Expected: FAIL — `axisTagNames`/`computeTagSet`/`isAxisTag` not exported.
 
-- [ ] **Step 3: Rewrite ab-tags.ts**
+- [ ] **Step 3: Edit ab-tags.ts additively**
 
-Replace the whole file `app/src/lib/ab-tags.ts` with:
+Set the file contents to the block below, **then append the existing `axesToTagNames` function verbatim** at the end (copy it unchanged — e.g. `git show main:app/src/lib/ab-tags.ts` — it must keep its current `{ reg, time19, time15, messenger }` return shape so `funnels.ts`/`FunnelIdentity.tsx` keep compiling). Do NOT delete `axesToTagNames`; Task 9 removes it. The new-code block:
 
 ```ts
 export type AbAxes = {
@@ -1715,23 +1715,29 @@ The default set depends on saved axes. Directly under the scenario `Segmented` r
 )}
 ```
 
-- [ ] **Step 7: Verify in the browser**
+- [ ] **Step 7: Remove the now-orphaned `axesToTagNames`**
+
+After this task, `FunnelIdentity.tsx` was the last caller of the legacy `axesToTagNames` (Task 5 already migrated `funnels.ts`). Delete it now:
+- In `app/src/lib/ab-tags.ts`, delete the `axesToTagNames` function (kept transitionally in Task 2). Leave everything else (`AbAxes`, `AXIS_PREFIXES`, `isAxisTag`, `axisTagNames`, `computeTagSet`, `tagNamesToAxes`, all types) untouched.
+- Confirm nothing else imports it: `grep -rn "axesToTagNames" app/src app/tests` must return no hits (the Task 2 test replacement already dropped its unit tests). If any hit remains, STOP and report it — do not edit unrelated files blindly.
+
+- [ ] **Step 8: Verify in the browser**
 
 Start the dev server and check the funnel card renders, chips have `×`, adding/removing/restoring works, and "Сохранить теги" persists (reload keeps changes).
 
 Run: use `preview_start` with the dev server, open a funnel detail page, exercise the block, then `read_console_messages` for errors.
 Expected: no console errors; edits persist across reload.
 
-- [ ] **Step 8: Lint + full suite**
+- [ ] **Step 9: Lint + full suite**
 
 Run: `npm run lint && npx vitest run`
-Expected: clean + green.
+Expected: clean + green (including `tests/ab-tags.test.ts` after the `axesToTagNames` removal).
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add app/src/components/FunnelIdentity.tsx
-git commit -m "feat(tags): editable AV-tags block — add/remove/restore + save"
+git add app/src/components/FunnelIdentity.tsx app/src/lib/ab-tags.ts
+git commit -m "feat(tags): editable AV-tags block — add/remove/restore + save; drop legacy axesToTagNames"
 ```
 
 ---
@@ -1897,32 +1903,221 @@ git commit -m "feat(tags): global template screen at /tags + header link"
 
 ---
 
-## Task 11: Production migration wiring + baked seed refresh
+## Task 11: Legacy non-AV tags → overrides backfill
 
-Register Phase-5 in the Docker entrypoint (mirroring the phase-3 `.cjs` runner), apply the migration to the committed dev DB and the baked seed, and run the full suite once more.
+**Why:** Task 5 made materialization wipe ALL `funnel_tags` and rebuild from `template + axes + overrides`. The real DB carries 45 distinct **legacy non-AV tags** attached to funnels (e.g. `Регистрация` ×29, `ДБО` ×19, channel/product/direction codes) that are neither template defaults nor axis-derived. Without this backfill they vanish the first time each funnel is saved OR the first time a global template edit calls `resyncAllFunnels`. This backfill converts every such tag into a `funnel_tag_overrides` `add` row so it is preserved as a first-class, editable custom tag.
+
+The backfill is a **standalone marker-gated function**, deliberately NOT folded into `runMigratePhase5` so the existing DB-copy test setups (which seed only the schema) are unaffected. It runs on the real DB / seed / Docker boot in Task 12.
+
+**Files:**
+- Create: `app/scripts/backfill-legacy-tag-overrides.ts`
+- Test: `app/tests/backfill-legacy-tag-overrides.test.ts`
+
+**Interfaces:**
+- Consumes: `listTemplate` (tag-templates), `axisTagNames`, `tagNamesToAxes`, `SCENARIOS` (ab-tags), schema tables; `materializeFunnelTags` is NOT exported — the test verifies preservation via `updateFunnel` (a public re-materialize path).
+- Produces: `backfillLegacyTagOverrides(sqlite: import('better-sqlite3').Database): void` (idempotent, marker `phase5_legacy_overrides_backfill`).
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+// app/tests/backfill-legacy-tag-overrides.test.ts
+import { describe, it, expect, afterAll } from 'vitest';
+import Database from 'better-sqlite3';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { eq, and } from 'drizzle-orm';
+import { copyFileSync, unlinkSync, existsSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import * as schema from '../src/db/schema';
+import { funnels, funnelTags, funnelTagOverrides, tags } from '../src/db/schema';
+import { runMigratePhase3 } from '../scripts/migrate-phase3';
+import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
+import { runMigratePhase5 } from '../scripts/migrate-phase5';
+import { backfillLegacyTagOverrides } from '../scripts/backfill-legacy-tag-overrides';
+import { updateFunnel, getFunnel } from '../src/lib/funnels';
+
+const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
+const TMP_DB = join(tmpdir(), `bflo_${Date.now()}_${process.pid}.db`);
+copyFileSync(REAL_DB, TMP_DB);
+const sqlite = new Database(TMP_DB);
+sqlite.pragma('journal_mode = WAL');
+sqlite.pragma('foreign_keys = ON');
+runMigratePhase3(sqlite);
+runMigrateMessengerTagType(sqlite);
+runMigratePhase5(sqlite);
+const db = drizzle(sqlite, { schema });
+
+afterAll(() => { sqlite.close(); if (existsSync(TMP_DB)) unlinkSync(TMP_DB); });
+
+// Pick a real funnel that carries a legacy non-AV, non-template tag.
+// Seed a deterministic one so the test is not fixture-dependent:
+const FID = (sqlite.prepare(`SELECT id FROM funnels ORDER BY id LIMIT 1`).get() as { id: number }).id;
+const LEGACY = 'ЛЕГАСИ-ТЕСТ-ТЕГ';
+
+function attachLegacy() {
+  const tagId = (sqlite.prepare(`INSERT INTO tags (name) VALUES (?) RETURNING id`).get(LEGACY) as { id: number }).id;
+  sqlite.prepare(`INSERT INTO funnel_tags (funnel_id, tag_id, tag_type, position) VALUES (?, ?, 'reg', 99)`).run(FID, tagId);
+}
+
+describe('backfillLegacyTagOverrides', () => {
+  it('converts a legacy non-AV/non-template tag into an override add, and materialize preserves it', () => {
+    attachLegacy();
+
+    backfillLegacyTagOverrides(sqlite);
+
+    // The legacy tag is now recorded as an override 'add' for reg.
+    const ovr = db.select().from(funnelTagOverrides)
+      .where(and(eq(funnelTagOverrides.funnelId, FID), eq(funnelTagOverrides.name, LEGACY))).all();
+    expect(ovr).toHaveLength(1);
+    expect(ovr[0].op).toBe('add');
+    expect(ovr[0].tagType).toBe('reg');
+
+    // A template default (автоворонки) must NOT be backfilled as an override.
+    const dflt = db.select().from(funnelTagOverrides)
+      .where(and(eq(funnelTagOverrides.funnelId, FID), eq(funnelTagOverrides.name, 'автоворонки'))).all();
+    expect(dflt).toHaveLength(0);
+
+    // Re-materialize via the public updateFunnel path (axis unchanged) — legacy tag survives.
+    const cur = getFunnel(db, FID)!;
+    updateFunnel(db, FID, { product: cur.axes.product } as never);
+    const names = getFunnel(db, FID)!.tagSets.reg.tags.map((t) => t.name);
+    expect(names).toContain(LEGACY);
+  });
+
+  it('is idempotent (second run inserts nothing new, does not throw)', () => {
+    const before = db.select().from(funnelTagOverrides).all().length;
+    backfillLegacyTagOverrides(sqlite);
+    const after = db.select().from(funnelTagOverrides).all().length;
+    expect(after).toBe(before);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run tests/backfill-legacy-tag-overrides.test.ts`
+Expected: FAIL — `../scripts/backfill-legacy-tag-overrides` not found.
+
+- [ ] **Step 3: Implement the backfill**
+
+```ts
+// app/scripts/backfill-legacy-tag-overrides.ts
+/**
+ * One-time backfill: convert legacy non-AV `funnel_tags` rows into
+ * `funnel_tag_overrides` `add` rows so they survive the Phase-5 wipe-all
+ * materialization (see lib/funnels.ts materializeFunnelTags). Idempotent,
+ * marker-gated. Run AFTER runMigratePhase5 (needs the seeded template).
+ *
+ *   cd app/
+ *   FUNNELS_DB_PATH=../ksamata_funnels.db npx tsx scripts/backfill-legacy-tag-overrides.ts
+ */
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { eq } from 'drizzle-orm';
+import * as schema from '../src/db/schema';
+import { funnels, funnelTags, funnelTagOverrides, tags } from '../src/db/schema';
+import { listTemplate } from '../src/lib/tag-templates';
+import { axisTagNames, tagNamesToAxes, SCENARIOS, type Scenario } from '../src/lib/ab-tags';
+
+export function backfillLegacyTagOverrides(sqlite: import('better-sqlite3').Database): void {
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY)`);
+  const done = sqlite.prepare(`SELECT 1 FROM schema_migrations WHERE name='phase5_legacy_overrides_backfill'`).get();
+  if (done) return;
+
+  const db = drizzle(sqlite, { schema });
+  const template = listTemplate(db);
+  const funnelRows = db.select({ id: funnels.id }).from(funnels).all() as { id: number }[];
+
+  const tx = sqlite.transaction(() => {
+    for (const { id } of funnelRows) {
+      const rows = db
+        .select({ tagType: funnelTags.tagType, name: tags.name, position: funnelTags.position })
+        .from(funnelTags)
+        .innerJoin(tags, eq(funnelTags.tagId, tags.id))
+        .where(eq(funnelTags.funnelId, id))
+        .all() as { tagType: Scenario; name: string; position: number }[];
+
+      // Axes reconstructed from reg tags → the axis tags the default set will regenerate.
+      const regNames = rows.filter((r) => r.tagType === 'reg').map((r) => r.name);
+      const axisSet = new Set(axisTagNames(tagNamesToAxes(regNames)));
+
+      const posByType: Record<Scenario, number> = { reg: 0, time_15: 0, time_19: 0, messenger: 0 };
+      for (const sc of SCENARIOS) void sc; // keep Scenario import meaningful
+
+      for (const r of rows) {
+        // A tag the default set regenerates (template static OR axis tag) is NOT legacy — skip.
+        const isDefault = (template[r.tagType] ?? []).includes(r.name) || axisSet.has(r.name);
+        if (isDefault) continue;
+        db.insert(funnelTagOverrides)
+          .values({ funnelId: id, tagType: r.tagType, name: r.name, op: 'add', position: posByType[r.tagType]++ })
+          .onConflictDoNothing()
+          .run();
+      }
+    }
+    sqlite.prepare(`INSERT INTO schema_migrations (name) VALUES ('phase5_legacy_overrides_backfill')`).run();
+  });
+  tx();
+}
+
+if (require.main === module) {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const Database = require('better-sqlite3');
+  const dbPath = process.env.FUNNELS_DB_PATH ?? '../ksamata_funnels.db';
+  const sqlite = new Database(dbPath);
+  console.log(`Legacy tag-override backfill on: ${dbPath}`);
+  backfillLegacyTagOverrides(sqlite);
+  sqlite.close();
+  console.log('Legacy tag-override backfill done.');
+}
+```
+
+Note: the `for (const sc of SCENARIOS) void sc;` line is filler only if lint complains about an unused `SCENARIOS` import — if `SCENARIOS` is otherwise unused, delete both that line and `SCENARIOS` from the import instead (do not ship dead code). `posByType` is already fully literal, so `SCENARIOS` may not be needed; prefer removing it over the filler line.
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run tests/backfill-legacy-tag-overrides.test.ts`
+Expected: PASS (both cases).
+
+- [ ] **Step 5: Lint + full suite**
+
+Run: `npm run lint && npx vitest run`
+Expected: clean, all green.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add app/scripts/backfill-legacy-tag-overrides.ts app/tests/backfill-legacy-tag-overrides.test.ts
+git commit -m "feat(tags): backfill legacy non-AV funnel_tags into overrides"
+```
+
+---
+
+## Task 12: Production migration wiring + baked seed refresh
+
+Register Phase-5 + the legacy backfill in the Docker entrypoint (mirroring the phase-3 `.cjs` runner), apply both to the committed dev DB and the baked seed, and run the full suite once more.
 
 **Files:**
 - Modify: `app/docker-entrypoint.sh`
-- Create: `app/migrate-phase5-runner.ts` (compiled to `.cjs` like the phase-2/3 runners — follow `scripts/migrate-phase3-runner.ts`)
+- Create: `app/scripts/migrate-phase5-runner.ts`, `app/scripts/backfill-legacy-tag-overrides-runner.ts` (compiled to `.cjs` like the phase-2/3 runners — follow `scripts/migrate-phase3-runner.ts`)
+- Modify: `app/Dockerfile` (compile/copy both new `.cjs`)
 - Modify (binary): `ksamata_funnels.db`, `app/seed/ksamata_funnels.db`
 
 **Interfaces:**
-- Consumes: `runMigratePhase5`.
+- Consumes: `runMigratePhase5`, `backfillLegacyTagOverrides`.
 
 - [ ] **Step 1: Inspect the existing runner + build step**
 
-Read `app/scripts/migrate-phase3-runner.ts` and the Dockerfile step that emits `migrate-phase3.cjs`. Mirror it for phase-5: a runner that opens `FUNNELS_DB_PATH` and calls `runMigratePhase5`.
+Read `app/scripts/migrate-phase3-runner.ts` and the Dockerfile step that emits `migrate-phase3.cjs`. Mirror it for both new runners.
 
 Run: `sed -n '1,60p' app/scripts/migrate-phase3-runner.ts && grep -n "migrate-phase3" app/Dockerfile`
 Expected: shows the runner shape and the Docker compile/copy line to replicate.
 
-- [ ] **Step 2: Create the phase-5 runner**
+- [ ] **Step 2: Create the two runners**
 
-Create `app/scripts/migrate-phase5-runner.ts` modeled exactly on `migrate-phase3-runner.ts`, calling `runMigratePhase5(sqlite)` against `process.env.FUNNELS_DB_PATH`. Add the matching compile/copy line to `app/Dockerfile` so it produces `/app/migrate-phase5.cjs` (copy the phase-3 line and change `3`→`5`).
+Create `app/scripts/migrate-phase5-runner.ts` (calls `runMigratePhase5(sqlite)`) and `app/scripts/backfill-legacy-tag-overrides-runner.ts` (calls `backfillLegacyTagOverrides(sqlite)`), each modeled exactly on `migrate-phase3-runner.ts`, opening `process.env.FUNNELS_DB_PATH`. Add matching compile/copy lines to `app/Dockerfile` so they produce `/app/migrate-phase5.cjs` and `/app/backfill-legacy-tag-overrides.cjs` (copy the phase-3 line twice, adjust names).
 
 - [ ] **Step 3: Wire the entrypoint**
 
-In `app/docker-entrypoint.sh`, after the Phase-3 block and before `exec node server.js`, add:
+In `app/docker-entrypoint.sh`, after the Phase-3 block and before `exec node server.js`, add (backfill AFTER phase-5, since it needs the seeded template):
 
 ```sh
 # Apply Phase-5 migration (idempotent: CREATE IF NOT EXISTS + marker-gated seed).
@@ -1930,22 +2125,35 @@ if [ -n "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] Running Phase-5 migration against $FUNNELS_DB_PATH"
   node /app/migrate-phase5.cjs
   echo "[entrypoint] Phase-5 migration done."
+  echo "[entrypoint] Backfilling legacy tags into overrides against $FUNNELS_DB_PATH"
+  node /app/backfill-legacy-tag-overrides.cjs
+  echo "[entrypoint] Legacy tag-override backfill done."
 fi
 ```
 
-- [ ] **Step 4: Migrate the committed dev DB**
+- [ ] **Step 4: Migrate + backfill the committed dev DB**
 
-Run: `cd app && FUNNELS_DB_PATH=../ksamata_funnels.db npx tsx scripts/migrate-phase5.ts`
-Expected: "Phase-5 schema migration done."
+Run: `cd app && FUNNELS_DB_PATH=../ksamata_funnels.db npx tsx scripts/migrate-phase5.ts && FUNNELS_DB_PATH=../ksamata_funnels.db npx tsx scripts/backfill-legacy-tag-overrides.ts`
+Expected: "Phase-5 schema migration done." then "Legacy tag-override backfill done."
 
-- [ ] **Step 5: Refresh the baked seed DB**
+- [ ] **Step 5: Refresh the baked seed DB + verify**
 
-Copy the migrated dev DB over the baked seed (matches prior "refresh baked seed DB" practice), or run the migration directly against the seed. Verify both carry the template:
+Copy the migrated dev DB over the baked seed, then verify both carry the template AND that legacy tags became overrides (use a tsx one-liner — `sqlite3` CLI may be absent):
 
-Run: `sqlite3 ksamata_funnels.db "SELECT COUNT(*) FROM tag_templates;" && cp ksamata_funnels.db app/seed/ksamata_funnels.db && sqlite3 app/seed/ksamata_funnels.db "SELECT COUNT(*) FROM tag_templates;"`
-Expected: both print `14`.
-
-(If `sqlite3` CLI is unavailable, use a one-off tsx script that opens each DB and logs the count.)
+Run:
+```bash
+cp ksamata_funnels.db app/seed/ksamata_funnels.db
+cd app && node -e '
+const D=require("better-sqlite3");
+for (const p of ["../ksamata_funnels.db","seed/ksamata_funnels.db"]) {
+  const db=new D(p,{readonly:true});
+  const t=db.prepare("SELECT COUNT(*) c FROM tag_templates").get().c;
+  const o=db.prepare("SELECT COUNT(*) c FROM funnel_tag_overrides WHERE op=\"add\"").get().c;
+  console.log(p, "templates:", t, "override-adds:", o);
+  db.close();
+}'
+```
+Expected: both DBs print `templates: 14` and a non-zero `override-adds` count (the backfilled legacy tags).
 
 - [ ] **Step 6: Full suite + lint**
 
@@ -1955,8 +2163,8 @@ Expected: clean, all tests green.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add app/docker-entrypoint.sh app/scripts/migrate-phase5-runner.ts app/Dockerfile ksamata_funnels.db app/seed/ksamata_funnels.db
-git commit -m "chore(tags): wire phase-5 migration into Docker + refresh baked seed"
+git add app/docker-entrypoint.sh app/scripts/migrate-phase5-runner.ts app/scripts/backfill-legacy-tag-overrides-runner.ts app/Dockerfile ksamata_funnels.db app/seed/ksamata_funnels.db
+git commit -m "chore(tags): wire phase-5 migration + legacy backfill into Docker + refresh baked seed"
 ```
 
 ---

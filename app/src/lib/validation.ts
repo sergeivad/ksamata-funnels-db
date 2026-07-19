@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { FUNNEL_STATUS_VALUES } from './status';
+import { isAxisTag } from './ab-tags';
 
 // Matches ^f\d+$ or empty string ''
 const frontCodeSchema = z
@@ -87,7 +88,47 @@ export function parseRouteId(raw: string): number | null {
   return /^\d+$/.test(raw) ? Number(raw) : null;
 }
 
+const tagNameSchema = z.string().trim().min(1).max(REF_MAX);
+
+// Axis tags (АВ Продукт/Подрядчик/Канал/Направление) must only ever be
+// materialized by the auto axis layer — never typed in manually, or they'd
+// be parsed back out as axis values (see getAxesForFunnel / tagNamesToAxes)
+// and corrupt the funnel's axes. Used for every path that *adds* a tag name.
+const customTagNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(REF_MAX)
+  .refine((v) => !isAxisTag(v), {
+    message:
+      'Axis tags (АВ Продукт/Подрядчик/Канал/Направление) are managed automatically and cannot be added manually',
+  });
+
+export const tagTemplatePutSchema = z.object({
+  names: z.array(customTagNameSchema),
+});
+
+const scenarioOverrideSchema = z.object({
+  add: z.array(customTagNameSchema).default([]),
+  // Lenient on purpose: removes are already defensively dropped by
+  // isAxisTag downstream (computeTagSet), so an axis-prefixed remove is
+  // harmless — no need to reject it here.
+  remove: z.array(tagNameSchema).default([]),
+});
+
+// All four scenarios optional; unknown keys rejected (strict).
+export const tagsPatchSchema = z
+  .object({
+    reg: scenarioOverrideSchema.optional(),
+    time_15: scenarioOverrideSchema.optional(),
+    time_19: scenarioOverrideSchema.optional(),
+    messenger: scenarioOverrideSchema.optional(),
+  })
+  .strict();
+
 // Inferred TypeScript types
 export type FunnelCreate = z.infer<typeof funnelCreateSchema>;
 export type FunnelUpdate = z.infer<typeof funnelUpdateSchema>;
 export type RefCreate = z.infer<typeof refCreateSchema>;
+export type TagTemplatePut = z.infer<typeof tagTemplatePutSchema>;
+export type TagsPatch = z.infer<typeof tagsPatchSchema>;

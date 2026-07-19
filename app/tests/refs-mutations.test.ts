@@ -16,6 +16,7 @@ import { createRef, getRefUsage, renameRef, deleteRef, type RefRow } from '../sr
 import { createFunnel, listFunnels, getFunnel } from '../src/lib/funnels';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
+import { runMigratePhase5 } from '../scripts/migrate-phase5';
 
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
 const TMP_DB = join(tmpdir(), `ksamata_refs_mutations_test_${Date.now()}_${process.pid}.db`);
@@ -27,6 +28,7 @@ sqlite.pragma('journal_mode = WAL');
 sqlite.pragma('foreign_keys = ON');
 runMigratePhase3(sqlite);
 runMigrateMessengerTagType(sqlite);
+runMigratePhase5(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => {

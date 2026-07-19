@@ -12,26 +12,28 @@ export const AXIS_PREFIXES = {
   direction: 'АВ Направление: ',
 } as const satisfies Record<keyof AbAxes, string>;
 
-// Both autofunnel tags accompany every scenario set: the legacy plain
-// `автоворонки` tag plus the AV-prefixed `АВ Автоворонка`.
-const COMMON_TAGS = ['автоворонки', 'АВ Автоворонка'];
+export type Scenario = 'reg' | 'time_15' | 'time_19' | 'messenger';
+export const SCENARIOS: Scenario[] = ['reg', 'time_15', 'time_19', 'messenger'];
+
+export type TagChip = { name: string; source: 'axis' | 'default' | 'custom' };
+export type ScenarioTags = { tags: TagChip[]; suppressed: string[] };
+export type TagSets = Record<Scenario, ScenarioTags>;
+
+export type TemplateMap = Record<Scenario, string[]>;
+export type ScenarioOverride = { add: string[]; remove: string[] };
+export type OverrideMap = Record<Scenario, ScenarioOverride>;
+
+/** True when a tag name is an auto-derived axis tag (never removable). */
+export function isAxisTag(name: string): boolean {
+  return Object.values(AXIS_PREFIXES).some((p) => name.startsWith(p));
+}
 
 /**
- * Build АВ tag-name lists for the reg, time19, time15, and messenger funnel
- * scenarios from the 4 axis values.
+ * Axis tags for a funnel, one per non-empty axis. An empty axis emits nothing
+ * (a bare "АВ Продукт: " would pollute the tags table).
  */
-export function axesToTagNames(axes: AbAxes): {
-  reg: string[];
-  time19: string[];
-  time15: string[];
-  messenger: string[];
-} {
-  // Only emit a tag for an axis that actually has a value. An empty axis (e.g. a
-  // freshly-created draft, or a partial PATCH that touches only one axis) must
-  // NOT create placeholder tags like "АВ Продукт: " — those would pollute the
-  // `tags` table with permanent orphan rows. On read-back, a missing axis tag
-  // already reconstructs as '' (see tagNamesToAxes), so the round-trip holds.
-  const axisTags = (
+export function axisTagNames(axes: AbAxes): string[] {
+  return (
     [
       ['product', axes.product],
       ['contractor', axes.contractor],
@@ -41,44 +43,59 @@ export function axesToTagNames(axes: AbAxes): {
   )
     .filter(([, value]) => value.trim() !== '')
     .map(([axis, value]) => `${AXIS_PREFIXES[axis]}${value}`);
+}
 
-  const reg: string[] = [
-    ...COMMON_TAGS,
-    'АВ Этап: Регистрация',
-    ...axisTags,
-  ];
+/**
+ * Effective tag set per scenario from the three layers:
+ *   default = template[scenario] ++ axisTagNames(axes)
+ *   effective = (default − removed) ++ added
+ * - Axis tags are NEVER suppressed (they carry channel/direction identity).
+ * - Dedup by exact name; first occurrence wins (template/axis over add).
+ * - `suppressed` lists template defaults currently removed (for the restore UI).
+ */
+export function computeTagSet(template: TemplateMap, axes: AbAxes, overrides: OverrideMap): TagSets {
+  const axisTags = axisTagNames(axes);
+  const out = {} as TagSets;
 
-  const time19: string[] = [
-    ...COMMON_TAGS,
-    'АВ Этап: Оплата',
-    'АВ Время: 19',
-    ...axisTags,
-  ];
+  for (const scenario of SCENARIOS) {
+    const staticTags = template[scenario] ?? [];
+    const ov = overrides[scenario] ?? { add: [], remove: [] };
+    // Only non-axis removes count — axis tags are identity and never suppressed.
+    const removeSet = new Set(ov.remove.filter((n) => !isAxisTag(n)));
 
-  const time15: string[] = [
-    ...COMMON_TAGS,
-    'АВ Этап: Оплата',
-    'АВ Время: 15',
-    ...axisTags,
-  ];
+    const tags: TagChip[] = [];
+    const seen = new Set<string>();
 
-  const messenger: string[] = [
-    ...COMMON_TAGS,
-    'АВ Этап: Мессенджер',
-    ...axisTags,
-  ];
+    const pushIfNew = (name: string, source: TagChip['source']) => {
+      if (seen.has(name)) return;
+      seen.add(name);
+      tags.push({ name, source });
+    };
 
-  return { reg, time19, time15, messenger };
+    for (const name of staticTags) {
+      if (isAxisTag(name)) continue; // axis tags only ever enter via the axis layer
+      if (removeSet.has(name)) continue;
+      pushIfNew(name, 'default');
+    }
+    for (const name of axisTags) pushIfNew(name, 'axis');
+    for (const name of ov.add) {
+      if (isAxisTag(name)) continue; // axis tags only ever enter via the axis layer
+      pushIfNew(name, 'custom');
+    }
+
+    const suppressed = staticTags.filter((n) => !isAxisTag(n) && removeSet.has(n));
+    out[scenario] = { tags, suppressed };
+  }
+
+  return out;
 }
 
 /**
  * Parse the 4 axis values back out of a tag-name list (typically the reg list).
- * Tags that don't match any axis prefix are ignored.
- * Missing axis → empty string.
+ * Tags that don't match any axis prefix are ignored. Missing axis → ''.
  */
 export function tagNamesToAxes(tagNames: string[]): AbAxes {
   const result: AbAxes = { product: '', contractor: '', channel: '', direction: '' };
-
   for (const name of tagNames) {
     for (const [axis, prefix] of Object.entries(AXIS_PREFIXES) as [keyof AbAxes, string][]) {
       if (name.startsWith(prefix)) {
@@ -87,6 +104,6 @@ export function tagNamesToAxes(tagNames: string[]): AbAxes {
       }
     }
   }
-
   return result;
 }
+

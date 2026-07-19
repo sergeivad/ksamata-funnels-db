@@ -7,14 +7,24 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import Database from 'better-sqlite3';
 import { copyFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { runMigratePhase5 } from '../scripts/migrate-phase5';
 
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
 const TMP_DB = join(tmpdir(), `ksamata_export_route_test_${Date.now()}.db`);
 
 copyFileSync(REAL_DB, TMP_DB);
+
+// Seed Phase-5 (tag_templates + funnel_tag_overrides) via a throwaway handle
+// on the same temp file — getFunnel/listFunnels now read tag_templates when
+// computing tagSets, so the route under test needs it present.
+const migrationSqlite = new Database(TMP_DB);
+runMigratePhase5(migrationSqlite);
+migrationSqlite.close();
+
 process.env.FUNNELS_DB_PATH = TMP_DB;
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
