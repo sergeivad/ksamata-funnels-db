@@ -24,12 +24,13 @@ import {
   type AbAxes,
   type TagSets,
   type Scenario,
+  type OverrideMap,
   SCENARIOS,
   computeTagSet,
   tagNamesToAxes,
 } from './ab-tags';
 import { listTemplate } from './tag-templates';
-import { listOverrides } from './tag-overrides';
+import { listOverrides, replaceOverrides } from './tag-overrides';
 import { createRef, listRefs } from './refs';
 import { type FunnelCreate, type FunnelUpdate } from './validation';
 
@@ -447,6 +448,22 @@ export function resyncFunnelAvTags(db: DB, id: number): boolean {
     materializeFunnelTags(tx, id, axes);
   });
   return true;
+}
+
+/**
+ * Replace a funnel's tag overrides and re-materialize its funnel_tags.
+ * Axes are read from current reg tags FIRST (channel/direction live there),
+ * then tags are rewritten. Returns the updated FunnelDetail, or null if absent.
+ */
+export function applyTagOverrides(db: DB, id: number, patch: OverrideMap): FunnelDetail | null {
+  const existing = db.select({ id: funnels.id }).from(funnels).where(eq(funnels.id, id)).get();
+  if (!existing) return null;
+  db.transaction((tx) => {
+    const axes = getAxesForFunnel(tx, id);
+    replaceOverrides(tx, id, patch);
+    materializeFunnelTags(tx, id, axes);
+  });
+  return getFunnel(db, id);
 }
 
 /**
