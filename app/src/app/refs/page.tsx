@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import RefTable from '@/components/RefTable';
+import { confirmUnsavedNavigation } from '@/lib/useUnsavedGuard';
 
 interface RefRow {
   id: number;
@@ -128,7 +129,7 @@ export default function RefsPage() {
         </div>
         <button
           type="button"
-          onClick={() => router.push('/')}
+          onClick={() => { if (confirmUnsavedNavigation()) router.push('/'); }}
           className="text-[13px] text-[var(--color-text-secondary)] underline hover:text-[var(--color-text)] transition"
         >
           ← Список воронок

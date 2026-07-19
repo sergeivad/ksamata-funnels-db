@@ -111,3 +111,27 @@ export function formatBlockLinks(
 
   return sections.join('\n\n');
 }
+
+/**
+ * Mode-switch transforms for BlockEditor. Switching «По времени» → «Общее»
+ * flattens slots to null; the caller stashes the pre-flatten items so that
+ * switching back restores the original 15/19 split instead of dumping every
+ * row into slot 15 (a round-trip toggle must be lossless). Neither function
+ * saves anything — persisting a flatten is the caller's (confirmed) decision.
+ */
+export function flattenToCommon(items: BlockItem[]): BlockItem[] {
+  return items.map((it) => ({ ...it, slot: null }));
+}
+
+/**
+ * Items for switching «Общее» → «По времени»: if `stash` (the items as they
+ * were before the last flatten) still flattens to exactly the current items —
+ * i.e. nothing was edited while in common mode — restore the stash with its
+ * slot split; otherwise assign slot 15 to slotless rows.
+ */
+export function restoreByTime(items: BlockItem[], stash: BlockItem[] | null): BlockItem[] {
+  if (stash && JSON.stringify(flattenToCommon(stash)) === JSON.stringify(items)) {
+    return stash;
+  }
+  return items.map((it) => ({ ...it, slot: it.slot ?? '15' }));
+}

@@ -6,6 +6,7 @@ import Switch from './Switch';
 import UrlInput from './UrlInput';
 import type { DayCell } from '@/lib/funnel-days';
 import { webRoomFromGc, mirrorDayUrl } from '@/lib/block-fill';
+import { SLOTS, buildGrid, cellsFromGrid, gridKey as key, type RoomCell as Cell, type RoomGrid as Grid } from '@/lib/rooms-grid';
 
 interface Props {
   funnelId: number;
@@ -16,31 +17,7 @@ interface Props {
   onDirtyChange?: (dirty: boolean) => void;
 }
 
-const SLOTS: ('15' | '19')[] = ['15', '19'];
 const MAX_DAYS = 5;
-
-type Cell = { gcRoom: string; webRoom: string; replayUrl: string };
-type Grid = Record<string, Cell>; // key `${slot}-${day}`
-
-function key(slot: string, day: number) { return `${slot}-${day}`; }
-
-function buildGrid(days: DayCell[], dayCount: number): Grid {
-  const g: Grid = {};
-  for (const slot of SLOTS) for (let d = 1; d <= dayCount; d++) g[key(slot, d)] = { gcRoom: '', webRoom: '', replayUrl: '' };
-  for (const d of days) g[key(d.timeSlot, d.dayNum)] = { gcRoom: d.gcRoom, webRoom: d.webRoom, replayUrl: d.replayUrl };
-  return g;
-}
-
-// Same shape the PUT /days payload uses — reused both for saving and for
-// diffing the live grid against the last-saved snapshot.
-function cellsFromGrid(grid: Grid, dayCount: number, replay: boolean): DayCell[] {
-  const cells: DayCell[] = [];
-  for (const slot of SLOTS) for (let d = 1; d <= dayCount; d++) {
-    const c = grid[key(slot, d)];
-    cells.push({ timeSlot: slot, dayNum: d, gcRoom: c.gcRoom, webRoom: c.webRoom, replayUrl: replay ? c.replayUrl : '' });
-  }
-  return cells;
-}
 
 type SavedSnapshot = { replay: boolean; cells: DayCell[] };
 
@@ -58,12 +35,12 @@ export default function RoomsEditor({ funnelId, initialDays, replayEnabled, time
   // "unsaved changes" indicator by comparing it against the live grid.
   const [saved, setSaved] = useState<SavedSnapshot>(() => ({
     replay: replayEnabled,
-    cells: cellsFromGrid(buildGrid(initialDays, clampedInitialDayCount), clampedInitialDayCount, replayEnabled),
+    cells: cellsFromGrid(buildGrid(initialDays, clampedInitialDayCount), clampedInitialDayCount),
   }));
 
   const dirty =
     replay !== saved.replay ||
-    JSON.stringify(cellsFromGrid(grid, dayCount, replay)) !== JSON.stringify(saved.cells);
+    JSON.stringify(cellsFromGrid(grid, dayCount)) !== JSON.stringify(saved.cells);
 
   const onDirtyChangeRef = useRef(onDirtyChange);
   onDirtyChangeRef.current = onDirtyChange;
@@ -150,8 +127,10 @@ export default function RoomsEditor({ funnelId, initialDays, replayEnabled, time
   async function save() {
     // Snapshot the values being submitted (not re-read after the await) so a
     // save started mid-edit doesn't wrongly mark newer edits as "saved".
+    // The «повтор» toggle only hides the replay column — replayUrl is always
+    // part of the payload, so turning it off never erases stored replay links.
     const submittedReplay = replay;
-    const cells = cellsFromGrid(grid, dayCount, submittedReplay);
+    const cells = cellsFromGrid(grid, dayCount);
     setSaving(true);
     setError(null);
     try {

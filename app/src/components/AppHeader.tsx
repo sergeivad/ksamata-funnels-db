@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Plus } from 'lucide-react';
+import { confirmUnsavedNavigation } from '@/lib/useUnsavedGuard';
 
 /**
  * Shared top header rendered on every page via the root layout.
@@ -25,6 +26,9 @@ export default function AppHeader() {
 
   async function createDraft() {
     if (creating) return;
+    // router.push bypasses the <a>-click guard — check dirty state explicitly
+    // before creating the draft, so unsaved edits are not silently abandoned.
+    if (!confirmUnsavedNavigation()) return;
     setCreating(true);
     try {
       const res = await fetch('/api/funnels/draft', { method: 'POST' });

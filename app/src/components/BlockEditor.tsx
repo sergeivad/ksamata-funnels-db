@@ -5,7 +5,7 @@ import * as Icons from 'lucide-react';
 import { Wand2, Copy, Check } from 'lucide-react';
 import { getBlockDef, type BlockMode } from '@/lib/blocks';
 import type { BlockState, BlockItem } from '@/lib/funnel-blocks';
-import { mirrorSlotUrl, formatBlockLinks } from '@/lib/block-fill';
+import { mirrorSlotUrl, formatBlockLinks, flattenToCommon, restoreByTime } from '@/lib/block-fill';
 import Switch from './Switch';
 import Segmented from './Segmented';
 import BlockListField from './BlockListField';
@@ -36,6 +36,9 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
   const [error, setError] = useState<string | null>(null);
   const [copiedAll, setCopiedAll] = useState(false);
   const copyAllTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Items as they were before the last by_time → common switch, so toggling
+  // back restores the 15/19 split instead of dumping every row into slot 15.
+  const byTimeStash = useRef<BlockItem[] | null>(null);
 
   // Snapshot of the last successfully persisted state (normalized the same
   // way the save payload is), used to derive the "unsaved changes" indicator.
@@ -89,6 +92,15 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
     const payloadEnabled = next?.enabled ?? enabled;
     const payloadMode = next?.mode ?? mode;
     const payloadItems = normalizeItems(next?.items ?? items, payloadMode);
+    // Persisting «Общее» over a stored «По времени» merges both time columns
+    // and erases the split in the DB — destructive, so ask first.
+    if (
+      payloadMode === 'common' &&
+      saved.mode === 'by_time' &&
+      !window.confirm('Сохранение в режиме «Общее» объединит ссылки по времени и сотрёт разбивку 15:00/19:00. Продолжить?')
+    ) {
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -131,13 +143,18 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
             options={[{ value: 'common', label: 'Общее' }, { value: 'by_time', label: 'По времени' }]}
             value={mode}
             onChange={(v) => {
+              // Local state only — no autosave: a stray toggle must not touch
+              // the DB. The change persists via the explicit «Сохранить».
               const m = v as BlockMode;
-              const transformed = m === 'common'
-                ? items.map((it) => ({ ...it, slot: null as null }))
-                : items.map((it) => ({ ...it, slot: (it.slot ?? '15') as '15' | '19' }));
+              let transformed: BlockItem[];
+              if (m === 'common') {
+                byTimeStash.current = items;
+                transformed = flattenToCommon(items);
+              } else {
+                transformed = restoreByTime(items, byTimeStash.current);
+              }
               setMode(m);
               setItems(transformed);
-              save({ mode: m, items: transformed });
             }}
           />
         )}

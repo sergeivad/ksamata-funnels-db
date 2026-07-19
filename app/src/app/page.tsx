@@ -7,6 +7,7 @@ import FunnelCard from '@/components/FunnelCard';
 import Toast from '@/components/Toast';
 import GroupToggle, { type GroupBy } from '@/components/GroupToggle';
 import Segmented from '@/components/Segmented';
+import { confirmUnsavedNavigation } from '@/lib/useUnsavedGuard';
 
 const LS_KEY = 'funnels.groupBy';
 const LS_STATUS_KEY = 'funnels.statusFilter';
@@ -164,6 +165,9 @@ export default function HomePage() {
 
   const handleDuplicate = useCallback(
     async (funnel: FunnelListItem) => {
+      // Duplicating navigates via router.push, which bypasses the <a>-click
+      // guard — check dirty state explicitly before leaving.
+      if (!confirmUnsavedNavigation()) return;
       try {
         const res = await fetch(`/api/funnels/${funnel.id}/duplicate`, {
           method: 'POST',
