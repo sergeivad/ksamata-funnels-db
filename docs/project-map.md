@@ -1,35 +1,54 @@
 # Project Map
 
+File-level map of the repo. For architecture and conventions see
+[CLAUDE.md](../CLAUDE.md).
+
 ## Root
 
+- `CLAUDE.md` - canonical guide for agents and humans (source of truth).
+- `AGENTS.md` - agent shared-memory workflow; points to `CLAUDE.md`.
 - `README.md` - high-level orientation.
-- `AGENTS.md` - shared instructions for Codex and Claude Code.
-- `ksamata_funnels.db` - local live SQLite database.
+- `ksamata_funnels.db` - live local SQLite database.
+- `docker-compose.yml` - dev hot-reload stack (uses `app/Dockerfile.dev`).
 
-## App
+## App (`app/`)
 
-- `app/src/app/page.tsx` - funnel list UI.
-- `app/src/app/funnels/[id]/page.tsx` - funnel edit page composition.
-- `app/src/app/api/` - Next.js route handlers.
-- `app/src/components/` - client UI components.
-- `app/src/db/schema.ts` - Drizzle table definitions.
-- `app/src/lib/` - domain helpers for funnels, refs, days, blocks, tags, and validation.
-- `app/scripts/` - TypeScript migrations and seed/migration runners used by tests and Docker.
-- `app/tests/` - Vitest suite.
-- `app/seed/` - Docker seed database.
+- `src/app/page.tsx` - funnel list (home).
+- `src/app/funnels/[id]/page.tsx` - funnel edit page.
+- `src/app/tags/page.tsx` - global tag-template editor.
+- `src/app/refs/page.tsx` - lookup/reference tables management.
+- `src/app/api/` - Next.js route handlers (funnels, days, blocks, tags,
+  tag-templates, refs, export).
+- `src/db/schema.ts` - Drizzle table definitions.
+- `src/db/client.ts` - DB path resolution (`FUNNELS_DB_PATH` / repo-root default).
+- `src/lib/` - domain helpers: funnels, refs, days, blocks (+ block-fill),
+  the three-layer tags system (`ab-tags`, `tag-templates`, `tag-overrides`),
+  status, rooms-grid, funnel-compact, export, validation, plus http/errors and
+  client hooks. See CLAUDE.md for the full module list.
+- `src/components/` - client UI components and primitives.
+- `src/middleware.ts` - HTTP Basic Auth (`ADMIN_BASIC_AUTH` / `ADMIN_AUTH_DISABLED`).
+- `scripts/` - phased migrations (Phase 2–5), data backfills, and seed/runners
+  used by tests and Docker.
+- `tests/` - Vitest suite (routes, lib, migrations, middleware).
+- `seed/` - seed database baked into the production Docker image.
+- `Dockerfile` / `Dockerfile.dev` / `docker-entrypoint.sh` - prod image, dev
+  image, and prod seed+migration entrypoint.
 
 ## Data
 
 - `data/source/` - source workbooks.
-- `data/generated/` - generated summary workbooks.
+- `data/generated/` - generated summary workbooks (gitignored).
 
 ## Tools
 
 - `tools/data-import/` - Python scripts that build or mutate the SQLite database.
-- `tools/data-export/` - Python scripts that export the SQLite database to workbook reports.
+- `tools/data-export/` - Python scripts that export the database to XLSX reports.
 
-## Historical Planning
+## Docs & planning
 
-- `docs/superpowers/specs/` - design specs from previous Claude Code work.
-- `docs/superpowers/plans/` - implementation plans from previous Claude Code work.
-- `docs/plans/` - current Codex/Codex-Desktop planning notes.
+- `docs/README.md` - index of plans and specs (shipped vs active).
+- `docs/development.md` - local setup and database contract.
+- `docs/superpowers/specs/` & `docs/superpowers/plans/` - shipped design specs
+  and implementation plans (historical record).
+- `docs/plans/` - Codex planning notes; `2026-07-18-ux-improvements-backlog.md`
+  is the one live backlog.
