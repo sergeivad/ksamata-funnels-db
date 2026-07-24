@@ -10,7 +10,7 @@ import os from 'os';
 import path from 'path';
 import { runMigratePhase6 } from '../scripts/migrate-phase6';
 import * as schema from '../src/db/schema';
-import { runMonitorCycle } from '../src/lib/monitor-run';
+import { runMonitorCycle, isCycleRunning } from '../src/lib/monitor-run';
 import type { CheckResult } from '../src/lib/monitor-check';
 
 const REAL_DB = path.resolve(process.cwd(), '..', 'ksamata_funnels.db');
@@ -255,5 +255,50 @@ describe('runMonitorCycle', () => {
     expect(errorSpy).toHaveBeenCalled();
 
     errorSpy.mockRestore();
+  });
+});
+
+/**
+ * Флаг «цикл идёт» обязан жить на globalThis, а не в модуле: в бандле Next
+ * этот модуль существует в двух копиях (планировщик из instrumentation.ts и
+ * route-хендлер кнопки), и модульная переменная развела бы их по разным флагам.
+ * Воспроизвести само бандление в vitest нельзя — vitest отдаёт всем импортёрам
+ * один инстанс модуля, — поэтому проверяем механизм: экспортируемый аксессор
+ * читает именно общий слот, а не собственную копию значения.
+ */
+describe('общий слот флага на globalThis', () => {
+  const saved = globalThis.__ksamataMonitorRun;
+  afterEach(() => {
+    globalThis.__ksamataMonitorRun = saved;
+  });
+
+  it('isCycleRunning() видит значение, выставленное в слоте напрямую', () => {
+    globalThis.__ksamataMonitorRun = { cycleRunning: true };
+    expect(isCycleRunning()).toBe(true);
+
+    globalThis.__ksamataMonitorRun = { cycleRunning: false };
+    expect(isCycleRunning()).toBe(false);
+  });
+
+  it('заводит слот сам, если его ещё нет', () => {
+    globalThis.__ksamataMonitorRun = undefined;
+    expect(isCycleRunning()).toBe(false);
+    expect(globalThis.__ksamataMonitorRun).toEqual({ cycleRunning: false });
+  });
+
+  it('прогон цикла поднимает и опускает флаг в общем слоте', async () => {
+    const id = seedTarget();
+    expect(id).toBeGreaterThan(0);
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const blocking = async (): Promise<CheckResult> => { await gate; return up; };
+
+    const running = runMonitorCycle(db, { check: blocking, sync: false, sleep: noSleep });
+    expect(globalThis.__ksamataMonitorRun?.cycleRunning).toBe(true);
+
+    release();
+    await running;
+    expect(globalThis.__ksamataMonitorRun?.cycleRunning).toBe(false);
   });
 });

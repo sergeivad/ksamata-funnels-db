@@ -26,10 +26,29 @@ export interface CycleOptions {
 }
 
 // Одиночный флаг на процесс: планировщик и ручная кнопка не должны наложиться.
-let cycleRunning = false;
+// Живёт на globalThis, а не в модуле: webpack кладёт этот модуль в два разных
+// чанка (граф instrumentation.ts для планировщика и граф route-хендлеров для
+// кнопки), и модульная переменная дала бы два независимых флага — защита от
+// наложения работала бы только в тестах, где инстанс модуля один.
+interface MonitorRunState {
+  cycleRunning: boolean;
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __ksamataMonitorRun: MonitorRunState | undefined;
+}
+
+/** Читаем слот каждый раз, а не кэшируем ссылку — иначе подмена объекта не видна. */
+function runState(): MonitorRunState {
+  if (!globalThis.__ksamataMonitorRun) {
+    globalThis.__ksamataMonitorRun = { cycleRunning: false };
+  }
+  return globalThis.__ksamataMonitorRun;
+}
 
 export function isCycleRunning(): boolean {
-  return cycleRunning;
+  return runState().cycleRunning;
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -118,8 +137,9 @@ export async function runMonitorCycle(
   db: AnyDB,
   opts: CycleOptions = {}
 ): Promise<CycleResult | null> {
-  if (cycleRunning) return null;
-  cycleRunning = true;
+  const state = runState();
+  if (state.cycleRunning) return null;
+  state.cycleRunning = true;
 
   const check: CheckFn = opts.check ?? ((url) => checkUrl(url));
   const concurrency = opts.concurrency ?? CONCURRENCY;
@@ -174,6 +194,8 @@ export async function runMonitorCycle(
       finishedAt: new Date().toISOString(),
     };
   } finally {
-    cycleRunning = false;
+    // Снимаем флаг в том же слоте, из которого его читали — на случай, если
+    // globalThis.__ksamataMonitorRun подменили между стартом и финишем.
+    state.cycleRunning = false;
   }
 }
