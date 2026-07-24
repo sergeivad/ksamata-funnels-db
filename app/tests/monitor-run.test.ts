@@ -2,7 +2,7 @@
  * Прогон цикла: запись состояния и лог смен статуса.
  * Проверяльщик подменяется через opts.check — сети нет.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import fs from 'fs';
@@ -101,12 +101,29 @@ describe('runMonitorCycle', () => {
     const check = scriptedCheck([up]);
 
     await runMonitorCycle(db, { check: check.fn, sync: false, sleep: noSleep });
-    const sinceAfterFirst = state(id).since;
     await runMonitorCycle(db, { check: check.fn, sync: false, sleep: noSleep });
     await runMonitorCycle(db, { check: check.fn, sync: false, sleep: noSleep });
 
     expect(events(id)).toHaveLength(1);
-    expect(state(id).since).toBe(sinceAfterFirst);
+  });
+
+  it('не двигает since, пока статус не менялся', async () => {
+    const id = seedTarget();
+    const check = scriptedCheck([up]);
+
+    await runMonitorCycle(db, { check: check.fn, sync: false, sleep: noSleep });
+
+    // datetime('now') имеет разрешение в секунду, а весь тест укладывается
+    // в миллисекунды — сравнение с «since после первого цикла» совпало бы
+    // даже без guard'а в persist. Подставляем заведомо старое значение,
+    // чтобы assert был чувствителен к реальному поведению кода.
+    const backdated = '2020-01-01 00:00:00';
+    sqlite.prepare(`UPDATE monitor_state SET since = ? WHERE target_id = ?`).run(backdated, id);
+
+    await runMonitorCycle(db, { check: check.fn, sync: false, sleep: noSleep });
+    await runMonitorCycle(db, { check: check.fn, sync: false, sleep: noSleep });
+
+    expect(state(id).since).toBe(backdated);
   });
 
   it('не роняет в down, если повторная попытка удалась', async () => {
@@ -215,5 +232,28 @@ describe('runMonitorCycle', () => {
     expect(result!.up).toBe(1);
     expect(result!.slow).toBe(1);
     expect(result!.down).toBe(0);
+  });
+
+  it('изолирует упавшую цель: цикл не падает и считает только успешные', async () => {
+    const idBad = seedTarget('https://one.ru/');
+    const idGood = seedTarget('https://two.ru/');
+    // Проверяльщик, который реально бросает исключение (не «down»-результат) —
+    // именно такой случай не покрыт CheckFn-контрактом, но не должен топить цикл.
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const check = async (url: string): Promise<CheckResult> => {
+      if (url === 'https://one.ru/') throw new Error('boom');
+      return up;
+    };
+
+    const result = await runMonitorCycle(db, { check, sync: false, sleep: noSleep });
+
+    expect(result).not.toBeNull();
+    expect(result!.checked).toBe(1);
+    expect(result!.up).toBe(1);
+    expect(state(idGood).status).toBe('up');
+    expect(state(idBad).status).toBe('unknown'); // до упавшей цели persist не дошёл
+    expect(errorSpy).toHaveBeenCalled();
+
+    errorSpy.mockRestore();
   });
 });

@@ -139,15 +139,25 @@ export async function runMonitorCycle(
       .all() as TargetRow[];
 
     let cursor = 0;
+    let checked = 0;
     const worker = async () => {
       for (;;) {
         const index = cursor;
         cursor += 1;
         if (index >= targets.length) return;
         const target = targets[index];
-        const result = await checkWithRetry(target.url, check, retryDelayMs, sleep);
-        persist(db, target, result);
-        tally[result.status] += 1;
+        try {
+          const result = await checkWithRetry(target.url, check, retryDelayMs, sleep);
+          persist(db, target, result);
+          tally[result.status] += 1;
+          checked += 1;
+        } catch (err) {
+          // Изоляция сбоя одной цели: без try/catch необработанное исключение
+          // валит Promise.all, «осиротевшие» воркеры продолжают писать в БД,
+          // а cycleRunning в finally уже снят — следующий вызов запустит
+          // реально наложившийся цикл. Одна плохая цель не должна ронять весь прогон.
+          console.error(`monitor: цель ${target.url} упала с ошибкой`, err);
+        }
       }
     };
 
@@ -156,7 +166,7 @@ export async function runMonitorCycle(
     );
 
     return {
-      checked: targets.length,
+      checked,
       up: tally.up,
       slow: tally.slow,
       down: tally.down,
