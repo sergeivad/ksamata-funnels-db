@@ -180,9 +180,8 @@ describe('GET /api/monitoring/events', () => {
 });
 
 describe('POST /api/monitoring/run', () => {
-  it('отвечает 409, когда цикл уже идёт (pre-check)', async () => {
-    // Флаг занятости живёт в модуле monitor-run — подменяем его целиком.
-    // Тут isCycleRunning() вернёт true на строке 10, обработчик вернётся ещё до вызова runMonitorCycle.
+  it('отвечает 409, когда цикл уже идёт', async () => {
+    // Флаг занятости живёт в monitor-run — подменяем модуль целиком.
     vi.doMock('@/lib/monitor-run', () => ({
       isCycleRunning: () => true,
       runMonitorCycle: async () => null,
@@ -192,16 +191,38 @@ describe('POST /api/monitoring/run', () => {
     expect(res.status).toBe(409);
   });
 
-  it('отвечает 409, когда цикл начался между проверкой и вызовом (race)', async () => {
-    // Вторая ветка 409: isCycleRunning() вернёт false (pre-check пройдёт),
-    // но runMonitorCycle вернёт null (цикл стартовал тем временем).
-    // Это проверяет путь на строках 15-17 route.ts.
+  it('отвечает 202 сразу, не дожидаясь конца цикла', async () => {
+    // Цикл, который «идёт» до конца теста: если бы роут его ждал, POST завис бы.
+    let release!: () => void;
+    const cycle = new Promise<null>((resolve) => { release = () => resolve(null); });
     vi.doMock('@/lib/monitor-run', () => ({
       isCycleRunning: () => false,
-      runMonitorCycle: async () => null,
+      runMonitorCycle: () => cycle,
     }));
     const { POST } = await import('../src/app/api/monitoring/run/route');
+
     const res = await POST();
-    expect(res.status).toBe(409);
+
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ started: true });
+    release();
+    await cycle;
+  });
+
+  it('не роняет процесс, если незажиданный цикл отказал', async () => {
+    // Промис никто не ждёт: без .catch в роуте это была бы unhandled rejection.
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.doMock('@/lib/monitor-run', () => ({
+      isCycleRunning: () => false,
+      runMonitorCycle: () => Promise.reject(new Error('boom')),
+    }));
+    const { POST } = await import('../src/app/api/monitoring/run/route');
+
+    const res = await POST();
+    expect(res.status).toBe(202);
+
+    await new Promise((r) => setTimeout(r, 0)); // даём микрозадаче с .catch отработать
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });

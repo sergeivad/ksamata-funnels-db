@@ -35,11 +35,18 @@ interface ToastState {
   key: number;
 }
 
+/** Период опроса, пока идёт цикл. Реже — кнопка «отвисает» заметно позже. */
+const POLL_INTERVAL_MS = 2_000;
+
 export default function MonitoringPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [events, setEvents] = useState<MonitorEventView[]>([]);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [running, setRunning] = useState(false);
+  // Опрос идёт, пока сервер не скажет, что цикл закончился.
+  const [polling, setPolling] = useState(false);
+  // Тост «Проверка завершена» показываем только тому, кто сам нажал кнопку,
+  // а не за компанию с циклом планировщика.
+  const notifyOnFinishRef = useRef(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [search, setSearch] = useState('');
   const [showDisabled, setShowDisabled] = useState(false);
@@ -54,21 +61,24 @@ export default function MonitoringPage() {
     setToast({ message, variant, key: toastKeyRef.current });
   }, []);
 
-  const load = useCallback(async () => {
+  /** Возвращает свежую сводку, чтобы опрос мог решить, продолжать ли ждать. */
+  const load = useCallback(async (): Promise<DashboardData | null> => {
     try {
       const [dashRes, eventsRes] = await Promise.all([
         fetch('/api/monitoring'),
         fetch('/api/monitoring/events?limit=25'),
       ]);
       if (!dashRes.ok || !eventsRes.ok) throw new Error('load failed');
-      const dashData = await dashRes.json();
+      const dashData: DashboardData = await dashRes.json();
       const eventsData = await eventsRes.json();
-      if (!mountedRef.current) return;
+      if (!mountedRef.current) return null;
       setData(dashData);
       setEvents(eventsData.events);
       setLoadFailed(false);
+      return dashData;
     } catch {
       if (mountedRef.current) setLoadFailed(true);
+      return null;
     }
   }, []);
 
@@ -80,22 +90,52 @@ export default function MonitoringPage() {
     };
   }, [load]);
 
+  // Цикл живёт на сервере и переживает эту страницу, поэтому о его завершении
+  // узнаём опросом, а не из ответа на POST.
+  useEffect(() => {
+    if (!polling) return;
+    let cancelled = false;
+    const timer = setInterval(() => {
+      void (async () => {
+        const fresh = await load();
+        if (cancelled || !fresh || fresh.summary.running) return;
+        setPolling(false);
+        if (notifyOnFinishRef.current) {
+          notifyOnFinishRef.current = false;
+          showToast('Проверка завершена', 'success');
+        }
+      })();
+    }, POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [polling, load, showToast]);
+
+  // Цикл мог запустить планировщик, пока страница была закрыта: подхватываем
+  // его — иначе кнопка врала бы «Проверить сейчас», а таблица не обновилась бы.
+  useEffect(() => {
+    if (data?.summary.running) setPolling(true);
+  }, [data?.summary.running]);
+
+  const running = polling || (data?.summary.running ?? false);
+
   async function runNow() {
     if (running) return;
-    setRunning(true);
     try {
       const res = await fetch('/api/monitoring/run', { method: 'POST' });
       if (res.status === 409) {
+        // Цикл уже идёт (скорее всего планировщика) — ждём его конца молча.
+        setPolling(true);
         showToast('Проверка уже идёт', 'error');
         return;
       }
       if (!res.ok) throw new Error('run failed');
+      notifyOnFinishRef.current = true;
+      setPolling(true);
       await load();
-      showToast('Проверка завершена', 'success');
     } catch {
       showToast('Не удалось запустить проверку', 'error');
-    } finally {
-      setRunning(false);
     }
   }
 

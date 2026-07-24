@@ -135,7 +135,10 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 - `GET /api/tag-templates` and `PUT /api/tag-templates/[scenario]` — global template.
 - `GET /api/export` — CSV export of all funnels.
 - `GET /api/monitoring` — summary + targets with state.
-- `POST /api/monitoring/run` — sync + run a check cycle (409 if one is running).
+- `POST /api/monitoring/run` — start a check cycle. Returns **202** as soon as
+  the cycle has started (it is not awaited — a wide scope can take tens of
+  minutes and any proxy would cut the request); 409 if one is already running.
+  Poll `GET /api/monitoring` and watch `summary.running` for completion.
 - `PATCH /api/monitoring/targets` — bulk enable/disable by `sourceKind`.
 - `PATCH /api/monitoring/targets/[id]` — enable/disable one target.
 - `GET /api/monitoring/events` — incident history.
