@@ -166,24 +166,44 @@ export function syncMonitorTargets(db: AnyDB): { total: number; created: number;
   return { total: collected.size, created, retired };
 }
 
-/** Переключает одну цель вручную. Возвращает false, если цели нет. */
+/** enabled по умолчанию для вида источника — то же правило, что и в синке. */
+function defaultEnabled(sourceKind: string): 0 | 1 {
+  return LANDING_SET.has(sourceKind) ? 1 : 0;
+}
+
+/**
+ * Переключает одну цель вручную. Возвращает false, если цели нет.
+ *
+ * manual_override ставится, только если запрошенное состояние отличается от
+ * дефолта для вида источника — иначе «включить ленды обратно» намертво
+ * пришпиливало бы их (override никогда не снимался автоматически), и
+ * авто-оживление вернувшегося URL переставало бы работать навсегда.
+ */
 export function setTargetEnabled(db: AnyDB, targetId: number, enabled: boolean): boolean {
   const existing = db
-    .select({ id: monitorTargets.id })
+    .select({ id: monitorTargets.id, sourceKind: monitorTargets.sourceKind })
     .from(monitorTargets)
     .where(eq(monitorTargets.id, targetId))
-    .get() as { id: number } | undefined;
+    .get() as { id: number; sourceKind: string } | undefined;
   if (!existing) return false;
 
+  const enabledValue = enabled ? 1 : 0;
+  const manualOverride = enabledValue === defaultEnabled(existing.sourceKind) ? 0 : 1;
+
   db.update(monitorTargets)
-    // manual_override=1 фиксирует, что решение принял человек, — синк его не отменит.
-    .set({ enabled: enabled ? 1 : 0, manualOverride: 1, updatedAt: sql`(datetime('now'))` })
+    .set({ enabled: enabledValue, manualOverride, updatedAt: sql`(datetime('now'))` })
     .where(eq(monitorTargets.id, targetId))
     .run();
   return true;
 }
 
-/** Переключает целую группу по виду источника вручную. Возвращает число затронутых целей. */
+/**
+ * Переключает целую группу по виду источника вручную. Возвращает число затронутых целей.
+ *
+ * Тот же принцип, что и в setTargetEnabled: override фиксируется только на
+ * отклонение от дефолта вида источника, иначе групповой тумблер «ленды»
+ * пришпиливал бы все ~40 лендов и отключал бы им авто-оживление насовсем.
+ */
 export function setSourceKindEnabled(db: AnyDB, sourceKind: string, enabled: boolean): number {
   const rows = db
     .select({ id: monitorTargets.id })
@@ -192,8 +212,11 @@ export function setSourceKindEnabled(db: AnyDB, sourceKind: string, enabled: boo
     .all() as { id: number }[];
   if (rows.length === 0) return 0;
 
+  const enabledValue = enabled ? 1 : 0;
+  const manualOverride = enabledValue === defaultEnabled(sourceKind) ? 0 : 1;
+
   db.update(monitorTargets)
-    .set({ enabled: enabled ? 1 : 0, manualOverride: 1, updatedAt: sql`(datetime('now'))` })
+    .set({ enabled: enabledValue, manualOverride, updatedAt: sql`(datetime('now'))` })
     .where(eq(monitorTargets.sourceKind, sourceKind))
     .run();
   return rows.length;

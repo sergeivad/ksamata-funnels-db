@@ -127,7 +127,12 @@ CREATE INDEX IF NOT EXISTS idx_monitor_events_at     ON monitor_events(at);
   `funnel_landing_url`, для остальных `0`;
 - у `enabled` два разных смысла — «человек так решил» и «вид источника такой», —
   и различает их колонка `manual_override`. Тумблер на странице (`setTargetEnabled`,
-  `setSourceKindEnabled`) вместе с `enabled` ставит `manual_override = 1`;
+  `setSourceKindEnabled`) ставит `manual_override = 1`, только если запрошенное
+  состояние отличается от дефолта вида источника (лендам положено `enabled = 1`,
+  остальным — `0`); если совпадает — `manual_override` сбрасывается в `0`.
+  Иначе групповой чип «включить ленды обратно» (ровно та кнопка, которой
+  возвращают авто-ретайрнутый ленд) намертво пришпиливал бы все ~40 лендов —
+  override нигде не снимался автоматически;
 - **при повторном upsert**: если `manual_override = 1`, `enabled` не трогается —
   ручное переключение переживает синк; если `manual_override = 0`, `enabled`
   пересчитывается из `source_kind`. Второе — обязательно: без него ленд, на один
