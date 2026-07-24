@@ -304,6 +304,17 @@ export const monitorEvents = sqliteTable(
   }),
 );
 
+/**
+ * Решение человека по целой группе источников. Дефолт для новых целей этой
+ * группы и для пересчёта тех, у кого нет manual_override.
+ * Строки нет — действует правило по умолчанию (см. monitor-targets.ts).
+ */
+export const monitorSourceKindPrefs = sqliteTable('monitor_source_kind_prefs', {
+  sourceKind: text('source_kind').primaryKey(),
+  enabled:    integer('enabled').notNull().default(0),
+  updatedAt:  text('updated_at').notNull().default(sql`(datetime('now'))`),
+});
+
 // ─── Type exports ─────────────────────────────────────────────────────────────
 
 export type Source           = typeof sources.$inferSelect;
@@ -328,3 +339,4 @@ export type MonitorTarget       = typeof monitorTargets.$inferSelect;
 export type MonitorTargetFunnel = typeof monitorTargetFunnels.$inferSelect;
 export type MonitorStateRow     = typeof monitorState.$inferSelect;
 export type MonitorEventRow     = typeof monitorEvents.$inferSelect;
+export type MonitorSourceKindPref = typeof monitorSourceKindPrefs.$inferSelect;

@@ -64,14 +64,19 @@ Drizzle SQLite. Core + lookup + content + tags tables:
   (per-funnel add/remove deltas).
 - **Other:** `salebot_configs`, `product_durations`.
 - **Monitoring (Phase 6):** `monitor_targets` (URL to check, `source_kind`,
-  `enabled`, plus `manual_override` — set to `1` only when a toggle
-  (`setTargetEnabled`/`setSourceKindEnabled`) requests an `enabled` value that
-  differs from the source kind's default (landings on, everything else off);
-  requesting the default value clears it back to `0`. `manual_override = 1`
-  makes the sync leave `enabled` alone; while it is `0` the sync recomputes
-  `enabled` from `source_kind`, so a landing that briefly vanished from the
-  funnel data comes back on by itself — and so does clicking the landings
-  group chip back on, instead of pinning it forever),
+  `enabled`, plus `manual_override` — set to `1` only when `setTargetEnabled`
+  requests an `enabled` value that differs from **the group's default**;
+  requesting the default clears it back to `0`. So `manual_override = 1` reads
+  as "this one target differs from its group". `manual_override = 1` makes the
+  sync leave `enabled` alone; while it is `0` the sync recomputes `enabled`
+  from the group default, so a landing that briefly vanished from the funnel
+  data comes back on by itself),
+  `monitor_source_kind_prefs` (the human's decision for a whole `source_kind`,
+  written by `setSourceKindEnabled` — this is what makes a URL added to a
+  block **later** inherit the group and start being checked without anyone
+  clicking; no row = fall back to "landings on, everything else off". A group
+  click also clears `manual_override` across the group: the group decision
+  beats per-target toggles inside it),
   `monitor_target_funnels` (which funnels use the URL),
   `monitor_state` (current status per target, 1:1), `monitor_events` (status
   **changes** only — never one row per check).
@@ -119,7 +124,12 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 - `clipboard.ts` / `useUnsavedGuard.ts` — client hooks.
 - `monitor-status.ts` — monitoring status values, badge metadata, `formatAgo`.
 - `monitor-urls.ts` — URL normalization + multi-URL field splitting.
-- `monitor-targets.ts` — sync targets from funnel data, enable/disable.
+- `monitor-targets.ts` — sync targets from funnel data, enable/disable, group defaults.
+  Only funnels with `status = 'active'` are collected (`MONITORED_FUNNEL_STATUS`);
+  drafts and archive are out of scope, and a URL left behind by a funnel leaving
+  `active` goes through the normal retirement path (muted, unlinked, history kept,
+  auto-revived when the funnel comes back).
+- `monitor-kinds.ts` — Russian labels for source kinds (reuses `BLOCK_KINDS` titles).
 - `monitor-check.ts` — pure HTTP availability check (`checkUrl`).
 - `monitor-run.ts` — check cycle, state persistence, event log.
 - `monitor-view.ts` — dashboard read models.
@@ -233,7 +243,7 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
   followed by `backfill-legacy-tag-overrides.ts` (preserves legacy non-AV tags
   as `add` overrides so Phase 5's resync doesn't drop them).
 - **Phase 6** — monitoring tables (`monitor_targets`, `monitor_target_funnels`,
-  `monitor_state`, `monitor_events`).
+  `monitor_state`, `monitor_events`, `monitor_source_kind_prefs`).
 
 **Docker runs, in order** (`app/docker-entrypoint.sh`): Phase 2 → 3 (+data) →
 4 → 5 → legacy-tag-override backfill → 6.

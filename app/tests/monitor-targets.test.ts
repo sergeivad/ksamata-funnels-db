@@ -27,6 +27,9 @@ beforeEach(() => {
   sqlite = new Database(tmp);
   sqlite.pragma('foreign_keys = ON');
   runMigratePhase6(sqlite);
+  // Решения по группам — наше собственное состояние, и в копии реальной БД они
+  // уже могут быть. Стартуем от задокументированного дефолта: ленды вкл, остальное выкл.
+  sqlite.prepare(`DELETE FROM monitor_source_kind_prefs`).run();
   db = drizzle(sqlite, { schema });
 });
 
@@ -413,7 +416,7 @@ describe('manual_override: фиксируется только на отклон
     expect(targetRow(url)?.manual_override).toBe(0);
   });
 
-  it('включение группы не-лендов (отклонение от дефолта) ставит override=1 и переживает синк', () => {
+  it('включение группы не-лендов меняет дефолт группы, а не помечает цели override', () => {
     clearMonitoringState();
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
@@ -425,11 +428,224 @@ describe('manual_override: фиксируется только на отклон
 
     syncMonitorTargets(db);
     expect(setSourceKindEnabled(db, 'links', true)).toBe(1);
-    expect(targetRow('https://gc.example.ru/group-override')?.manual_override).toBe(1);
+    // Дефолт группы теперь 1, значит цель ему соответствует — отклонения нет.
+    expect(targetRow('https://gc.example.ru/group-override')?.manual_override).toBe(0);
 
     syncMonitorTargets(db);
     expect(targetRow('https://gc.example.ru/group-override')?.enabled).toBe(1);
-    expect(targetRow('https://gc.example.ru/group-override')?.manual_override).toBe(1);
+    expect(targetRow('https://gc.example.ru/group-override')?.manual_override).toBe(0);
+  });
+
+  it('выключение группы лендов переживает синк', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    const url = 'https://lp.example.ru/group-off';
+    sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`).run(url, f1);
+    syncMonitorTargets(db);
+    expect(targetRow(url)?.enabled).toBe(1);
+
+    setSourceKindEnabled(db, 'funnel_landing_url', false);
+
+    syncMonitorTargets(db);
+    syncMonitorTargets(db);
+
+    expect(targetRow(url)?.enabled).toBe(0);
+  });
+});
+
+/**
+ * Главное требование задачи: ссылка, добавленная в блок уже включённой группы,
+ * должна попасть под проверку сама. Раньше групповой клик правил только те цели,
+ * что существовали на момент клика, и новая приходила выключенной навсегда.
+ */
+/**
+ * Проверяем только активные воронки. Страницы черновиков и архива могут лежать
+ * на законных основаниях, и их падения — шум, из-за которого перестают смотреть
+ * на настоящие.
+ */
+describe('в мониторинг попадают только активные воронки', () => {
+  function setStatus(funnelId: number, status: string) {
+    sqlite.prepare(`UPDATE funnels SET status = ? WHERE id = ?`).run(status, funnelId);
+  }
+
+  function addLanding(funnelId: number, url: string) {
+    const block = sqlite
+      .prepare(`INSERT INTO funnel_blocks (funnel_id, kind, enabled) VALUES (?, 'landings', 1)`)
+      .run(funnelId).lastInsertRowid as number;
+    sqlite.prepare(`INSERT INTO funnel_block_items (block_id, url) VALUES (?, ?)`).run(block, url);
+  }
+
+  it('не заводит цели по блокам черновика и архива', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1, f2, f3] = funnelIds(3);
+    setStatus(f1, 'active');
+    setStatus(f2, 'draft');
+    setStatus(f3, 'archive');
+    addLanding(f1, 'https://lp.example.ru/live');
+    addLanding(f2, 'https://lp.example.ru/draft');
+    addLanding(f3, 'https://lp.example.ru/archived');
+
+    const stats = syncMonitorTargets(db);
+
+    expect(stats.total).toBe(1);
+    expect(targetRow('https://lp.example.ru/live')?.enabled).toBe(1);
+    expect(targetRow('https://lp.example.ru/draft')).toBeUndefined();
+    expect(targetRow('https://lp.example.ru/archived')).toBeUndefined();
+  });
+
+  it('не берёт landing_url неактивной воронки', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    setStatus(f1, 'archive');
+    sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`)
+      .run('https://lp.example.ru/archived-field', f1);
+
+    syncMonitorTargets(db);
+
+    expect(targetRow('https://lp.example.ru/archived-field')).toBeUndefined();
+  });
+
+  it('гасит цель, когда воронку убрали из активных, и оживляет при возврате', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    setStatus(f1, 'active');
+    const url = 'https://lp.example.ru/status-flip';
+    addLanding(f1, url);
+
+    syncMonitorTargets(db);
+    expect(targetRow(url)?.enabled).toBe(1);
+
+    setStatus(f1, 'archive');
+    syncMonitorTargets(db);
+    expect(targetRow(url)?.enabled).toBe(0);
+    // История цели остаётся — цель гасится, а не удаляется.
+    expect(targetRow(url)).toBeDefined();
+
+    setStatus(f1, 'active');
+    syncMonitorTargets(db);
+    expect(targetRow(url)?.enabled).toBe(1);
+  });
+
+  it('оставляет под проверкой URL, который делят активная и архивная воронки', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1, f2] = funnelIds(2);
+    setStatus(f1, 'active');
+    setStatus(f2, 'archive');
+    const url = 'https://lp.example.ru/shared-mixed';
+    addLanding(f1, url);
+    addLanding(f2, url);
+
+    syncMonitorTargets(db);
+
+    const target = targetRow(url)!;
+    expect(target.enabled).toBe(1);
+    // В связях числится только активная — иначе чипы «Воронки» врали бы.
+    const links = sqlite
+      .prepare(`SELECT funnel_id FROM monitor_target_funnels WHERE target_id = ?`)
+      .all(target.id) as { funnel_id: number }[];
+    expect(links.map((l) => l.funnel_id)).toEqual([f1]);
+  });
+});
+
+describe('предпочтение группы наследуется новыми целями', () => {
+  /** Заводит блок нужного вида под первой воронкой и возвращает его id. */
+  function makeBlock(funnelId: number, kind: string): number {
+    return sqlite
+      .prepare(`INSERT INTO funnel_blocks (funnel_id, kind, enabled) VALUES (?, ?, 1)`)
+      .run(funnelId, kind).lastInsertRowid as number;
+  }
+
+  function addUrl(blockId: number, url: string) {
+    sqlite.prepare(`INSERT INTO funnel_block_items (block_id, url) VALUES (?, ?)`).run(blockId, url);
+  }
+
+  it('заводит включённой ссылку, добавленную в группу после её включения', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    const block = makeBlock(f1, 'tariffs');
+    addUrl(block, 'https://pay.example.ru/first');
+
+    syncMonitorTargets(db);
+    setSourceKindEnabled(db, 'tariffs', true);
+
+    // Ссылка появилась уже после того, как группу включили.
+    addUrl(block, 'https://pay.example.ru/second');
+    syncMonitorTargets(db);
+
+    expect(targetRow('https://pay.example.ru/second')?.enabled).toBe(1);
+    expect(targetRow('https://pay.example.ru/second')?.manual_override).toBe(0);
+  });
+
+  it('заводит включённой ссылку в новой воронке, если её группа включена', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1, f2] = funnelIds(2);
+    addUrl(makeBlock(f1, 'oto'), 'https://oto.example.ru/old');
+
+    syncMonitorTargets(db);
+    setSourceKindEnabled(db, 'oto', true);
+
+    addUrl(makeBlock(f2, 'oto'), 'https://oto.example.ru/new-funnel');
+    syncMonitorTargets(db);
+
+    expect(targetRow('https://oto.example.ru/new-funnel')?.enabled).toBe(1);
+  });
+
+  it('оставляет выключенной новую ссылку в группе, которую не включали', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    const block = makeBlock(f1, 'bonuses');
+
+    syncMonitorTargets(db);
+    addUrl(block, 'https://bonus.example.ru/untouched');
+    syncMonitorTargets(db);
+
+    expect(targetRow('https://bonus.example.ru/untouched')?.enabled).toBe(0);
+  });
+
+  it('клик по группе снимает точечный тумблер внутри неё', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    const block = makeBlock(f1, 'processes');
+    addUrl(block, 'https://proc.example.ru/muted');
+    addUrl(block, 'https://proc.example.ru/plain');
+
+    syncMonitorTargets(db);
+    const muted = targetRow('https://proc.example.ru/muted')!;
+    setTargetEnabled(db, muted.id, true);
+    expect(targetRow('https://proc.example.ru/muted')?.manual_override).toBe(1);
+
+    // Групповое решение перебивает точечное — иначе «выключить группу»
+    // оставляло бы в ней включённые цели без всякого объяснения.
+    setSourceKindEnabled(db, 'processes', false);
+
+    expect(targetRow('https://proc.example.ru/muted')?.enabled).toBe(0);
+    expect(targetRow('https://proc.example.ru/muted')?.manual_override).toBe(0);
+    expect(targetRow('https://proc.example.ru/plain')?.enabled).toBe(0);
+  });
+
+  it('точечный тумблер переживает синк, пока по группе не кликали', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    addUrl(makeBlock(f1, 'meditation'), 'https://med.example.ru/single');
+
+    syncMonitorTargets(db);
+    const target = targetRow('https://med.example.ru/single')!;
+    setTargetEnabled(db, target.id, true);
+
+    syncMonitorTargets(db);
+
+    expect(targetRow('https://med.example.ru/single')?.enabled).toBe(1);
+    expect(targetRow('https://med.example.ru/single')?.manual_override).toBe(1);
   });
 });
 

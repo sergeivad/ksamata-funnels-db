@@ -7,6 +7,7 @@ import MonitorSummary from '@/components/monitoring/MonitorSummary';
 import MonitorTable from '@/components/monitoring/MonitorTable';
 import MonitorEvents from '@/components/monitoring/MonitorEvents';
 import { MONITOR_STATUS_META } from '@/lib/monitor-status';
+import { sourceKindLabel } from '@/lib/monitor-kinds';
 import type {
   MonitorEventView,
   MonitorSourceKindView,
@@ -221,8 +222,9 @@ export default function MonitoringPage() {
     <main className="mx-auto max-w-[1120px] px-4 py-6 sm:px-6">
       <h1 className="text-[18px] font-semibold text-[var(--ink)]">Мониторинг страниц</h1>
       <p className="mt-1 text-[12px] text-[var(--muted)]">
-        Статус {MONITOR_STATUS_META.down.label.toLowerCase()} ставится, только если подряд
-        провалились две попытки — моргание сети сюда не попадает.
+        Проверяются страницы активных воронок — черновики и архив сюда не попадают. Статус{' '}
+        {MONITOR_STATUS_META.down.label.toLowerCase()} ставится, только если подряд провалились
+        две попытки: моргание сети сюда не попадает.
       </p>
 
       {loadFailed && (
@@ -235,21 +237,39 @@ export default function MonitoringPage() {
         <div className="mt-4 space-y-4">
           <MonitorSummary summary={data.summary} running={running} onRun={runNow} />
 
-          <div className="flex flex-wrap items-center gap-2">
-            {data.sourceKinds.map((k) => {
-              const allOn = k.enabled === k.total;
-              return (
-                <button
-                  key={k.sourceKind}
-                  type="button"
-                  onClick={() => void toggleKind(k.sourceKind, !allOn)}
-                  aria-pressed={allOn}
-                  className="rounded-[6px] bg-[var(--chip)] px-2 py-1 text-[11px] text-[var(--muted)] transition hover:text-[var(--ink)]"
-                >
-                  {k.sourceKind} · {k.total} · {allOn ? 'вкл' : `${k.enabled} вкл`}
-                </button>
-              );
-            })}
+          <div>
+            <p className="text-[12px] text-[var(--muted)]">
+              Группы ссылок. Клик включает или выключает проверку всей группы — вместе с теми
+              ссылками, которые появятся в ней позже.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {data.sourceKinds.map((k) => {
+                const allOn = k.enabled === k.total;
+                const noneOn = k.enabled === 0;
+                // Состояние группы должно читаться фоном, а не вычитыванием чисел.
+                const tone = allOn
+                  ? 'bg-[var(--orange)] text-white'
+                  : noneOn
+                    ? 'bg-[var(--chip)] text-[var(--faint)] hover:text-[var(--muted)]'
+                    : 'bg-[var(--chip)] text-[var(--ink)]';
+                return (
+                  <button
+                    key={k.sourceKind}
+                    type="button"
+                    onClick={() => void toggleKind(k.sourceKind, !allOn)}
+                    aria-pressed={allOn}
+                    title={
+                      allOn
+                        ? 'Проверяется вся группа — нажмите, чтобы выключить'
+                        : 'Нажмите, чтобы проверять всю группу'
+                    }
+                    className={`rounded-[6px] px-2 py-1 text-[11px] transition ${tone}`}
+                  >
+                    {sourceKindLabel(k.sourceKind)} · {k.enabled} из {k.total}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">

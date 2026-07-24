@@ -7,13 +7,45 @@ import {
   monitorTargets,
   monitorTargetFunnels,
   monitorState,
+  monitorSourceKindPrefs,
 } from '../db/schema';
 import { normalizeUrl, splitUrlField } from './monitor-urls';
 
-/** Виды источников, которые включаются в мониторинг сразу при заведении цели. */
+/**
+ * Мониторим только страницы воронок в этом статусе. Черновики и архив не
+ * проверяем: их падения — шум, из-за которого перестают смотреть на настоящие.
+ */
+export const MONITORED_FUNNEL_STATUS = 'active';
+
+/** Виды источников, которые проверяются, пока по группе не было решения человека. */
 export const LANDING_SOURCE_KINDS = ['landings', 'funnel_landing_url'] as const;
 
 const LANDING_SET = new Set<string>(LANDING_SOURCE_KINDS);
+
+/**
+ * Решения по группам, снятые одним запросом: синк спрашивает дефолт для каждой
+ * цели, и ходить в базу на каждую из ~600 было бы расточительно.
+ */
+function loadGroupPrefs(db: AnyDB): Map<string, boolean> {
+  const rows = db
+    .select({ sourceKind: monitorSourceKindPrefs.sourceKind, enabled: monitorSourceKindPrefs.enabled })
+    .from(monitorSourceKindPrefs)
+    .all() as { sourceKind: string; enabled: number }[];
+  return new Map(rows.map((r) => [r.sourceKind, r.enabled === 1]));
+}
+
+/**
+ * Проверяется ли группа по умолчанию. Решение человека по группе, а если его
+ * не было — прежнее правило: ленды да, остальное нет.
+ *
+ * Именно эта функция и делает «новая ссылка наследует группу»: цель заводится
+ * с дефолтом своей группы, а не с захардкоженным списком лендов.
+ */
+function groupDefault(prefs: Map<string, boolean>, sourceKind: string): 0 | 1 {
+  const pref = prefs.get(sourceKind);
+  if (pref !== undefined) return pref ? 1 : 0;
+  return LANDING_SET.has(sourceKind) ? 1 : 0;
+}
 
 /**
  * Чем меньше ранг, тем «главнее» источник. Один и тот же URL может прийти из
@@ -31,7 +63,18 @@ interface Collected {
   funnelIds: Set<number>;
 }
 
-/** Собирает все пригодные для проверки URL из данных воронок. */
+/**
+ * Собирает пригодные для проверки URL — только из **активных** воронок.
+ *
+ * Черновик ещё не запущен, архив уже отработал: их страницы могут лежать на
+ * законных основаниях, и падения по ним — шум, из-за которого перестают
+ * смотреть на настоящие. URL, оставшийся только за неактивными воронками,
+ * попадает в общий авто-ретайрмент: гаснет, отвязывается от воронок, но
+ * сохраняет историю инцидентов и оживает сам, когда воронку вернут в активные.
+ *
+ * URL, который делят активная и архивная воронки, остаётся под проверкой, но
+ * в связях (и в чипах «Воронки») числится только за активной.
+ */
 function collectTargets(db: AnyDB): Map<string, Collected> {
   const out = new Map<string, Collected>();
 
@@ -55,6 +98,8 @@ function collectTargets(db: AnyDB): Map<string, Collected> {
     })
     .from(funnelBlockItems)
     .innerJoin(funnelBlocks, eq(funnelBlocks.id, funnelBlockItems.blockId))
+    .innerJoin(funnels, eq(funnels.id, funnelBlocks.funnelId))
+    .where(eq(funnels.status, MONITORED_FUNNEL_STATUS))
     .all() as { url: string; kind: string; funnelId: number }[];
 
   for (const row of items) {
@@ -65,6 +110,7 @@ function collectTargets(db: AnyDB): Map<string, Collected> {
   const funnelRows = db
     .select({ id: funnels.id, landingUrl: funnels.landingUrl })
     .from(funnels)
+    .where(eq(funnels.status, MONITORED_FUNNEL_STATUS))
     .all() as { id: number; landingUrl: string | null }[];
 
   for (const row of funnelRows) {
@@ -79,17 +125,19 @@ function collectTargets(db: AnyDB): Map<string, Collected> {
 /**
  * Приводит monitor_targets в соответствие с данными воронок.
  * Инварианты:
- *  - новая цель получает enabled=1 только для лендов;
+ *  - новая цель получает enabled по дефолту своей группы — поэтому ссылка,
+ *    добавленная в блок уже включённой группы, начинает проверяться сама;
  *  - у существующей цели с manual_override=1 enabled НЕ трогается —
  *    ручной тумблер переживает синк;
- *  - у существующей цели с manual_override=0 enabled пересчитывается из вида
- *    источника: ленд, пропавший из данных на один синк и вернувшийся, снова
+ *  - у существующей цели с manual_override=0 enabled пересчитывается из дефолта
+ *    группы: ленд, пропавший из данных на один синк и вернувшийся, снова
  *    включается, а не остаётся навсегда погашённым;
  *  - исчезнувший URL не удаляется: гасится и отвязывается от воронок,
  *    чтобы не потерять историю инцидентов.
  */
 export function syncMonitorTargets(db: AnyDB): { total: number; created: number; retired: number } {
   const collected = collectTargets(db);
+  const prefs = loadGroupPrefs(db);
   let created = 0;
   let retired = 0;
 
@@ -107,11 +155,11 @@ export function syncMonitorTargets(db: AnyDB): { total: number; created: number;
           .set({
             sourceKind: item.sourceKind,
             // Ручной тумблер (manual_override=1) неприкосновенен. Без него
-            // enabled — производная от вида источника, поэтому пересчитываем:
+            // enabled — производная от дефолта группы, поэтому пересчитываем:
             // иначе цель, погашенная авто-ретайрментом, уже никогда не ожила бы.
             ...(existing.manualOverride === 1
               ? {}
-              : { enabled: LANDING_SET.has(item.sourceKind) ? 1 : 0 }),
+              : { enabled: groupDefault(prefs, item.sourceKind) }),
             updatedAt: sql`(datetime('now'))`,
           })
           .where(eq(monitorTargets.id, existing.id))
@@ -123,7 +171,7 @@ export function syncMonitorTargets(db: AnyDB): { total: number; created: number;
           .values({
             url: item.url,
             sourceKind: item.sourceKind,
-            enabled: LANDING_SET.has(item.sourceKind) ? 1 : 0,
+            enabled: groupDefault(prefs, item.sourceKind),
           })
           .returning({ id: monitorTargets.id })
           .get() as { id: number };
@@ -167,17 +215,18 @@ export function syncMonitorTargets(db: AnyDB): { total: number; created: number;
 }
 
 /** enabled по умолчанию для вида источника — то же правило, что и в синке. */
-function defaultEnabled(sourceKind: string): 0 | 1 {
-  return LANDING_SET.has(sourceKind) ? 1 : 0;
+function defaultEnabled(db: AnyDB, sourceKind: string): 0 | 1 {
+  return groupDefault(loadGroupPrefs(db), sourceKind);
 }
 
 /**
  * Переключает одну цель вручную. Возвращает false, если цели нет.
  *
  * manual_override ставится, только если запрошенное состояние отличается от
- * дефолта для вида источника — иначе «включить ленды обратно» намертво
- * пришпиливало бы их (override никогда не снимался автоматически), и
- * авто-оживление вернувшегося URL переставало бы работать навсегда.
+ * дефолта группы — иначе «включить ленды обратно» намертво пришпиливало бы их
+ * (override никогда не снимался автоматически), и авто-оживление вернувшегося
+ * URL переставало бы работать навсегда. Смысл override после этого читается
+ * однозначно: «эта цель отличается от своей группы».
  */
 export function setTargetEnabled(db: AnyDB, targetId: number, enabled: boolean): boolean {
   const existing = db
@@ -188,7 +237,7 @@ export function setTargetEnabled(db: AnyDB, targetId: number, enabled: boolean):
   if (!existing) return false;
 
   const enabledValue = enabled ? 1 : 0;
-  const manualOverride = enabledValue === defaultEnabled(existing.sourceKind) ? 0 : 1;
+  const manualOverride = enabledValue === defaultEnabled(db, existing.sourceKind) ? 0 : 1;
 
   db.update(monitorTargets)
     .set({ enabled: enabledValue, manualOverride, updatedAt: sql`(datetime('now'))` })
@@ -198,11 +247,16 @@ export function setTargetEnabled(db: AnyDB, targetId: number, enabled: boolean):
 }
 
 /**
- * Переключает целую группу по виду источника вручную. Возвращает число затронутых целей.
+ * Переключает целую группу по виду источника. Возвращает число затронутых целей.
  *
- * Тот же принцип, что и в setTargetEnabled: override фиксируется только на
- * отклонение от дефолта вида источника, иначе групповой тумблер «ленды»
- * пришпиливал бы все ~40 лендов и отключал бы им авто-оживление насовсем.
+ * Клик по группе меняет её дефолт, а не помечает каждую цель по отдельности:
+ * решение хранится в monitor_source_kind_prefs, и ссылка, добавленная в блок
+ * этой группы завтра, заводится синком уже с нужным enabled. Раньше правились
+ * только существующие цели, и новые приходили выключенными.
+ *
+ * manual_override у всей группы снимается: групповое решение перебивает
+ * точечные тумблеры внутри неё, иначе «включить группу» оставляло бы дыры из
+ * целей, выключенных когда-то поштучно, и объяснить их было бы нечем.
  */
 export function setSourceKindEnabled(db: AnyDB, sourceKind: string, enabled: boolean): number {
   const rows = db
@@ -210,14 +264,27 @@ export function setSourceKindEnabled(db: AnyDB, sourceKind: string, enabled: boo
     .from(monitorTargets)
     .where(eq(monitorTargets.sourceKind, sourceKind))
     .all() as { id: number }[];
-  if (rows.length === 0) return 0;
 
   const enabledValue = enabled ? 1 : 0;
-  const manualOverride = enabledValue === defaultEnabled(sourceKind) ? 0 : 1;
 
-  db.update(monitorTargets)
-    .set({ enabled: enabledValue, manualOverride, updatedAt: sql`(datetime('now'))` })
-    .where(eq(monitorTargets.sourceKind, sourceKind))
-    .run();
+  db.transaction((tx) => {
+    // Предпочтение пишем всегда, даже если целей этого вида сейчас нет: группа
+    // могла временно опустеть, а решение по ней должно пережить это.
+    tx.insert(monitorSourceKindPrefs)
+      .values({ sourceKind, enabled: enabledValue })
+      .onConflictDoUpdate({
+        target: monitorSourceKindPrefs.sourceKind,
+        set: { enabled: enabledValue, updatedAt: sql`(datetime('now'))` },
+      })
+      .run();
+
+    if (rows.length > 0) {
+      tx.update(monitorTargets)
+        .set({ enabled: enabledValue, manualOverride: 0, updatedAt: sql`(datetime('now'))` })
+        .where(eq(monitorTargets.sourceKind, sourceKind))
+        .run();
+    }
+  });
+
   return rows.length;
 }

@@ -5,6 +5,7 @@ import { ExternalLink, CornerDownRight } from 'lucide-react';
 import Switch from '@/components/Switch';
 import MonitorStatusPill from './MonitorStatusPill';
 import { formatAgo } from '@/lib/monitor-status';
+import { sourceKindLabel } from '@/lib/monitor-kinds';
 import type { MonitorTargetView } from '@/lib/monitor-view';
 
 interface Props {
@@ -30,7 +31,7 @@ export default function MonitorTable({ targets, onToggle }: Props) {
             <th className="px-3 py-2 font-medium">Страница</th>
             <th className="px-3 py-2 font-medium">Код</th>
             <th className="px-3 py-2 font-medium">Ответ</th>
-            <th className="px-3 py-2 font-medium">С</th>
+            <th className="px-3 py-2 font-medium">Держится с</th>
             <th className="px-3 py-2 font-medium">Воронки</th>
             <th className="px-3 py-2 font-medium">Вкл.</th>
           </tr>
@@ -68,7 +69,7 @@ export default function MonitorTable({ targets, onToggle }: Props) {
                     <div className="mt-0.5 text-[11px] text-[#A32020]">{t.error}</div>
                   )}
                   <div className="mt-0.5 text-[11px] text-[var(--faint)]">
-                    {t.sourceKind}
+                    {sourceKindLabel(t.sourceKind)}
                     {t.manualOverride && ' · переключено вручную'}
                   </div>
                 </td>

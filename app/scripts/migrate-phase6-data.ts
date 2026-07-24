@@ -62,4 +62,14 @@ CREATE TABLE IF NOT EXISTS monitor_events (
 );
 CREATE INDEX IF NOT EXISTS idx_monitor_events_target ON monitor_events(target_id);
 CREATE INDEX IF NOT EXISTS idx_monitor_events_at     ON monitor_events(at);
+
+-- Решение человека по целой группе источников: «проверяем tariffs / не проверяем links».
+-- Без него групповой чип правил только те цели, что существовали на момент клика,
+-- и ссылка, добавленная в блок позже, заводилась выключенной.
+-- Строки нет — действует правило по умолчанию из monitor-targets.ts (ленды вкл).
+CREATE TABLE IF NOT EXISTS monitor_source_kind_prefs (
+  source_kind TEXT    PRIMARY KEY,
+  enabled     INTEGER NOT NULL DEFAULT 0,
+  updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+);
 `;
