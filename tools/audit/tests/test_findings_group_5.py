@@ -24,8 +24,8 @@ def obs(raw, day, deal_id='1', file_name=None):
 
 def test_class_15_reports_tag_appearing_between_two_export_dates():
     base = AV + '|АВ Этап: Регистрация'
-    groups = group_observations([obs(base, 2, '1'), obs(base + '|СВС', 13, '2')])
-    found = find_drift(groups, INDEX, EXPECTATIONS)
+    observations = [obs(base, 2, '1'), obs(base + '|СВС', 13, '2')]
+    found = find_drift(observations, INDEX, EXPECTATIONS)
     assert [f.cls for f in found] == [15]
     assert 'СВС' in found[0].subject
     assert 'появился' in found[0].detail
@@ -35,15 +35,15 @@ def test_class_15_reports_tag_appearing_between_two_export_dates():
 
 def test_class_15_reports_tag_disappearing():
     base = AV + '|АВ Этап: Регистрация'
-    groups = group_observations([obs(base + '|СВС', 2, '1'), obs(base, 13, '2')])
-    found = find_drift(groups, INDEX, EXPECTATIONS)
+    observations = [obs(base + '|СВС', 2, '1'), obs(base, 13, '2')]
+    found = find_drift(observations, INDEX, EXPECTATIONS)
     assert 'исчез' in found[0].detail
 
 
 def test_class_15_silent_when_only_one_tagset_ever_seen():
     base = AV + '|АВ Этап: Регистрация'
-    groups = group_observations([obs(base, 2, '1'), obs(base, 13, '2')])
-    assert find_drift(groups, INDEX, EXPECTATIONS) == []
+    observations = [obs(base, 2, '1'), obs(base, 13, '2')]
+    assert find_drift(observations, INDEX, EXPECTATIONS) == []
 
 
 def test_class_15_uses_file_date_not_deal_created_date():
@@ -57,9 +57,67 @@ def test_class_15_uses_file_date_not_deal_created_date():
                        file_name='deal_export_2026-05-13_00-00-00.csv',
                        file_date=datetime.date(2026, 5, 13),
                        deal_created='2026-03-10 10:00:00')
-    found = find_drift(group_observations([early, late]), INDEX, EXPECTATIONS)
+    found = find_drift([early, late], INDEX, EXPECTATIONS)
     assert found[0].first_seen == '2026-05-02'
     assert found[0].last_seen == '2026-05-13'
+
+
+def test_class_15_reports_both_transitions_when_tagset_returns_to_original():
+    """A → B → A: переход «появился» не должен теряться при возврате к A.
+
+    Раньше group_observations сворачивал оба наблюдения набора A
+    (05-02 и 05-13) в одну Group с last_seen=05-13, из-за чего
+    find_drift видел только вариант A (05-13) и вариант B (05-08) и
+    сообщал единственный переход «исчез» между ними — переход
+    «появился» между 05-02 и 05-08 пропадал молча.
+    """
+    base = AV + '|АВ Этап: Регистрация'
+    observations = [
+        obs(base, 2, '1'),
+        obs(base + '|СВС', 8, '2'),
+        obs(base, 13, '3'),
+    ]
+    found = find_drift(observations, INDEX, EXPECTATIONS)
+    assert [f.cls for f in found] == [15, 15]
+
+    appear, disappear = found
+    assert 'появился' in appear.detail
+    assert 'СВС' in appear.subject
+    assert appear.first_seen == '2026-05-02'
+    assert appear.last_seen == '2026-05-08'
+
+    assert 'исчез' in disappear.detail
+    assert 'СВС' in disappear.subject
+    assert disappear.first_seen == '2026-05-08'
+    assert disappear.last_seen == '2026-05-13'
+
+
+def test_class_15_single_date_in_slot_has_no_findings():
+    base = AV + '|АВ Этап: Регистрация'
+    observations = [obs(base, 2, '1'), obs(base, 2, '2')]
+    assert find_drift(observations, INDEX, EXPECTATIONS) == []
+
+
+def test_class_15_orders_multiple_simultaneous_tag_changes_deterministically():
+    """Больше одного тега меняется разом — и с двух сторон (appeared И
+    disappeared), не только с одной.
+
+    Прогоняет замену sorted(...) на list(...) в find_drift: если find_drift
+    начнёт полагаться на порядок обхода set-разности, порядок тегов в
+    subject/detail станет недетерминированным между процессами
+    (PYTHONHASHSEED). С одним изменившимся тегом сортировать нечего —
+    порядок из frozenset и так совпал бы. Здесь по 2 тега меняются на
+    каждой стороне (appeared и disappeared независимо), так что
+    list(frozenset) должен угадать оба порядка одновременно, чтобы
+    случайно пройти тест — заметно надёжнее одиночной пары.
+    """
+    older = AV + '|АВ Этап: Регистрация|ЖДИ|ЗОВ'
+    newer = AV + '|АВ Этап: Регистрация|АБВ|СВС'
+    observations = [obs(older, 2, '1'), obs(newer, 13, '2')]
+    found = find_drift(observations, INDEX, EXPECTATIONS)
+    assert [f.cls for f in found] == [15]
+    assert found[0].subject == 'АБВ, СВС, ЖДИ, ЗОВ'
+    assert found[0].detail == 'появился: АБВ, СВС; исчез: ЖДИ, ЗОВ'
 
 
 def test_class_16_reports_observation_and_file_counts_per_funnel():

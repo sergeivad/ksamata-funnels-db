@@ -505,29 +505,61 @@ def find_unused_offers(offers, groups):
 THIN_COVERAGE_THRESHOLD = 2
 
 
-def find_drift(groups, index, expectations):
+def _dominant_tagset(tagset_counts):
+    """Из наборов тегов одной даты выбирает набор с наибольшим числом
+    наблюдений; при равенстве — устойчиво наименьший по sorted(tagset).
+
+    Не полагается на порядок обхода set/frozenset: сортировка по count
+    (по убыванию) и по кортежу тегов (по возрастанию) детерминирована
+    независимо от PYTHONHASHSEED.
+    """
+    return min(
+        tagset_counts.items(),
+        key=lambda pair: (-pair[1], tuple(sorted(pair[0]))),
+    )
+
+
+def find_drift(observations, index, expectations):
     """Класс 15: набор тегов у пары (ключ × тип) менялся между выгрузками.
 
     Дата берётся ПО ФАЙЛУ выгрузки, а не по созданию заказа: «Теги
     предложений» вычисляются в момент выгрузки, поэтому старый заказ
     в свежей выгрузке несёт свежие теги.
+
+    Дрейф считается по последовательности дат файлов внутри слота
+    (АВ-ключ × tag_type), а НЕ по свёрнутым Group. group_observations
+    схлопывает наблюдения по точному набору тегов, и у набора, который
+    менялся и вернулся к прежнему виду (A → B → A), first_seen/last_seen
+    съезжают на крайние даты — промежуточный переход «появился/исчез»
+    молча теряется. Здесь каждое наблюдение учитывается по его
+    собственной file_date, поэтому такой возврат даёт две находки, а не
+    одну.
     """
     by_id = _by_funnel_id(expectations)
 
-    by_slot = defaultdict(list)
-    for group in groups:
-        if group.tag_type is None:
+    # (ключ, tag_type) -> file_date -> набор тегов -> число наблюдений
+    slots = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+    for o in observations:
+        tag_type, _reason = classify(o.tags)
+        if tag_type is None:
             continue
-        by_slot[(group.key, group.tag_type)].append(group)
+        slots[(av_key(o.tags), tag_type)][o.file_date][o.tags] += 1
 
     result = []
-    for (key, tag_type), variants in sorted(by_slot.items(), key=lambda kv: key_label(kv[0][0])):
-        if len(variants) < 2:
+    for (key, tag_type), by_date in sorted(slots.items(), key=lambda kv: key_label(kv[0][0])):
+        timeline = []
+        for file_date in sorted(by_date.keys()):
+            tags, deals = _dominant_tagset(by_date[file_date])
+            timeline.append((file_date, tags, deals))
+
+        if len(timeline) < 2:
             continue
-        ordered = sorted(variants, key=lambda g: g.last_seen)
-        for older, newer in zip(ordered, ordered[1:]):
-            appeared = sorted(newer.tags - older.tags)
-            disappeared = sorted(older.tags - newer.tags)
+
+        for (older_date, older_tags, older_deals), (newer_date, newer_tags, newer_deals) in zip(
+            timeline, timeline[1:]
+        ):
+            appeared = sorted(newer_tags - older_tags)
+            disappeared = sorted(older_tags - newer_tags)
             if not appeared and not disappeared:
                 continue
             parts = []
@@ -542,10 +574,10 @@ def find_drift(groups, index, expectations):
                     tag_type=tag_type,
                     subject=', '.join(appeared + disappeared),
                     detail='; '.join(parts),
-                    evidence=f'{key_label(key)} | между {older.last_seen} и {newer.last_seen}',
-                    first_seen=str(older.last_seen),
-                    last_seen=str(newer.last_seen),
-                    deals=older.deals + newer.deals,
+                    evidence=f'{key_label(key)} | между {older_date} и {newer_date}',
+                    first_seen=str(older_date),
+                    last_seen=str(newer_date),
+                    deals=older_deals + newer_deals,
                 )
             )
     return result
