@@ -25,6 +25,24 @@ describe('normalizeUrl', () => {
     expect(normalizeUrl('mailto:a@b.ru')).toBeNull();
     expect(normalizeUrl('https://localhost')).toBeNull();
   });
+
+  it('отбраковывает IP-литералы, чтобы чекер не ходил во внутреннюю сеть', () => {
+    expect(normalizeUrl('http://127.0.0.1/')).toBeNull();
+    expect(normalizeUrl('http://10.0.0.5/')).toBeNull();
+    expect(normalizeUrl('http://169.254.169.254/')).toBeNull(); // метаданные облака
+    expect(normalizeUrl('http://192.168.1.1/admin')).toBeNull();
+    expect(normalizeUrl('https://8.8.8.8/')).toBeNull(); // публичный IP — тоже не цель
+    expect(normalizeUrl('http://[::1]/')).toBeNull();
+    expect(normalizeUrl('http://[fd00::1]/x')).toBeNull();
+    // URL сам приводит эти записи к 127.0.0.1 — проверяем нормализованный хост.
+    expect(normalizeUrl('http://0177.0.0.1/')).toBeNull();
+    expect(normalizeUrl('http://2130706433/')).toBeNull();
+  });
+
+  it('пропускает обычные доменные имена, в том числе с цифрами', () => {
+    expect(normalizeUrl('https://lp.ksamata.ru/izh-yo')).toBe('https://lp.ksamata.ru/izh-yo');
+    expect(normalizeUrl('https://t2.ksamata.ru/a')).toBe('https://t2.ksamata.ru/a');
+  });
 });
 
 describe('splitUrlField', () => {
