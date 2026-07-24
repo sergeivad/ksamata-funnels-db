@@ -175,6 +175,48 @@ def test_load_offers_joins_offers_with_their_tags():
     assert by_id[2].tags == frozenset()
 
 
+def test_load_offers_raises_when_get_offers_returns_exactly_page_size():
+    """Если GetCourse однажды начнёт уважать limit/offset у 'offer/get-offers',
+
+    один запрос с limit=PAGE_SIZE молча вернёт только первую страницу вместо
+    всего реестра — карта расхождений станет неверной без предупреждения.
+    load_offers() должен опознать этот сигнал (ровно PAGE_SIZE записей) и
+    поднять исключение вместо того, чтобы молча продолжить с усечённым
+    реестром.
+    """
+
+    def opener(url, headers):
+        if 'get-offers-tags' in url:
+            return json.dumps({'data': []})
+        return json.dumps({'data': [{'id': i, 'title': f'Курс {i}', 'status': 'draft'}
+                                     for i in range(PAGE_SIZE)]})
+
+    with pytest.raises(RuntimeError) as err:
+        load_offers(CFG, opener)
+
+    message = str(err.value)
+    assert str(PAGE_SIZE) in message
+    assert 'пагинац' in message.lower()
+
+
+def test_load_offers_works_as_before_when_count_differs_from_page_size():
+    """Контроль: число записей, отличное от PAGE_SIZE (боевые 7679 и
+
+    небольшое 42), не должно считаться признаком включившейся пагинации —
+    load_offers должен продолжать работать как раньше в обоих случаях.
+    """
+    for total in (7679, 42):
+        full_offers = [{'id': i, 'title': f'Курс {i}', 'status': 'draft'} for i in range(total)]
+
+        def opener(url, headers, full_offers=full_offers):
+            if 'get-offers-tags' in url:
+                return json.dumps({'data': []})
+            return json.dumps({'data': full_offers})
+
+        offers = load_offers(CFG, opener)
+        assert len(offers) == total
+
+
 def test_load_offers_keeps_offers_missing_from_tags_endpoint():
     def opener(url, headers):
         if 'get-offers-tags' in url:
