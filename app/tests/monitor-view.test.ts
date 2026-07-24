@@ -6,7 +6,7 @@ import os from 'os';
 import path from 'path';
 import { runMigratePhase6 } from '../scripts/migrate-phase6';
 import * as schema from '../src/db/schema';
-import { getMonitorDashboard, listMonitorEvents } from '../src/lib/monitor-view';
+import { getMonitorDashboard, listMonitorEvents, funnelsByTarget } from '../src/lib/monitor-view';
 
 const REAL_DB = path.resolve(process.cwd(), '..', 'ksamata_funnels.db');
 let tmp: string;
@@ -140,7 +140,10 @@ describe('listMonitorEvents', () => {
     expect(listMonitorEvents(db, 2, 4)).toHaveLength(1);
   });
 
-  it('не подмешивает воронки чужой цели, когда событие есть только у одной из них', () => {
+});
+
+describe('funnelsByTarget', () => {
+  function seedTwoTargetsWithFunnels() {
     const idA = makeTarget('https://a.ru/', 1, 'up', null);
     const idB = makeTarget('https://b.ru/', 1, 'up', null);
 
@@ -157,15 +160,35 @@ describe('listMonitorEvents', () => {
       .prepare(`INSERT INTO monitor_target_funnels (target_id, funnel_id) VALUES (?, ?)`)
       .run(idB, funnelB.id);
 
-    // Событие есть только у цели A — у цели B воронка не должна протечь в результат.
-    sqlite
-      .prepare(
-        `INSERT INTO monitor_events (target_id, from_status, to_status, at) VALUES (?, 'up', 'down', '2026-07-24 09:00:00')`
-      )
-      .run(idA);
+    return { idA, idB, funnelA, funnelB };
+  }
 
-    const rows = listMonitorEvents(db, 10, 0);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].funnels).toEqual([{ id: funnelA.id, num: funnelA.num }]);
+  it('без targetIds возвращает связи по всем целям', () => {
+    const { idA, idB, funnelA, funnelB } = seedTwoTargetsWithFunnels();
+
+    const map = funnelsByTarget(db);
+
+    expect(map.size).toBe(2);
+    expect(map.get(idA)).toEqual([{ id: funnelA.id, num: funnelA.num }]);
+    expect(map.get(idB)).toEqual([{ id: funnelB.id, num: funnelB.num }]);
+  });
+
+  it('с targetIds отдаёт связи только по переданным целям', () => {
+    const { idA, idB, funnelA } = seedTwoTargetsWithFunnels();
+
+    const map = funnelsByTarget(db, [idA]);
+
+    expect(map.size).toBe(1);
+    expect([...map.keys()]).toEqual([idA]);
+    expect(map.get(idA)).toEqual([{ id: funnelA.id, num: funnelA.num }]);
+    expect(map.has(idB)).toBe(false);
+  });
+
+  it('с пустым списком targetIds возвращает пустую карту и не падает', () => {
+    seedTwoTargetsWithFunnels();
+
+    const map = funnelsByTarget(db, []);
+
+    expect(map.size).toBe(0);
   });
 });

@@ -64,8 +64,12 @@ export interface MonitorEventView {
  * Без `targetIds` тянет связи по всем целям (нужно дашборду). С `targetIds` —
  * только по переданным целям, иначе постраничная выдача событий тянула бы
  * связи всей таблицы ради нескольких строк.
+ *
+ * Экспортирована, чтобы саму фильтрацию по `targetIds` можно было проверить
+ * напрямую тестом — разница между «всё» (дашборд) и «только эта страница»
+ * (список событий) и есть то, что стоит закрепить.
  */
-function funnelsByTarget(db: AnyDB, targetIds?: number[]): Map<number, MonitorFunnelRef[]> {
+export function funnelsByTarget(db: AnyDB, targetIds?: number[]): Map<number, MonitorFunnelRef[]> {
   // IN () без аргументов — известная ловушка SQL; на пустой странице просто
   // отдаём пустую карту, не строя запрос.
   if (targetIds && targetIds.length === 0) return new Map();
