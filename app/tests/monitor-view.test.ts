@@ -94,6 +94,19 @@ describe('getMonitorDashboard', () => {
     expect(links.total).toBe(1);
     expect(links.enabled).toBe(0);
   });
+
+  it('цель без строки в monitor_state (LEFT JOIN) считается unknown и попадает в сводку', () => {
+    // Заводим цель напрямую, минуя makeTarget — у неё умышленно нет строки monitor_state,
+    // это состояние до первого прогона монитора.
+    const id = sqlite
+      .prepare(`INSERT INTO monitor_targets (url, source_kind, enabled) VALUES (?, 'landings', 1)`)
+      .run('https://no-state.ru/').lastInsertRowid as number;
+
+    const { targets, summary } = getMonitorDashboard(db);
+    const row = targets.find((t) => t.id === id)!;
+    expect(row.status).toBe('unknown');
+    expect(summary.unknown).toBe(1);
+  });
 });
 
 describe('listMonitorEvents', () => {
@@ -125,5 +138,34 @@ describe('listMonitorEvents', () => {
     }
     expect(listMonitorEvents(db, 2, 0)).toHaveLength(2);
     expect(listMonitorEvents(db, 2, 4)).toHaveLength(1);
+  });
+
+  it('не подмешивает воронки чужой цели, когда событие есть только у одной из них', () => {
+    const idA = makeTarget('https://a.ru/', 1, 'up', null);
+    const idB = makeTarget('https://b.ru/', 1, 'up', null);
+
+    const funnelRows = sqlite.prepare(`SELECT id, num FROM funnels ORDER BY num LIMIT 2`).all() as {
+      id: number;
+      num: number;
+    }[];
+    const [funnelA, funnelB] = funnelRows;
+
+    sqlite
+      .prepare(`INSERT INTO monitor_target_funnels (target_id, funnel_id) VALUES (?, ?)`)
+      .run(idA, funnelA.id);
+    sqlite
+      .prepare(`INSERT INTO monitor_target_funnels (target_id, funnel_id) VALUES (?, ?)`)
+      .run(idB, funnelB.id);
+
+    // Событие есть только у цели A — у цели B воронка не должна протечь в результат.
+    sqlite
+      .prepare(
+        `INSERT INTO monitor_events (target_id, from_status, to_status, at) VALUES (?, 'up', 'down', '2026-07-24 09:00:00')`
+      )
+      .run(idA);
+
+    const rows = listMonitorEvents(db, 10, 0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].funnels).toEqual([{ id: funnelA.id, num: funnelA.num }]);
   });
 });

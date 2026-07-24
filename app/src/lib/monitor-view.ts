@@ -1,4 +1,4 @@
-import { eq, desc, asc } from 'drizzle-orm';
+import { eq, desc, asc, inArray } from 'drizzle-orm';
 import { type AnyDB } from '../db/client';
 import {
   funnels,
@@ -59,16 +59,29 @@ export interface MonitorEventView {
   funnels: MonitorFunnelRef[];
 }
 
-/** Номера воронок по каждой цели — одним запросом, чтобы не плодить N+1. */
-function funnelsByTarget(db: AnyDB): Map<number, MonitorFunnelRef[]> {
-  const rows = db
+/**
+ * Номера воронок по каждой цели — одним запросом, чтобы не плодить N+1.
+ * Без `targetIds` тянет связи по всем целям (нужно дашборду). С `targetIds` —
+ * только по переданным целям, иначе постраничная выдача событий тянула бы
+ * связи всей таблицы ради нескольких строк.
+ */
+function funnelsByTarget(db: AnyDB, targetIds?: number[]): Map<number, MonitorFunnelRef[]> {
+  // IN () без аргументов — известная ловушка SQL; на пустой странице просто
+  // отдаём пустую карту, не строя запрос.
+  if (targetIds && targetIds.length === 0) return new Map();
+
+  const query = db
     .select({
       targetId: monitorTargetFunnels.targetId,
       funnelId: funnels.id,
       num: funnels.num,
     })
     .from(monitorTargetFunnels)
-    .innerJoin(funnels, eq(funnels.id, monitorTargetFunnels.funnelId))
+    .innerJoin(funnels, eq(funnels.id, monitorTargetFunnels.funnelId));
+
+  const rows = (
+    targetIds ? query.where(inArray(monitorTargetFunnels.targetId, targetIds)) : query
+  )
     .orderBy(asc(funnels.num))
     .all() as { targetId: number; funnelId: number; num: number }[];
 
@@ -202,7 +215,9 @@ export function listMonitorEvents(db: AnyDB, limit = 50, offset = 0): MonitorEve
       at: string;
     }[];
 
-  const links = funnelsByTarget(db);
+  // Ограничиваем связку целями этой страницы, а не всей таблицей.
+  const targetIds = [...new Set(rows.map((r) => r.targetId))];
+  const links = funnelsByTarget(db, targetIds);
 
   return rows.map((r) => ({
     id: r.id,
