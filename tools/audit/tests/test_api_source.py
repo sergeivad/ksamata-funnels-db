@@ -82,11 +82,26 @@ def test_fetch_all_raises_instead_of_looping_forever_on_stuck_offset():
     """Баг бэкенда: API стабильно отдаёт полную страницу вне зависимости от offset.
 
     Без верхнего предела на число страниц это привело бы к бесконечному циклу.
+
+    Заглушка сама себя ограничивает: если предохранитель в fetch_all когда-нибудь
+    уберут, этот тест не должен зависнуть навсегда — opener считает свои вызовы
+    и после заведомо большего числа, чем max_pages, поднимает собственное
+    (отличимое от RuntimeError предохранителя) исключение с характерным текстом.
+    Так зависание становится невозможным в принципе, а не просто маловероятным.
     """
     page_size = 5
     max_pages = 3
+    call_budget = 10  # заведомо больше max_pages — предохранитель обязан сработать раньше
+    calls = {'count': 0}
 
     def opener(url, headers):
+        calls['count'] += 1
+        if calls['count'] > call_budget:
+            raise AssertionError(
+                'СТАБ-ЗАГЛУШКА: предохранитель fetch_all не сработал — opener '
+                f'вызван {calls["count"]} раз (бюджет {call_budget}); ожидался '
+                f'RuntimeError после {max_pages} страниц.'
+            )
         # Всегда возвращает полную страницу — offset никогда не даёт короткий хвост.
         return json.dumps({'data': [{'offerId': i} for i in range(page_size)]})
 
