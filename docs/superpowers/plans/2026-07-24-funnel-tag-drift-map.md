@@ -448,16 +448,28 @@ def test_load_expectations_groups_tags_by_funnel_and_type(tmp_path):
     assert 'АВ Продукт: ДБО' in exps[0].tags
 
 
-def test_load_expectations_opens_db_read_only(tmp_path):
+def test_connect_returns_a_connection_that_rejects_writes(tmp_path):
+    """Запись в живую базу запрещена спеком — проверяем, а не декларируем."""
+    import db_source as module
+
+    db = make_db(tmp_path, [(1, 1, 'f1', 'X', 'active')],
+                 [(1, 'reg', AV_DBO_NR_VK_IS)])
+    con = module._connect(db)
+    try:
+        with pytest.raises(sqlite3.OperationalError):
+            con.execute("INSERT INTO tags (id, name) VALUES (999, 'x')")
+    finally:
+        con.close()
+
+
+def test_load_expectations_leaves_data_untouched(tmp_path):
     db = make_db(tmp_path, [(1, 1, 'f1', 'X', 'active')],
                  [(1, 'reg', AV_DBO_NR_VK_IS)])
     load_expectations(db)
-    # Повторное открытие на запись должно быть по-прежнему возможно —
-    # значит первый вызов не оставил блокировку и ничего не писал.
     con = sqlite3.connect(db)
-    before = con.execute('SELECT count(*) FROM funnel_tags').fetchone()[0]
+    remaining = con.execute('SELECT count(*) FROM funnel_tags').fetchone()[0]
     con.close()
-    assert before == 4
+    assert remaining == 4
 
 
 def test_build_av_index_maps_key_to_funnels(tmp_path):
@@ -661,7 +673,7 @@ def find_key_collisions(index):
 python3 -m pytest tools/audit/tests/test_db_source.py -v
 ```
 
-Ожидается: `8 passed`.
+Ожидается: `9 passed`.
 
 - [ ] **Step 5: Проверить на живой базе, что она не изменилась**
 
@@ -2384,7 +2396,7 @@ def find_coverage(funnels, groups, index):
 python3 -m pytest tools/audit/tests -v
 ```
 
-Ожидается: `77 passed` — 18 + 8 + 9 + 11 + 13 + 11 + 7 по всем файлам, без регрессий в ранее написанных.
+Ожидается: `78 passed` — 18 + 9 + 9 + 11 + 13 + 11 + 7 по всем файлам, без регрессий в ранее написанных.
 
 - [ ] **Step 5: Коммит**
 
@@ -2846,7 +2858,7 @@ if __name__ == '__main__':
 python3 -m pytest tools/audit/tests -v
 ```
 
-Ожидается: `84 passed` — 77 + 5 + 2, без регрессий.
+Ожидается: `85 passed` — 78 + 5 + 2, без регрессий.
 
 - [ ] **Step 5: Сквозной прогон без сети и проверка, что база не тронута**
 
