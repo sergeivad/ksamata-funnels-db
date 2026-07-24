@@ -1,4 +1,5 @@
 import json
+import ssl
 
 import pytest
 
@@ -11,6 +12,7 @@ from api_source import (
     fetch_all,
     load_offers,
     save_snapshot,
+    urllib_opener,
 )
 
 CFG = ApiConfig(dev_key='DEV', api_key='API', domain='school.getcourse.ru')
@@ -116,6 +118,40 @@ def test_fetch_all_raises_instead_of_looping_forever_on_stuck_offset():
     assert 'Authorization' not in message
 
 
+def test_load_offers_fetches_get_offers_in_a_single_request():
+    """Живой факт: 'offer/get-offers' игнорирует limit/offset и всегда
+
+    отдаёт весь реестр целиком (7679 записей на боевом API), в отличие от
+    'offer/get-offers-tags', которая пагинацию уважает по-честному
+    (offset=7000 -> хвост 679 записей, offset=9000 -> пусто).
+
+    Заглушка ниже имитирует именно это: get-offers всегда отдаёт полный
+    список независимо от offset, get-offers-tags — честно пагинирует.
+    load_offers должен дёрнуть get-offers РОВНО один раз и не зациклиться;
+    на старой реализации (fetch_all для обоих) этот тест не проходит —
+    каждая «страница» get-offers больше page_size, цикл считает что данные
+    не кончились и уходит в бесконечную пагинацию до предохранителя.
+    """
+    total = 7679
+    full_offers = [{'id': i, 'title': f'Курс {i}', 'status': 'draft'} for i in range(total)]
+    calls = {'get-offers': 0, 'get-offers-tags': 0}
+
+    def opener(url, headers):
+        offset = int(url.split('offset=')[1].split('&')[0])
+        if 'get-offers-tags' in url:
+            calls['get-offers-tags'] += 1
+            page = full_offers[offset:offset + PAGE_SIZE]
+            return json.dumps({'data': [{'offerId': o['id'], 'tags': []} for o in page]})
+        calls['get-offers'] += 1
+        # Баг живого API: возвращает ВСЁ вне зависимости от offset.
+        return json.dumps({'data': full_offers})
+
+    offers = load_offers(CFG, opener)
+
+    assert calls['get-offers'] == 1
+    assert len(offers) == total
+
+
 def test_load_offers_joins_offers_with_their_tags():
     def opener(url, headers):
         if 'get-offers-tags' in url:
@@ -183,3 +219,35 @@ def test_save_snapshot_orders_offers_by_offer_id_for_stable_diffs(tmp_path):
     save_snapshot(shuffled, str(out))
     payload = json.loads(out.read_text(encoding='utf-8'))
     assert [row['offer_id'] for row in payload] == [10, 20, 30]
+
+
+def test_urllib_opener_turns_cert_verify_failure_into_a_clear_russian_message(monkeypatch):
+    """python.org-сборка Python на macOS без установленного набора корневых
+
+    сертификатов (нет cert.pem) роняет ЛЮБОЙ HTTPS-запрос с
+    ssl.SSLCertVerificationError, и раньше пользователь видел 20-строчный
+    traceback без единой подсказки. urllib_opener обязан сам чинить эту
+    ошибку, а не отключать проверку сертификата — заглушка-opener здесь не
+    подходит, потому что чинится сам urllib_opener, поэтому подменяем
+    urllib.request.urlopen напрямую.
+    """
+    import urllib.request
+
+    def fake_urlopen(request, timeout=None):
+        raise ssl.SSLCertVerificationError(
+            '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: '
+            'unable to get local issuer certificate'
+        )
+
+    monkeypatch.setattr(urllib.request, 'urlopen', fake_urlopen)
+
+    with pytest.raises(RuntimeError) as err:
+        urllib_opener('https://school.getcourse.ru/pl/api/v1/offer/get-offers', {})
+
+    message = str(err.value)
+    assert 'сертификат' in message.lower()
+    assert 'Install Certificates.command' in message
+    assert 'SSL_CERT_FILE' in message
+    # Категорически нельзя намекать на отключение проверки как на решение.
+    assert 'verify=False' not in message
+    assert '_create_unverified_context' not in message

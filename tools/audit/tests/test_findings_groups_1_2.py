@@ -86,6 +86,29 @@ def test_class_3_reports_predpisok_stage():
     assert 'Предписок' in found[0].subject
 
 
+def test_class_3_silent_when_stage_absent():
+    groups = group_observations([obs(AV + '|АВ Этап: Регистрация', 2)])
+    assert find_unsupported_stage(groups) == []
+
+
+def test_class_3_collapses_multiple_predpisok_groups_into_one_finding():
+    """Классы 3 и 6 оба видят один и тот же этап на всех группах — владелец
+
+    решил, что класс 3 даёт одну сводную строку (сколько групп и сколько
+    заказов затронуто), а детальный список per-группа остаётся в классе 6.
+    """
+    raw_a = AV + '|АВ Этап: Предписок'
+    raw_b = ('АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
+             'АВ Направление: РСЯ|АВ Этап: Предписок')
+    groups = group_observations([obs(raw_a, 2, '1'), obs(raw_b, 2, '2')])
+    found = find_unsupported_stage(groups)
+    assert len(found) == 1
+    assert found[0].cls == 3
+    assert 'этапом: 2' in found[0].detail
+    assert 'заказов: 2' in found[0].detail
+    assert found[0].deals == 2
+
+
 def test_class_4_reports_contradictory_legacy_direction_tags():
     raw = AV + '|АВ Этап: Оплата|АВ Время: 19|ВК NR ВК|ВК NR IS'
     groups = group_observations([obs(raw, 2)])

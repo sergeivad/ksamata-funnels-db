@@ -220,28 +220,44 @@ def find_extra_axes(groups, vocabulary):
 
 
 def find_unsupported_stage(groups):
-    """Класс 3: этап Предписок, для которого в модели базы нет tag_type."""
-    result = []
-    for group in groups:
-        if PREDPISOK_STAGE not in group.tags:
-            continue
-        result.append(
-            Finding(
-                cls=3,
-                funnel='—',
-                tag_type='',
-                subject=PREDPISOK_STAGE,
-                detail=(
-                    'funnel_tags.tag_type разрешает только '
-                    'reg/time_19/time_15/messenger. Ключ: ' + key_label(group.key)
-                ),
-                evidence='; '.join(group.files[:3]),
-                first_seen=str(group.first_seen),
-                last_seen=str(group.last_seen),
-                deals=group.deals,
-            )
+    """Класс 3: этап Предписок — тип в модели базы не поддержан.
+
+    Решение владельца: классы 3 и 6 оба срабатывают на АВ Этап: Предписок,
+    перечисляя одни и те же группы на двух листах отчёта — дублирование.
+    Класс 3 сводится к ОДНОЙ итоговой строке (этап встретился хоть где-то —
+    сколько групп и сколько заказов затронуто), а детальный список
+    по-группе остаётся в классе 6 (find_unresolved). Не трогать класс 6.
+    """
+    hits = [group for group in groups if PREDPISOK_STAGE in group.tags]
+    if not hits:
+        return []
+
+    files = []
+    seen_files = set()
+    for group in hits:
+        for file_name in group.files:
+            if file_name not in seen_files:
+                seen_files.add(file_name)
+                files.append(file_name)
+
+    return [
+        Finding(
+            cls=3,
+            funnel='—',
+            tag_type='',
+            subject=PREDPISOK_STAGE,
+            detail=(
+                'funnel_tags.tag_type разрешает только '
+                'reg/time_19/time_15/messenger. '
+                f'Групп с этим этапом: {len(hits)}, '
+                f'заказов: {sum(g.deals for g in hits)}. Детали — класс 6.'
+            ),
+            evidence='; '.join(files[:3]),
+            first_seen=str(min(g.first_seen for g in hits)),
+            last_seen=str(max(g.last_seen for g in hits)),
+            deals=sum(g.deals for g in hits),
         )
-    return result
+    ]
 
 
 def find_contradictory_legacy(groups, expectations, index):

@@ -4,14 +4,28 @@
 Только GET. Единственный источник, который видит предложения БЕЗ заказов —
 через выгрузки они невидимы в принципе.
 
-Два подтверждённых на живом API факта:
+Подтверждённые на живом API факты:
   - пагинация идёт по limit/offset; параметр page молча игнорируется
     и бесконечно отдаёт первую страницу;
   - поле status непригодно как признак актуальности: у всех предложений
-    оно равно 'draft'.
+    оно равно 'draft';
+  - ⚠️ АСИММЕТРИЯ ПАГИНАЦИИ МЕЖДУ ДВУМЯ ЭНДПОИНТАМИ ЭТОГО КЛИЕНТА:
+    'offer/get-offers-tags' честно уважает limit/offset (offset=7000 на
+    боевых данных отдаёт хвост 679 записей, offset=9000 — пустую страницу),
+    а 'offer/get-offers' **игнорирует оба параметра** и всегда отдаёт
+    целиком весь реестр (все 7679 записей) вне зависимости от offset.
+    Прогонять 'offer/get-offers' через постраничный fetch_all() нельзя:
+    каждая «страница» оказывается больше page_size, цикл решает, что
+    данные не кончились, и уходит в бесконечную пагинацию вплоть до
+    срабатывания предохранителя fetch_all (MAX_PAGES) — на живом прогоне
+    это не уложилось в 10 минут и разорвало соединение. Поэтому
+    load_offers() тянет 'offer/get-offers' ОДНИМ запросом через
+    fetch_page(), а 'offer/get-offers-tags' — через fetch_all(), где
+    постраничный обход действительно нужен и работает.
 """
 
 import json
+import ssl
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -63,8 +77,25 @@ def build_url(cfg, path, params):
 
 def urllib_opener(url, headers):
     request = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
-        return response.read().decode('utf-8')
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+            return response.read().decode('utf-8')
+    except ssl.SSLCertVerificationError as exc:
+        # НЕ отключать проверку сертификата и не глушить исключение —
+        # только объяснить пользователю, что чинить и где. Частый случай:
+        # python.org-сборка Python на macOS не тянет за собой набор
+        # корневых сертификатов (нет cert.pem), и это ломает вообще любой
+        # HTTPS-запрос, никак не связано с сервером GetCourse.
+        raise RuntimeError(
+            'Не удалось проверить TLS-сертификат сервера '
+            f'({exc}). Это почти наверняка проблема установки Python на '
+            'этой машине, а не сервера: у python.org-сборки Python не '
+            'подключён набор корневых сертификатов. Почините одним из '
+            'способов: запустите "Install Certificates.command" из '
+            'каталога установки Python (Applications/Python 3.x/), либо '
+            'укажите переменную окружения SSL_CERT_FILE с путём к файлу '
+            'корневых сертификатов (например, из пакета certifi).'
+        ) from exc
 
 
 def _unwrap(payload):
@@ -103,7 +134,11 @@ def fetch_all(cfg, path, opener, page_size=PAGE_SIZE, max_pages=MAX_PAGES):
 
 
 def load_offers(cfg, opener=urllib_opener):
-    raw_offers = fetch_all(cfg, 'offer/get-offers', opener)
+    # 'offer/get-offers' игнорирует limit/offset и всегда отдаёт весь
+    # реестр одним ответом — см. асимметрию пагинации в докстринге модуля.
+    # Постраничный fetch_all() здесь зациклился бы до предохранителя.
+    raw_offers = fetch_page(cfg, 'offer/get-offers', {'limit': PAGE_SIZE, 'offset': 0}, opener)
+    # А вот 'offer/get-offers-tags' пагинацию уважает по-честному.
     raw_tags = fetch_all(cfg, 'offer/get-offers-tags', opener)
 
     tags_by_id = {}
