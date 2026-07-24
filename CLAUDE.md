@@ -179,6 +179,44 @@ runs. Before copying the DB to `app/seed/` or making a backup:
 
 `*.db-wal` / `*.db-shm` sidecars and `*.db.bak_*` backups are gitignored.
 
+**Monitoring gotcha:** the tracked DB's `monitor_*` tables are intentionally
+**empty**, and several tests copy the file and assert absolute row counts
+against it. But running the dev server starts the background scheduler, which
+syncs ~600 targets and writes check results straight into that same tracked
+file. So after any live run — `npm run dev`, a manual cycle, a browser check —
+restore it before committing anything:
+
+```sh
+sqlite3 ksamata_funnels.db 'PRAGMA wal_checkpoint(TRUNCATE);'
+git checkout -- ksamata_funnels.db
+rm -f ksamata_funnels.db-wal ksamata_funnels.db-shm
+```
+
+Verify with `sqlite3 ksamata_funnels.db "select count(*) from monitor_targets;"`
+→ must print `0`, and `git status --porcelain` must be clean. If tests start
+failing on counts, suspect a polluted fixture before you suspect the tests —
+do not "fix" them by clearing tables inside the test file. Set
+`MONITOR_ENABLED=false` in `.env.local` to keep the dev server from doing this
+(and from hitting live landing pages) in the first place.
+
+## Process state must be a real singleton
+
+Module-level state is **not** a singleton in the production bundle. Because
+`middleware.ts` runs on Edge, Next compiles `src/instrumentation.ts` with the
+Edge compiler too, and webpack ends up emitting **separate module copies** for
+the instrumentation graph and the API-route graph. Two copies means two
+`let` variables and two `better-sqlite3` connections.
+
+This is why `app/src/db/client.ts` (the DB handle) and `app/src/lib/monitor-run.ts`
+(the in-flight cycle flag) park their state on typed `globalThis` slots. Before
+the fix, the guard that stops the scheduler and the manual "check now" button
+from running concurrent cycles silently did nothing in production.
+
+**Unit tests cannot catch this** — vitest gives every importer the same module
+instance, so a module-level flag looks perfectly correct under test. If you add
+process-wide state (a cache, a lock, a connection, a queue), put it on
+`globalThis` and verify against `.next/standalone`, not against the test suite.
+
 ## Migrations (`app/scripts/`)
 
 Migrations are phased and idempotent (guarded by schema markers or `IF NOT
@@ -269,6 +307,11 @@ location), so they run from any working directory.
   `npx vitest run`, `npm run build`.
 - Mutate funnel data (especially tags) through the app's tsx logic or API, never
   raw SQL against the live DB.
+- Never leave `ksamata_funnels.db` modified after a live run — restore it (see
+  the monitoring gotcha above). Its `monitor_*` tables must stay empty.
+- Put process-wide state on `globalThis`, not in a module-level `let` — the
+  production bundle duplicates modules (see above).
+- Tests run against a temp **copy** of the DB, never the live file.
 - For non-trivial or resumable work, use Basic Memory (see [AGENTS.md](AGENTS.md)).
 
 ## Docs & planning

@@ -6,15 +6,45 @@ Instructions for AI agents (Codex, Claude Code) working in this repo.
 
 **[CLAUDE.md](CLAUDE.md) is the canonical guide** — architecture, commands,
 data model, migrations, auth, deployment, and conventions all live there. Read
-it before non-trivial work. This file only adds the shared-memory workflow.
+it before non-trivial work. This file adds the shared-memory workflow and the
+handful of rules agents most often trip over.
 
 ## Shared Memory
 
-Use the `using-basic-memory` skill for non-trivial project work, resumed
-context, durable decisions, reusable discoveries, and work that should be
-visible to both Codex and Claude Code. Search Basic Memory before deep
-exploration, verify memory against current evidence, and write back only
-durable, non-secret context.
+Durable project context lives in **Basic Memory** (MCP server `basic-memory`,
+project `main`), so it is visible to both Codex and Claude Code:
+
+- **Dossier:** `projects/ksamata-funnels-db` — status, architecture, current
+  state, unresolved problems, decision log, next steps.
+- **Observations:** `projects/funnels_admin.observations` — typed entries
+  (`decision` / `bugfix` / `feature` / `discovery` / `problem`).
+
+Search Basic Memory before deep exploration. Verify what you read against the
+current code — memory records what was true when written. Write back only
+durable, non-secret context; never store tokens, passwords, or API keys.
+
+## Rules that bite agents specifically
+
+These are not style preferences — each one caused a real defect in this repo.
+
+- **Restore the database after any live run.** Starting the dev server runs the
+  monitoring scheduler, which writes ~600 rows into the tracked
+  `ksamata_funnels.db`. Tests copy that file and assert absolute counts, so a
+  polluted fixture makes unrelated tests fail. Checkpoint WAL, `git checkout --`
+  the file, drop the sidecars, and confirm `monitor_targets` is back to 0. If
+  counts start failing, suspect the fixture before the tests — do not "fix" them
+  by clearing tables inside the test file.
+- **Process-wide state goes on `globalThis`.** A module-level `let` is not a
+  singleton in the production bundle: webpack emits separate module copies for
+  the instrumentation graph and the API-route graph. Unit tests cannot catch
+  this (vitest shares one module instance), so verify against
+  `.next/standalone`. See the section in CLAUDE.md.
+- **Mutate funnel data through the app's logic**, never raw SQL — tags are
+  materialized from several layers and hand-edits desync them.
+- **Tests use a temp copy** of the DB, never the live file.
+- **No new npm dependencies** without asking. The repo has no jsdom or React
+  testing library on purpose; UI work is verified by typecheck, build, and a
+  real browser check.
 
 ## Project rules (summary — full detail in CLAUDE.md)
 
@@ -24,6 +54,6 @@ durable, non-secret context.
 - Do not commit SQLite sidecars, local `*.db.bak_*` backups, `.env.local`,
   generated exports, or local raw/leak datasets.
 - Verify from `app/`: `npx tsc --noEmit`, `npx vitest run`, `npm run build`.
-- Mutate funnel data (especially tags) through the app's tsx logic or API, never
-  raw SQL against the live DB.
 - Python tools under `tools/` resolve paths from the repo root, not the CWD.
+- Code comments are Russian (matching the existing files); commit messages and
+  these docs are English.
