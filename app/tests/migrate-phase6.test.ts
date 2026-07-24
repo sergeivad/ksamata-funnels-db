@@ -32,6 +32,34 @@ describe('migrate-phase6', () => {
     ]);
   });
 
+  it('доливает manual_override в таблицу, созданную ранним вариантом Phase-6', () => {
+    // Копия реальной БД: там monitor_targets создана до появления колонки,
+    // то есть здесь реально проверяется ветка ALTER TABLE, а не CREATE TABLE.
+    const cols = (sqlite.prepare(`PRAGMA table_info(monitor_targets)`).all() as { name: string }[])
+      .map((c) => c.name);
+    expect(cols).toContain('manual_override');
+
+    runMigratePhase6(sqlite); // третий прогон — ALTER не должен дублироваться
+    const again = (sqlite.prepare(`PRAGMA table_info(monitor_targets)`).all() as { name: string }[])
+      .filter((c) => c.name === 'manual_override');
+    expect(again).toHaveLength(1);
+  });
+
+  it('создаёт monitor_targets с manual_override и на пустой базе', () => {
+    const fresh = new Database(':memory:');
+    runMigratePhase6(fresh);
+    const cols = (fresh.prepare(`PRAGMA table_info(monitor_targets)`).all() as { name: string }[])
+      .map((c) => c.name);
+    expect(cols).toContain('manual_override');
+
+    fresh.prepare(`INSERT INTO monitor_targets (url, source_kind) VALUES ('https://x.ru/', 'landings')`).run();
+    const row = fresh.prepare(`SELECT manual_override FROM monitor_targets`).get() as {
+      manual_override: number;
+    };
+    expect(row.manual_override).toBe(0); // по умолчанию — «человек не трогал»
+    fresh.close();
+  });
+
   it('держит url уникальным', () => {
     sqlite.prepare(`INSERT INTO monitor_targets (url, source_kind) VALUES (?, ?)`)
       .run('https://example.com/a', 'landings');

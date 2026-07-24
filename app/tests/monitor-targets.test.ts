@@ -65,7 +65,7 @@ function funnelIds(limit: number): number[] {
 
 function targetRow(url: string) {
   return sqlite.prepare(`SELECT * FROM monitor_targets WHERE url = ?`).get(url) as
-    | { id: number; source_kind: string; enabled: number }
+    | { id: number; source_kind: string; enabled: number; manual_override: number }
     | undefined;
 }
 
@@ -249,6 +249,95 @@ describe('syncMonitorTargets', () => {
       .prepare(`SELECT COUNT(*) AS c FROM monitor_target_funnels`)
       .get() as { c: number };
     expect(linkCount.c).toBe(0);
+  });
+});
+
+/**
+ * enabled раньше означал сразу две вещи — «человек выключил» и «URL пропал из
+ * данных», — из-за чего пропавший и вернувшийся ленд оставался погашенным
+ * навсегда. Разводит эти смыслы колонка manual_override.
+ */
+describe('manual_override: ручной тумблер против авто-ретайрмента', () => {
+  /** Записывает URL в landing_url первой воронки (пусто — стирает). */
+  function setLandingUrl(funnelId: number, url: string) {
+    sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`).run(url, funnelId);
+  }
+
+  it('снова включает ленд, который пропадал из данных и вернулся', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    const url = 'https://lp.example.ru/resurrect';
+
+    setLandingUrl(f1, url);
+    syncMonitorTargets(db);
+    expect(targetRow(url)?.enabled).toBe(1);
+
+    // URL исчез на один синк — цель гаснет, но остаётся в базе.
+    setLandingUrl(f1, '');
+    syncMonitorTargets(db);
+    expect(targetRow(url)?.enabled).toBe(0);
+
+    // URL вернулся — цель обязана ожить сама, без ручного вмешательства.
+    setLandingUrl(f1, url);
+    syncMonitorTargets(db);
+    expect(targetRow(url)?.enabled).toBe(1);
+    expect(targetRow(url)?.manual_override).toBe(0);
+  });
+
+  it('оставляет выключенным ленд, который выключил человек', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    const url = 'https://lp.example.ru/muted';
+
+    setLandingUrl(f1, url);
+    syncMonitorTargets(db);
+    const target = targetRow(url)!;
+
+    setTargetEnabled(db, target.id, false);
+    expect(targetRow(url)?.manual_override).toBe(1);
+
+    syncMonitorTargets(db);
+    syncMonitorTargets(db);
+
+    expect(targetRow(url)?.enabled).toBe(0);
+  });
+
+  it('оставляет включённой группу не-лендов, включённую человеком', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    const linksBlock = sqlite
+      .prepare(`INSERT INTO funnel_blocks (funnel_id, kind, enabled) VALUES (?, 'links', 1)`)
+      .run(f1).lastInsertRowid as number;
+    for (const u of ['https://gc.example.ru/keep1', 'https://gc.example.ru/keep2']) {
+      sqlite.prepare(`INSERT INTO funnel_block_items (block_id, url) VALUES (?, ?)`).run(linksBlock, u);
+    }
+    syncMonitorTargets(db);
+
+    expect(setSourceKindEnabled(db, 'links', true)).toBe(2);
+
+    syncMonitorTargets(db);
+
+    expect(targetRow('https://gc.example.ru/keep1')?.enabled).toBe(1);
+    expect(targetRow('https://gc.example.ru/keep2')?.enabled).toBe(1);
+  });
+
+  it('держит не-ленды выключенными, пока их никто не трогал', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    const linksBlock = sqlite
+      .prepare(`INSERT INTO funnel_blocks (funnel_id, kind, enabled) VALUES (?, 'links', 1)`)
+      .run(f1).lastInsertRowid as number;
+    sqlite.prepare(`INSERT INTO funnel_block_items (block_id, url) VALUES (?, ?)`)
+      .run(linksBlock, 'https://gc.example.ru/auto-off');
+
+    syncMonitorTargets(db);
+    syncMonitorTargets(db);
+
+    expect(targetRow('https://gc.example.ru/auto-off')?.enabled).toBe(0);
   });
 });
 

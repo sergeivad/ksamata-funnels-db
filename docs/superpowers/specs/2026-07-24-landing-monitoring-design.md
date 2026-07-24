@@ -52,13 +52,14 @@
 
 ```sql
 CREATE TABLE IF NOT EXISTS monitor_targets (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  url         TEXT    NOT NULL UNIQUE,
-  source_kind TEXT    NOT NULL,          -- 'landings' | 'funnel_landing_url' | 'links' | 'oto' | ... | 'manual'
-  enabled     INTEGER NOT NULL DEFAULT 0,
-  note        TEXT    NOT NULL DEFAULT '',
-  created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-  updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  url             TEXT    NOT NULL UNIQUE,
+  source_kind     TEXT    NOT NULL,      -- 'landings' | 'funnel_landing_url' | 'links' | 'oto' | ... | 'manual'
+  enabled         INTEGER NOT NULL DEFAULT 0,
+  manual_override INTEGER NOT NULL DEFAULT 0,  -- 1, если enabled выставил человек тумблером
+  note            TEXT    NOT NULL DEFAULT '',
+  created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS monitor_target_funnels (
@@ -121,10 +122,21 @@ CREATE INDEX IF NOT EXISTS idx_monitor_events_at     ON monitor_events(at);
 
 - **при первом заведении** `enabled = 1` только для `landings` и
   `funnel_landing_url`, для остальных `0`;
-- **при повторном upsert `enabled` не трогается** — ручное переключение
-  переживает синк;
+- у `enabled` два разных смысла — «человек так решил» и «вид источника такой», —
+  и различает их колонка `manual_override`. Тумблер на странице (`setTargetEnabled`,
+  `setSourceKindEnabled`) вместе с `enabled` ставит `manual_override = 1`;
+- **при повторном upsert**: если `manual_override = 1`, `enabled` не трогается —
+  ручное переключение переживает синк; если `manual_override = 0`, `enabled`
+  пересчитывается из `source_kind`. Второе — обязательно: без него ленд, на один
+  синк пропавший из данных воронок (и погашенный авто-ретайрментом), после
+  возврата URL остался бы выключенным навсегда, да ещё и невидимо — под фильтром
+  «показать выключенные»;
 - цель, чей URL исчез из базы воронок, **не удаляется**: ей ставится
-  `enabled = 0` и снимаются связи с воронками, история инцидентов сохраняется;
+  `enabled = 0` и снимаются связи с воронками, история инцидентов сохраняется.
+  Ретайрмент гасит цель независимо от `manual_override` — проверять URL, которого
+  в данных больше нет, незачем. Когда URL возвращается, автоматически оживают
+  только цели с `manual_override = 0`; цель, которую человек когда-то включил
+  руками, придётся включить снова — зато это видно в таблице, а не молча;
 - новой цели сразу создаётся строка `monitor_state` со статусом `unknown` —
   дашборд показывает «ещё не проверялось», а не пустоту.
 
@@ -238,7 +250,8 @@ CREATE INDEX IF NOT EXISTS idx_monitor_events_at     ON monitor_events(at);
 - `monitor-targets.test.ts` — синк: сплит многоссылочного `landing_url` (кейс
   №7 с хвостовой кавычкой); дедупликация одного URL из двух воронок с обеими
   связями; `enabled = 1` только у лендов; повторный синк не сбрасывает ручной
-  тумблер; исчезнувший URL гаснет, но не удаляется.
+  тумблер; исчезнувший URL гаснет, но не удаляется; пропавший и вернувшийся ленд
+  включается обратно сам (`manual_override = 0`).
 - `monitor-run.test.ts` — `monitor_events` пишется только при смене статуса;
   одиночная неудача не роняет в `down`, вторая подряд — роняет; возврат в `up`
   закрывает инцидент и обновляет `since`.

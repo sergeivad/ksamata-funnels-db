@@ -3,15 +3,30 @@
  * Единый источник правды для migrate-phase6.ts (tsx/тесты) и Docker-раннера.
  */
 
+/**
+ * Колонки monitor_targets, добавляемые поверх уже созданной таблицы.
+ * Нужны для БД, где Phase-6 прогонялась в раннем варианте, без manual_override.
+ * Применяются через addColumnIfMissing — повторный прогон безопасен.
+ */
+export const PHASE6_TARGET_COLUMNS: { name: string; ddl: string }[] = [
+  {
+    name: 'manual_override',
+    ddl: `ALTER TABLE monitor_targets ADD COLUMN manual_override INTEGER NOT NULL DEFAULT 0`,
+  },
+];
+
 export const PHASE6_DDL = `
 CREATE TABLE IF NOT EXISTS monitor_targets (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  url         TEXT    NOT NULL UNIQUE,
-  source_kind TEXT    NOT NULL,
-  enabled     INTEGER NOT NULL DEFAULT 0,
-  note        TEXT    NOT NULL DEFAULT '',
-  created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-  updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  url             TEXT    NOT NULL UNIQUE,
+  source_kind     TEXT    NOT NULL,
+  enabled         INTEGER NOT NULL DEFAULT 0,
+  -- 1, если состояние enabled выставил человек тумблером: тогда синк его не трогает.
+  -- 0 — enabled вычисляется из вида источника при каждом синке.
+  manual_override INTEGER NOT NULL DEFAULT 0,
+  note            TEXT    NOT NULL DEFAULT '',
+  created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_monitor_targets_enabled ON monitor_targets(enabled);
 

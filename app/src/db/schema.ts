@@ -246,6 +246,8 @@ export const monitorTargets = sqliteTable(
     url:        text('url').notNull().unique(),
     sourceKind: text('source_kind').notNull(),
     enabled:    integer('enabled').notNull().default(0),
+    // 1 — enabled выставлен человеком, синк его не пересчитывает.
+    manualOverride: integer('manual_override').notNull().default(0),
     note:       text('note').notNull().default(''),
     createdAt:  text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt:  text('updated_at').notNull().default(sql`(datetime('now'))`),

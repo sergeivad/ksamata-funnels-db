@@ -64,7 +64,11 @@ Drizzle SQLite. Core + lookup + content + tags tables:
   (per-funnel add/remove deltas).
 - **Other:** `salebot_configs`, `product_durations`.
 - **Monitoring (Phase 6):** `monitor_targets` (URL to check, `source_kind`,
-  `enabled`), `monitor_target_funnels` (which funnels use the URL),
+  `enabled`, plus `manual_override` — `1` once a human has toggled the target,
+  which makes the sync leave `enabled` alone; while it is `0` the sync
+  recomputes `enabled` from `source_kind`, so a landing that briefly vanished
+  from the funnel data comes back on by itself),
+  `monitor_target_funnels` (which funnels use the URL),
   `monitor_state` (current status per target, 1:1), `monitor_events` (status
   **changes** only — never one row per check).
 - **Orphaned/inactive:** `channels`, `directions` (present in schema but not

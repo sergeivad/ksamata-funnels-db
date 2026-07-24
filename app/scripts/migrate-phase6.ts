@@ -4,11 +4,16 @@
  *   cd app/
  *   FUNNELS_DB_PATH=../ksamata_funnels.db npx tsx scripts/migrate-phase6.ts
  */
-import { PHASE6_DDL } from './migrate-phase6-data';
+import { PHASE6_DDL, PHASE6_TARGET_COLUMNS } from './migrate-phase6-data';
+import { addColumnIfMissing } from './migrate-phase3-data';
 
 export function runMigratePhase6(sqlite: import('better-sqlite3').Database): void {
   sqlite.pragma('foreign_keys = ON');
   sqlite.exec(PHASE6_DDL);
+  // Таблица уже могла быть создана ранним вариантом Phase-6 — доливаем колонки.
+  for (const col of PHASE6_TARGET_COLUMNS) {
+    addColumnIfMissing(sqlite, 'monitor_targets', col.name, col.ddl);
+  }
 }
 
 if (require.main === module) {

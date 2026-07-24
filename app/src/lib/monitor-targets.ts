@@ -80,7 +80,11 @@ function collectTargets(db: AnyDB): Map<string, Collected> {
  * Приводит monitor_targets в соответствие с данными воронок.
  * Инварианты:
  *  - новая цель получает enabled=1 только для лендов;
- *  - у существующей цели enabled НЕ трогается — ручной тумблер переживает синк;
+ *  - у существующей цели с manual_override=1 enabled НЕ трогается —
+ *    ручной тумблер переживает синк;
+ *  - у существующей цели с manual_override=0 enabled пересчитывается из вида
+ *    источника: ленд, пропавший из данных на один синк и вернувшийся, снова
+ *    включается, а не остаётся навсегда погашённым;
  *  - исчезнувший URL не удаляется: гасится и отвязывается от воронок,
  *    чтобы не потерять историю инцидентов.
  */
@@ -92,15 +96,24 @@ export function syncMonitorTargets(db: AnyDB): { total: number; created: number;
   db.transaction((tx) => {
     for (const item of collected.values()) {
       const existing = tx
-        .select({ id: monitorTargets.id })
+        .select({ id: monitorTargets.id, manualOverride: monitorTargets.manualOverride })
         .from(monitorTargets)
         .where(eq(monitorTargets.url, item.url))
-        .get() as { id: number } | undefined;
+        .get() as { id: number; manualOverride: number } | undefined;
 
       let targetId: number;
       if (existing) {
         tx.update(monitorTargets)
-          .set({ sourceKind: item.sourceKind, updatedAt: sql`(datetime('now'))` })
+          .set({
+            sourceKind: item.sourceKind,
+            // Ручной тумблер (manual_override=1) неприкосновенен. Без него
+            // enabled — производная от вида источника, поэтому пересчитываем:
+            // иначе цель, погашенная авто-ретайрментом, уже никогда не ожила бы.
+            ...(existing.manualOverride === 1
+              ? {}
+              : { enabled: LANDING_SET.has(item.sourceKind) ? 1 : 0 }),
+            updatedAt: sql`(datetime('now'))`,
+          })
           .where(eq(monitorTargets.id, existing.id))
           .run();
         targetId = existing.id;
@@ -153,7 +166,7 @@ export function syncMonitorTargets(db: AnyDB): { total: number; created: number;
   return { total: collected.size, created, retired };
 }
 
-/** Переключает одну цель. Возвращает false, если цели нет. */
+/** Переключает одну цель вручную. Возвращает false, если цели нет. */
 export function setTargetEnabled(db: AnyDB, targetId: number, enabled: boolean): boolean {
   const existing = db
     .select({ id: monitorTargets.id })
@@ -163,13 +176,14 @@ export function setTargetEnabled(db: AnyDB, targetId: number, enabled: boolean):
   if (!existing) return false;
 
   db.update(monitorTargets)
-    .set({ enabled: enabled ? 1 : 0, updatedAt: sql`(datetime('now'))` })
+    // manual_override=1 фиксирует, что решение принял человек, — синк его не отменит.
+    .set({ enabled: enabled ? 1 : 0, manualOverride: 1, updatedAt: sql`(datetime('now'))` })
     .where(eq(monitorTargets.id, targetId))
     .run();
   return true;
 }
 
-/** Переключает целую группу по виду источника. Возвращает число затронутых целей. */
+/** Переключает целую группу по виду источника вручную. Возвращает число затронутых целей. */
 export function setSourceKindEnabled(db: AnyDB, sourceKind: string, enabled: boolean): number {
   const rows = db
     .select({ id: monitorTargets.id })
@@ -179,7 +193,7 @@ export function setSourceKindEnabled(db: AnyDB, sourceKind: string, enabled: boo
   if (rows.length === 0) return 0;
 
   db.update(monitorTargets)
-    .set({ enabled: enabled ? 1 : 0, updatedAt: sql`(datetime('now'))` })
+    .set({ enabled: enabled ? 1 : 0, manualOverride: 1, updatedAt: sql`(datetime('now'))` })
     .where(eq(monitorTargets.sourceKind, sourceKind))
     .run();
   return rows.length;
