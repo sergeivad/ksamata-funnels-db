@@ -2,11 +2,19 @@ import openpyxl
 
 from db_source import FunnelRow
 from findings import CLASS_TITLES, Finding
-from report import SOURCES_SHEET, SUMMARY_SHEET, build_summary_rows, write_report
+from report import (
+    CLASS_HEADERS,
+    SOURCES_SHEET,
+    SUMMARY_SHEET,
+    TOTAL_LABEL,
+    UNASSIGNED_LABEL,
+    build_summary_rows,
+    write_report,
+)
 
 
-def finding(cls, funnel='f11'):
-    return Finding(cls=cls, funnel=funnel, tag_type='reg', subject='S',
+def finding(cls, funnel='f11', subject='S'):
+    return Finding(cls=cls, funnel=funnel, tag_type='reg', subject=subject,
                    detail='D', evidence='E', first_seen='2026-05-02',
                    last_seen='2026-05-13', deals=3)
 
@@ -70,3 +78,84 @@ def test_sources_sheet_lists_inputs(tmp_path):
     values = [str(row[1].value) for row in ws.iter_rows(min_row=2) if row[1].value]
     assert 'deal_export_2026-05-02.csv' in values
     assert 'offer/get-offers' in values
+
+
+def _class_cols(header):
+    return [i for i, name in enumerate(header) if name.startswith('Класс ')]
+
+
+def test_summary_never_drops_findings_without_a_single_funnel():
+    """Инвариант полноты: сумма классов по всем строкам (кроме «Всего»)
+    равна общему числу находок. 11 из 16 классов структурно ставят
+    funnel='—' (уровень предложения/оси/ключа) — без агрегирующей строки
+    они бесследно пропадали бы из сводки.
+    """
+    findings = [
+        finding(1, funnel='f11'),
+        finding(1, funnel='f11'),
+        finding(4, funnel='f12'),
+        finding(2, funnel='—'),
+        finding(3, funnel='—'),
+        finding(9, funnel='—'),
+        finding(8, funnel='no-such-funnel-label'),
+    ]
+    rows = build_summary_rows(findings, FUNNELS)
+    header = rows[0]
+    cols = _class_cols(header)
+    data_rows = rows[1:-1]  # без итоговой строки, чтобы не задвоить
+    total = sum(row[i] for row in data_rows for i in cols)
+    assert total == len(findings)
+
+
+def test_unassigned_row_carries_findings_with_no_matching_funnel_label():
+    findings = [
+        finding(1, funnel='f11'),
+        finding(2, funnel='—'),
+        finding(2, funnel='—'),
+        finding(3, funnel='—'),
+        finding(9, funnel='some-nonexistent-label'),
+    ]
+    rows = build_summary_rows(findings, FUNNELS)
+    header = rows[0]
+    unassigned = next(row for row in rows if row[0] == UNASSIGNED_LABEL)
+    assert unassigned[header.index('Класс 1')] == 0
+    assert unassigned[header.index('Класс 2')] == 2
+    assert unassigned[header.index('Класс 3')] == 1
+    assert unassigned[header.index('Класс 9')] == 1
+    assert unassigned[header.index('Всего')] == 4
+
+
+def test_total_row_sums_all_rows_above():
+    findings = [
+        finding(1, funnel='f11'),
+        finding(1, funnel='f12'),
+        finding(4, funnel='f11'),
+        finding(2, funnel='—'),
+        finding(9, funnel='ghost-label'),
+    ]
+    rows = build_summary_rows(findings, FUNNELS)
+    header = rows[0]
+    cols = _class_cols(header)
+    total_row = rows[-1]
+    assert total_row[0] == TOTAL_LABEL
+    expected_per_class = [sum(row[i] for row in rows[1:-1]) for i in cols]
+    assert [total_row[i] for i in cols] == expected_per_class
+    assert total_row[header.index('Всего')] == sum(expected_per_class)
+
+
+def test_class_sheet_row_order_is_deterministic(tmp_path):
+    """Порядок находок внутри листа класса — порядок входного списка,
+    без сортировки по set/frozenset. В пакете уже пять раз находили
+    дефекты недетерминизма в подобных местах."""
+    out = tmp_path / 'report.xlsx'
+    ordered = [
+        finding(1, funnel='f11', subject='third'),
+        finding(1, funnel='f12', subject='first'),
+        finding(1, funnel='f11', subject='second'),
+        finding(1, funnel='f12', subject='fourth'),
+    ]
+    write_report(str(out), ordered, FUNNELS, [])
+    ws = openpyxl.load_workbook(out)['Класс 1']
+    subject_col = CLASS_HEADERS.index('Находка') + 1
+    subjects = [ws.cell(row=r, column=subject_col).value for r in range(4, 4 + len(ordered))]
+    assert subjects == ['third', 'first', 'second', 'fourth']

@@ -17,6 +17,14 @@ from findings import CLASS_TITLES
 SUMMARY_SHEET = 'Сводка'
 SOURCES_SHEET = 'Источники'
 
+# 11 из 16 классов (2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 14) — находки уровня
+# предложения/оси/ключа: у них структурно нет одной воронки, item.funnel
+# ставится в '—'. Такие находки, а также находки с меткой воронки, которой
+# нет среди funnels (опечатка/устаревшая метка), собираются в эту строку —
+# иначе они бесследно пропадали бы из сводки.
+UNASSIGNED_LABEL = '— (без воронки)'
+TOTAL_LABEL = 'Всего'
+
 CLASS_HEADERS = [
     'Воронка', 'Тип', 'Находка', 'Подробности',
     'Свидетельство', 'Первое наблюдение', 'Последнее наблюдение',
@@ -29,7 +37,19 @@ TITLE_FONT = Font(bold=True, size=12)
 
 
 def build_summary_rows(findings, funnels):
-    """Строка на воронку, колонка на класс. Первая строка — заголовок."""
+    """Строка на воронку, колонка на класс. Первая строка — заголовок.
+
+    После строк воронок следуют две агрегирующие строки:
+
+    - `UNASSIGNED_LABEL` — находки, чья `item.funnel` не совпадает ни с
+      одной меткой из `funnels`. Это не только буквальный '—' (11 из 16
+      классов ставят его структурно), но и любая метка воронки, которой
+      среди `funnels` нет — иначе такая дыра осталась бы просто уже.
+    - `TOTAL_LABEL` — сумма по каждому классу и общий итог.
+
+    Инвариант: сумма всех чисел по классам во всех строках, кроме
+    итоговой, равна общему числу находок — ни одна находка не теряется.
+    """
     classes = sorted(CLASS_TITLES)
     header = ['Воронка', 'Продукт', 'Статус'] + [f'Класс {c}' for c in classes] + ['Всего']
 
@@ -37,11 +57,28 @@ def build_summary_rows(findings, funnels):
     for item in findings:
         counts[item.funnel][item.cls] += 1
 
+    known_labels = {label_of(row) for row in funnels}
+
     rows = [header]
     for row in funnels:
         label = label_of(row)
         per_class = [counts[label][c] for c in classes]
         rows.append([label, row.product_name, row.status] + per_class + [sum(per_class)])
+
+    unassigned_per_class = [0] * len(classes)
+    for label, by_cls in counts.items():
+        if label in known_labels:
+            continue
+        for idx, cls in enumerate(classes):
+            unassigned_per_class[idx] += by_cls[cls]
+    rows.append([UNASSIGNED_LABEL, '', ''] + unassigned_per_class + [sum(unassigned_per_class)])
+
+    totals_per_class = [0] * len(classes)
+    for data_row in rows[1:]:
+        for idx in range(len(classes)):
+            totals_per_class[idx] += data_row[3 + idx]
+    rows.append([TOTAL_LABEL, '', ''] + totals_per_class + [sum(totals_per_class)])
+
     return rows
 
 
