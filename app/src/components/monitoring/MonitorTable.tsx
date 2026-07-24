@@ -67,7 +67,10 @@ export default function MonitorTable({ targets, onToggle }: Props) {
                   {t.error !== '' && (
                     <div className="mt-0.5 text-[11px] text-[#A32020]">{t.error}</div>
                   )}
-                  <div className="mt-0.5 text-[11px] text-[var(--faint)]">{t.sourceKind}</div>
+                  <div className="mt-0.5 text-[11px] text-[var(--faint)]">
+                    {t.sourceKind}
+                    {t.manualOverride && ' · переключено вручную'}
+                  </div>
                 </td>
                 <td className="px-3 py-2 text-[var(--muted)]">{t.httpStatus ?? '—'}</td>
                 <td className="px-3 py-2 text-[var(--muted)]">

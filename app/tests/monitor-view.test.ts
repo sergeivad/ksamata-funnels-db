@@ -95,6 +95,19 @@ describe('getMonitorDashboard', () => {
     expect(links.enabled).toBe(0);
   });
 
+  it('прикладывает manualOverride к цели — для переключённой вручную и для обычной', () => {
+    const overriddenId = sqlite
+      .prepare(
+        `INSERT INTO monitor_targets (url, source_kind, enabled, manual_override) VALUES (?, 'links', 1, 1)`
+      )
+      .run('https://gc.example.ru/manual').lastInsertRowid as number;
+    const plainId = makeTarget('https://a.ru/', 1, 'up', '2026-07-24 10:00:00');
+
+    const { targets } = getMonitorDashboard(db);
+    expect(targets.find((t) => t.id === overriddenId)?.manualOverride).toBe(true);
+    expect(targets.find((t) => t.id === plainId)?.manualOverride).toBe(false);
+  });
+
   it('цель без строки в monitor_state (LEFT JOIN) считается unknown и попадает в сводку', () => {
     // Заводим цель напрямую, минуя makeTarget — у неё умышленно нет строки monitor_state,
     // это состояние до первого прогона монитора.

@@ -20,6 +20,8 @@ export interface MonitorTargetView {
   url: string;
   sourceKind: string;
   enabled: boolean;
+  /** Тумблер отклонён от дефолта вида источника вручную — синк это не тронет. */
+  manualOverride: boolean;
   status: MonitorStatus;
   httpStatus: number | null;
   finalUrl: string;
@@ -109,6 +111,7 @@ export function getMonitorDashboard(db: AnyDB): {
       url: monitorTargets.url,
       sourceKind: monitorTargets.sourceKind,
       enabled: monitorTargets.enabled,
+      manualOverride: monitorTargets.manualOverride,
       status: monitorState.status,
       httpStatus: monitorState.httpStatus,
       finalUrl: monitorState.finalUrl,
@@ -125,6 +128,7 @@ export function getMonitorDashboard(db: AnyDB): {
       url: string;
       sourceKind: string;
       enabled: number;
+      manualOverride: number;
       status: string | null;
       httpStatus: number | null;
       finalUrl: string | null;
@@ -142,6 +146,7 @@ export function getMonitorDashboard(db: AnyDB): {
     url: r.url,
     sourceKind: r.sourceKind,
     enabled: r.enabled === 1,
+    manualOverride: r.manualOverride === 1,
     status: isMonitorStatus(r.status) ? r.status : 'unknown',
     httpStatus: r.httpStatus,
     finalUrl: r.finalUrl ?? '',
