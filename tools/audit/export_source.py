@@ -12,6 +12,7 @@ import csv
 import datetime
 import os
 import re
+import warnings
 from dataclasses import dataclass
 
 import openpyxl
@@ -59,11 +60,25 @@ def _read_header(path):
 
 
 def has_tags_column(path):
-    """Отсеивает срезы *_utm с 13 колонками — колонки тегов там нет."""
+    """Отсеивает срезы *_utm с 13 колонками — колонки тегов там нет.
+
+    Возвращает False в двух разных по природе случаях, но предупреждает
+    только об одном из них:
+    - файл прочитан, колонки тегов в заголовке нет — штатный, ожидаемый
+      исход (срез *_utm), молчим;
+    - файл прочитать не удалось вовсе (битый архив, ошибка прав, неожиданный
+      формат) — аномалия: файл тихо выпадает из охвата карты расхождений,
+      поэтому предупреждаем с именем файла и причиной.
+    """
     try:
-        return TAGS_COLUMN in _read_header(path)
-    except Exception:
+        header = _read_header(path)
+    except Exception as exc:
+        warnings.warn(
+            f'export_source: не удалось прочитать {path} — файл исключён из охвата ({exc!r})',
+            stacklevel=2,
+        )
         return False
+    return TAGS_COLUMN in header
 
 
 def discover_export_files(directory, since):

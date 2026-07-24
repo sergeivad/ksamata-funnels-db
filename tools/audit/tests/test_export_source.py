@@ -69,14 +69,35 @@ def test_discover_skips_files_before_since_and_without_tags(tmp_path):
 
 
 def test_discover_skips_excel_lock_files(tmp_path):
+    # Файл-блокировка — ВАЛИДНЫЙ xlsx с настоящей колонкой тегов, чтобы
+    # единственной причиной его исключения была проверка префикса '~$', а не
+    # перехват исключения на битом архиве (has_tags_column вернула бы False
+    # и без этой проверки — тест был бы ненагруженным).
     lock = tmp_path / '~$deal_export_2026-05-02_00-00-00.xlsx'
-    lock.write_bytes(b'not a real workbook')
+    write_xlsx(lock, [['3', '2026-05-02 00:00:00', 'X', 'ДБО', 'Оплачен']])
     good = tmp_path / 'deal_export_2026-05-02_00-00-00.csv'
     write_csv(good, [['3', '2026-05-02 00:00:00', 'X', 'ДБО', 'Оплачен']])
 
     found = discover_export_files(str(tmp_path), datetime.date(2026, 4, 1))
     assert len(found) == 1
     assert '~$' not in found[0]
+
+
+def test_has_tags_column_warns_and_rejects_unreadable_file(tmp_path):
+    """Битый файл выпадает из охвата, но об этом не молчат.
+
+    В отличие от штатного «колонки нет» (например, срез *_utm), файл, который
+    не удалось прочитать вовсе, — аномалия для карты расхождений: его данные
+    просто отсутствуют, и это должно быть видно, а не тонуть молча.
+    """
+    p = tmp_path / 'deal_export_2026-05-01_00-00-00.xlsx'
+    p.write_bytes(b'not a real workbook')
+
+    with pytest.warns(UserWarning) as record:
+        result = has_tags_column(str(p))
+
+    assert result is False
+    assert any(p.name in str(w.message) for w in record)
 
 
 def test_read_observations_from_csv(tmp_path):
