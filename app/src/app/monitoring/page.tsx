@@ -45,6 +45,9 @@ export default function MonitoringPage() {
   const [showDisabled, setShowDisabled] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const toastKeyRef = useRef(0);
+  // Флаг маунта: не даём фоновому load() из эффекта записать state после
+  // размонтирования страницы (как в списке воронок, app/src/app/page.tsx).
+  const mountedRef = useRef(true);
 
   const showToast = useCallback((message: string, variant: 'success' | 'error') => {
     toastKeyRef.current += 1;
@@ -58,16 +61,23 @@ export default function MonitoringPage() {
         fetch('/api/monitoring/events?limit=25'),
       ]);
       if (!dashRes.ok || !eventsRes.ok) throw new Error('load failed');
-      setData(await dashRes.json());
-      setEvents((await eventsRes.json()).events);
+      const dashData = await dashRes.json();
+      const eventsData = await eventsRes.json();
+      if (!mountedRef.current) return;
+      setData(dashData);
+      setEvents(eventsData.events);
       setLoadFailed(false);
     } catch {
-      setLoadFailed(true);
+      if (mountedRef.current) setLoadFailed(true);
     }
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     void load();
+    return () => {
+      mountedRef.current = false;
+    };
   }, [load]);
 
   async function runNow() {
@@ -161,6 +171,7 @@ export default function MonitoringPage() {
                   key={k.sourceKind}
                   type="button"
                   onClick={() => void toggleKind(k.sourceKind, !allOn)}
+                  aria-pressed={allOn}
                   className="rounded-[6px] bg-[var(--chip)] px-2 py-1 text-[11px] text-[var(--muted)] transition hover:text-[var(--ink)]"
                 >
                   {k.sourceKind} · {k.total} · {allOn ? 'вкл' : `${k.enabled} вкл`}
@@ -184,6 +195,7 @@ export default function MonitoringPage() {
             <button
               type="button"
               onClick={() => setShowDisabled((v) => !v)}
+              aria-pressed={showDisabled}
               className="text-[12px] text-[var(--muted)] underline-offset-2 hover:underline"
             >
               {showDisabled ? 'Скрыть выключенные' : `Показать выключенные (${disabledCount})`}
@@ -195,13 +207,17 @@ export default function MonitoringPage() {
         </div>
       )}
 
+      {/* Toast portal — та же обёртка, что и в списке воронок (app/src/app/page.tsx),
+          иначе Toast остаётся обычным блоком в конце страницы и уезжает за экран. */}
       {toast && (
-        <Toast
-          key={toast.key}
-          message={toast.message}
-          variant={toast.variant}
-          onClose={() => setToast(null)}
-        />
+        <div className="fixed bottom-6 right-6 z-50 pointer-events-none">
+          <Toast
+            key={toast.key}
+            message={toast.message}
+            variant={toast.variant}
+            onClose={() => setToast(null)}
+          />
+        </div>
       )}
     </main>
   );
