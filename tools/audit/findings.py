@@ -13,6 +13,9 @@ from normalize import (
     AUTOFUNNEL_TAG,
     AXES,
     PREDPISOK_STAGE,
+    STAGE_MESSENGER,
+    STAGE_PAYMENT,
+    STAGE_REG,
     av_key,
     classify,
     is_complete_key,
@@ -117,6 +120,44 @@ def _latest_groups(groups):
         if group.tag_type is None:
             continue
         slot = (group.key, group.tag_type)
+        current = newest.get(slot)
+        if current is None or group.last_seen > current.last_seen:
+            newest[slot] = group
+    return list(newest.values())
+
+
+def _stage_family(tags):
+    """Семейство этапа: reg/messenger/payment/predpisok/none.
+
+    В отличие от tag_type (см. classify), семейство выводится только из
+    тегов этапа и не зависит от того, есть ли АВ Время. Так «Оплата без
+    времени» и «Оплата с временем» — одно семейство, и свежая исправная
+    группа вытесняет старую сломанную. reg и messenger — отдельные
+    семейства: у одной воронки они существуют одновременно законно.
+    """
+    if STAGE_REG in tags:
+        return 'reg'
+    if STAGE_MESSENGER in tags:
+        return 'messenger'
+    if PREDPISOK_STAGE in tags:
+        return 'predpisok'
+    if STAGE_PAYMENT in tags:
+        return 'payment'
+    return 'none'
+
+
+def _latest_by_stage_family(groups):
+    """Для каждой пары (ключ, семейство этапа) — только свежее наблюдение.
+
+    В отличие от _latest_groups, не пропускает группы с tag_type is None —
+    именно такие группы дают классы 5 и 6. Свёртка по семейству, а не по
+    tag_type, нужна чтобы свежая исправная группа ('time_19') вытесняла
+    старую сломанную ('no_time') на том же АВ-ключе: у обеих семейство
+    'payment', а tag_type разный.
+    """
+    newest = {}
+    for group in groups:
+        slot = (group.key, _stage_family(group.tags))
         current = newest.get(slot)
         if current is None or group.last_seen > current.last_seen:
             newest[slot] = group
@@ -237,7 +278,7 @@ def find_unresolved(groups, index):
     Каждая неопознанная группа попадает ровно в один класс.
     """
     result = []
-    for group in groups:
+    for group in _latest_by_stage_family(groups):
         if group.reason == 'no_time':
             cls, subject = 5, 'Оплата без АВ Время'
         elif group.reason == 'predspisok':
