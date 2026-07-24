@@ -58,6 +58,15 @@ def test_class_9_reports_av_key_present_in_registry_but_absent_from_db():
     assert 'ЩЖ' in found[0].subject
 
 
+def test_class_9_ignores_offer_with_incomplete_quadruple():
+    offers = [offer(1, 'АВ Продукт: ДБО|АВ Канал: ВК|АВ Этап: Регистрация'),
+              offer(2, 'АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
+                       'АВ Направление: РСЯ|АВ Этап: Регистрация')]
+    found = find_unknown_av_keys(offers, INDEX)
+    assert [f.cls for f in found] == [9]
+    assert 'ЩЖ' in found[0].subject
+
+
 def test_class_9_counts_offers_per_key():
     raw = ('АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
            'АВ Направление: РСЯ|АВ Этап: Регистрация')
@@ -120,3 +129,13 @@ def test_class_14_reports_av_offer_with_zero_deals():
 
 def test_class_14_ignores_offers_without_av_tags():
     assert find_unused_offers([offer(1, 'ДБО|РСЯ')], []) == []
+
+
+def test_class_14_ignores_offer_with_incomplete_quadruple():
+    groups = group_observations([obs(AV + '|АВ Этап: Регистрация')])
+    offers = [offer(1, 'АВ Продукт: ДБО|АВ Канал: ВК|АВ Этап: Регистрация'),
+              offer(2, 'АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
+                       'АВ Направление: РСЯ|АВ Этап: Регистрация', title='Старый')]
+    found = find_unused_offers(offers, groups)
+    assert [f.cls for f in found] == [14]
+    assert 'Старый' in found[0].subject
