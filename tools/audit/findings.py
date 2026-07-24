@@ -497,3 +497,100 @@ def find_unused_offers(offers, groups):
             )
         )
     return result
+
+
+# ─── Группа V. Динамика и достоверность ─────────────────────────────────────
+
+# Меньше этого числа наблюдений — данных слишком мало, чтобы делать выводы.
+THIN_COVERAGE_THRESHOLD = 2
+
+
+def find_drift(groups, index, expectations):
+    """Класс 15: набор тегов у пары (ключ × тип) менялся между выгрузками.
+
+    Дата берётся ПО ФАЙЛУ выгрузки, а не по созданию заказа: «Теги
+    предложений» вычисляются в момент выгрузки, поэтому старый заказ
+    в свежей выгрузке несёт свежие теги.
+    """
+    by_id = _by_funnel_id(expectations)
+
+    by_slot = defaultdict(list)
+    for group in groups:
+        if group.tag_type is None:
+            continue
+        by_slot[(group.key, group.tag_type)].append(group)
+
+    result = []
+    for (key, tag_type), variants in sorted(by_slot.items(), key=lambda kv: key_label(kv[0][0])):
+        if len(variants) < 2:
+            continue
+        ordered = sorted(variants, key=lambda g: g.last_seen)
+        for older, newer in zip(ordered, ordered[1:]):
+            appeared = sorted(newer.tags - older.tags)
+            disappeared = sorted(older.tags - newer.tags)
+            if not appeared and not disappeared:
+                continue
+            parts = []
+            if appeared:
+                parts.append('появился: ' + ', '.join(appeared))
+            if disappeared:
+                parts.append('исчез: ' + ', '.join(disappeared))
+            result.append(
+                Finding(
+                    cls=15,
+                    funnel=_funnel_label(index, by_id, key),
+                    tag_type=tag_type,
+                    subject=', '.join(appeared + disappeared),
+                    detail='; '.join(parts),
+                    evidence=f'{key_label(key)} | между {older.last_seen} и {newer.last_seen}',
+                    first_seen=str(older.last_seen),
+                    last_seen=str(newer.last_seen),
+                    deals=older.deals + newer.deals,
+                )
+            )
+    return result
+
+
+def find_coverage(funnels, groups, index):
+    """Класс 16: сколько данных вообще есть по каждой воронке.
+
+    Выгрузки — сегментные срезы с неизвестным охватом. Без этого листа
+    отчёт создаёт ложное впечатление полноты.
+    """
+    stats = defaultdict(lambda: {'deals': 0, 'files': set(), 'last': None})
+    for group in groups:
+        for fid in index.get(group.key, set()):
+            entry = stats[fid]
+            entry['deals'] += group.deals
+            entry['files'].update(group.files)
+            if entry['last'] is None or group.last_seen > entry['last']:
+                entry['last'] = group.last_seen
+
+    result = []
+    for row in funnels:
+        entry = stats.get(row.funnel_id)
+        deals = entry['deals'] if entry else 0
+        files = len(entry['files']) if entry else 0
+        last = entry['last'] if entry else None
+
+        if deals == 0:
+            subject = 'нет данных'
+        elif deals < THIN_COVERAGE_THRESHOLD or files < THIN_COVERAGE_THRESHOLD:
+            subject = 'мало данных — выводы ненадёжны'
+        else:
+            subject = 'покрытие достаточное'
+
+        result.append(
+            Finding(
+                cls=16,
+                funnel=label_of(row),
+                tag_type='',
+                subject=subject,
+                detail=f'{deals} наблюдений из {files} файлов',
+                evidence=row.status,
+                first_seen='',
+                last_seen=str(last) if last else '',
+                deals=deals,
+            )
+        )
+    return result
