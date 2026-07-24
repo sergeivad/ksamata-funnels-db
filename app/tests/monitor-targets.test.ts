@@ -47,6 +47,17 @@ function wipeFunnelUrls() {
   sqlite.prepare(`UPDATE funnels SET landing_url = ''`).run();
 }
 
+/**
+ * Очищаем состояние мониторинга для тестов, которые проверяют абсолютные числа в stats.
+ * Это нужно, чтобы исходная БД с данными в monitor_targets не влияла на ожидаемые значения.
+ */
+function clearMonitoringState() {
+  sqlite.prepare(`DELETE FROM monitor_target_funnels`).run();
+  sqlite.prepare(`DELETE FROM monitor_events`).run();
+  sqlite.prepare(`DELETE FROM monitor_state`).run();
+  sqlite.prepare(`DELETE FROM monitor_targets`).run();
+}
+
 function funnelIds(limit: number): number[] {
   return (sqlite.prepare(`SELECT id FROM funnels ORDER BY id LIMIT ?`).all(limit) as { id: number }[])
     .map((r) => r.id);
@@ -177,6 +188,7 @@ describe('syncMonitorTargets', () => {
   });
 
   it('гасит исчезнувший URL, но не удаляет его и его историю', () => {
+    clearMonitoringState();
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
     sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`).run('https://gone.example.ru/x', f1);
@@ -200,10 +212,49 @@ describe('syncMonitorTargets', () => {
       .get(target.id) as { c: number };
     expect(events.c).toBe(1);
   });
+
+  it('гасит все цели, когда нет ни одного URL в воронках', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1, f2] = funnelIds(2);
+
+    // Первый синк: заводим 2 цели из разных источников
+    const landingBlock = sqlite
+      .prepare(`INSERT INTO funnel_blocks (funnel_id, kind, enabled) VALUES (?, 'landings', 1)`)
+      .run(f1).lastInsertRowid as number;
+    sqlite.prepare(`INSERT INTO funnel_block_items (block_id, url) VALUES (?, ?)`)
+      .run(landingBlock, 'https://lp1.example.ru/retire-all');
+    sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`)
+      .run('https://lp2.example.ru/retire-all', f2);
+
+    const firstStats = syncMonitorTargets(db);
+    expect(firstStats.total).toBe(2);
+
+    // Второй синк: стираем все URL и проверяем, что все цели гасятся
+    wipeFunnelUrls();
+    const secondStats = syncMonitorTargets(db);
+
+    expect(secondStats.retired).toBe(2);
+    expect(secondStats.total).toBe(0);
+
+    // Все цели отключены
+    const allTargets = sqlite
+      .prepare(`SELECT id, enabled FROM monitor_targets`)
+      .all() as { id: number; enabled: number }[];
+    expect(allTargets.length).toBe(2);
+    expect(allTargets.every((t) => t.enabled === 0)).toBe(true);
+
+    // Все связи расторгнуты
+    const linkCount = sqlite
+      .prepare(`SELECT COUNT(*) AS c FROM monitor_target_funnels`)
+      .get() as { c: number };
+    expect(linkCount.c).toBe(0);
+  });
 });
 
 describe('setSourceKindEnabled', () => {
   it('включает целую группу и возвращает количество затронутых целей', () => {
+    clearMonitoringState();
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
     const linksBlock = sqlite
