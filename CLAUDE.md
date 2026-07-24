@@ -190,11 +190,10 @@ runs. Before copying the DB to `app/seed/` or making a backup:
 `*.db-wal` / `*.db-shm` sidecars and `*.db.bak_*` backups are gitignored.
 
 **Monitoring gotcha:** the tracked DB's `monitor_*` tables are intentionally
-**empty**, and several tests copy the file and assert absolute row counts
-against it. But running the dev server starts the background scheduler, which
-syncs ~600 targets and writes check results straight into that same tracked
-file. So after any live run — `npm run dev`, a manual cycle, a browser check —
-restore it before committing anything:
+**empty**. Running the dev server starts the background scheduler, which syncs
+~600 targets and writes check results straight into that same tracked file. So
+after any live run — `npm run dev`, a manual cycle, a browser check — restore it
+before committing anything:
 
 ```sh
 sqlite3 ksamata_funnels.db 'PRAGMA wal_checkpoint(TRUNCATE);'
@@ -203,11 +202,16 @@ rm -f ksamata_funnels.db-wal ksamata_funnels.db-shm
 ```
 
 Verify with `sqlite3 ksamata_funnels.db "select count(*) from monitor_targets;"`
-→ must print `0`, and `git status --porcelain` must be clean. If tests start
-failing on counts, suspect a polluted fixture before you suspect the tests —
-do not "fix" them by clearing tables inside the test file. Set
+→ must print `0`, and `git status --porcelain` must be clean. Set
 `MONITOR_ENABLED=false` in `.env.local` to keep the dev server from doing this
 (and from hitting live landing pages) in the first place.
+
+The monitoring tests no longer depend on that hygiene: every one of them wipes
+the `monitor_*` tables of its own temp copy right after `runMigratePhase6`, via
+`clearMonitoringState` in [app/tests/helpers/monitoring.ts](app/tests/helpers/monitoring.ts).
+Those tables are the tests' own state, not source data, so clearing them is
+correct — keep new monitoring tests on the same helper, and do not extend it to
+funnel data (that stays as it is in the copied DB).
 
 ## Process state must be a real singleton
 

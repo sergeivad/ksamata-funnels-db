@@ -6,6 +6,7 @@ import os from 'os';
 import path from 'path';
 import { runMigratePhase6 } from '../scripts/migrate-phase6';
 import * as schema from '../src/db/schema';
+import { clearMonitoringState } from './helpers/monitoring';
 import { getMonitorDashboard, listMonitorEvents, funnelsByTarget } from '../src/lib/monitor-view';
 
 const REAL_DB = path.resolve(process.cwd(), '..', 'ksamata_funnels.db');
@@ -19,6 +20,9 @@ beforeEach(() => {
   sqlite = new Database(tmp);
   sqlite.pragma('foreign_keys = ON');
   runMigratePhase6(sqlite);
+  // Копия реальной БД может нести цели, заведённые локальным планировщиком, —
+  // тесты ниже считают абсолютные числа, поэтому стартуем с нуля.
+  clearMonitoringState(sqlite);
   db = drizzle(sqlite, { schema });
 });
 

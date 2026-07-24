@@ -10,6 +10,7 @@ import os from 'os';
 import path from 'path';
 import { runMigratePhase6 } from '../scripts/migrate-phase6';
 import * as schema from '../src/db/schema';
+import { clearMonitoringState as clearState } from './helpers/monitoring';
 import {
   syncMonitorTargets,
   setTargetEnabled,
@@ -27,9 +28,9 @@ beforeEach(() => {
   sqlite = new Database(tmp);
   sqlite.pragma('foreign_keys = ON');
   runMigratePhase6(sqlite);
-  // Решения по группам — наше собственное состояние, и в копии реальной БД они
-  // уже могут быть. Стартуем от задокументированного дефолта: ленды вкл, остальное выкл.
-  sqlite.prepare(`DELETE FROM monitor_source_kind_prefs`).run();
+  // Копия реальной БД может нести цели и решения по группам, заведённые локальным
+  // планировщиком. Стартуем от задокументированного дефолта: ленды вкл, остальное выкл.
+  clearMonitoringState();
   db = drizzle(sqlite, { schema });
 });
 
@@ -50,15 +51,9 @@ function wipeFunnelUrls() {
   sqlite.prepare(`UPDATE funnels SET landing_url = ''`).run();
 }
 
-/**
- * Очищаем состояние мониторинга для тестов, которые проверяют абсолютные числа в stats.
- * Это нужно, чтобы исходная БД с данными в monitor_targets не влияла на ожидаемые значения.
- */
+/** Очищаем состояние мониторинга (см. tests/helpers/monitoring.ts) для текущей копии БД. */
 function clearMonitoringState() {
-  sqlite.prepare(`DELETE FROM monitor_target_funnels`).run();
-  sqlite.prepare(`DELETE FROM monitor_events`).run();
-  sqlite.prepare(`DELETE FROM monitor_state`).run();
-  sqlite.prepare(`DELETE FROM monitor_targets`).run();
+  clearState(sqlite);
 }
 
 function funnelIds(limit: number): number[] {
