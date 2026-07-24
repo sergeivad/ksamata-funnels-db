@@ -46,4 +46,12 @@ if [ -n "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] Legacy tag-override backfill done."
 fi
 
+# Apply Phase-6 migration (idempotent: CREATE TABLE/INDEX IF NOT EXISTS).
+# Adds the landing-availability monitoring tables.
+if [ -n "$FUNNELS_DB_PATH" ]; then
+  echo "[entrypoint] Running Phase-6 migration against $FUNNELS_DB_PATH"
+  node /app/migrate-phase6.cjs
+  echo "[entrypoint] Phase-6 migration done."
+fi
+
 exec node server.js

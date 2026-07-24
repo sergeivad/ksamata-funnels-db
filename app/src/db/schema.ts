@@ -4,6 +4,7 @@ import {
   text,
   uniqueIndex,
   index,
+  primaryKey,
 } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
@@ -236,6 +237,71 @@ export const funnelTagOverrides = sqliteTable(
   }),
 );
 
+// ─── Мониторинг доступности (Phase 6) ────────────────────────────────────────
+
+export const monitorTargets = sqliteTable(
+  'monitor_targets',
+  {
+    id:         integer('id').primaryKey({ autoIncrement: true }),
+    url:        text('url').notNull().unique(),
+    sourceKind: text('source_kind').notNull(),
+    enabled:    integer('enabled').notNull().default(0),
+    note:       text('note').notNull().default(''),
+    createdAt:  text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt:  text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    enabledIdx: index('idx_monitor_targets_enabled').on(t.enabled),
+  }),
+);
+
+export const monitorTargetFunnels = sqliteTable(
+  'monitor_target_funnels',
+  {
+    targetId: integer('target_id').notNull().references(() => monitorTargets.id, { onDelete: 'cascade' }),
+    funnelId: integer('funnel_id').notNull().references(() => funnels.id, { onDelete: 'cascade' }),
+  },
+  (t) => ({
+    pk:        primaryKey({ columns: [t.targetId, t.funnelId] }),
+    funnelIdx: index('idx_mtf_funnel').on(t.funnelId),
+  }),
+);
+
+export const monitorState = sqliteTable(
+  'monitor_state',
+  {
+    targetId:            integer('target_id').primaryKey().references(() => monitorTargets.id, { onDelete: 'cascade' }),
+    status:              text('status', { enum: ['up', 'slow', 'down', 'unknown'] }).notNull().default('unknown'),
+    httpStatus:          integer('http_status'),
+    finalUrl:            text('final_url').notNull().default(''),
+    error:               text('error').notNull().default(''),
+    latencyMs:           integer('latency_ms'),
+    checkedAt:           text('checked_at'),
+    since:               text('since'),
+    consecutiveFailures: integer('consecutive_failures').notNull().default(0),
+  },
+  (t) => ({
+    statusIdx: index('idx_monitor_state_status').on(t.status),
+  }),
+);
+
+export const monitorEvents = sqliteTable(
+  'monitor_events',
+  {
+    id:         integer('id').primaryKey({ autoIncrement: true }),
+    targetId:   integer('target_id').notNull().references(() => monitorTargets.id, { onDelete: 'cascade' }),
+    fromStatus: text('from_status').notNull(),
+    toStatus:   text('to_status').notNull(),
+    httpStatus: integer('http_status'),
+    error:      text('error').notNull().default(''),
+    at:         text('at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    targetIdx: index('idx_monitor_events_target').on(t.targetId),
+    atIdx:     index('idx_monitor_events_at').on(t.at),
+  }),
+);
+
 // ─── Type exports ─────────────────────────────────────────────────────────────
 
 export type Source           = typeof sources.$inferSelect;
@@ -255,3 +321,8 @@ export type FunnelBlock     = typeof funnelBlocks.$inferSelect;
 export type FunnelBlockItem = typeof funnelBlockItems.$inferSelect;
 export type TagTemplate       = typeof tagTemplates.$inferSelect;
 export type FunnelTagOverride = typeof funnelTagOverrides.$inferSelect;
+
+export type MonitorTarget       = typeof monitorTargets.$inferSelect;
+export type MonitorTargetFunnel = typeof monitorTargetFunnels.$inferSelect;
+export type MonitorStateRow     = typeof monitorState.$inferSelect;
+export type MonitorEventRow     = typeof monitorEvents.$inferSelect;
