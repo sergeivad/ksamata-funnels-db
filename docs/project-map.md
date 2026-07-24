@@ -17,17 +17,27 @@ File-level map of the repo. For architecture and conventions see
 - `src/app/funnels/[id]/page.tsx` - funnel edit page.
 - `src/app/tags/page.tsx` - global tag-template editor.
 - `src/app/refs/page.tsx` - lookup/reference tables management.
+- `src/app/monitoring/page.tsx` - landing-availability monitoring dashboard.
 - `src/app/api/` - Next.js route handlers (funnels, days, blocks, tags,
-  tag-templates, refs, export).
+  tag-templates, refs, export, monitoring).
 - `src/db/schema.ts` - Drizzle table definitions.
 - `src/db/client.ts` - DB path resolution (`FUNNELS_DB_PATH` / repo-root default).
 - `src/lib/` - domain helpers: funnels, refs, days, blocks (+ block-fill),
   the three-layer tags system (`ab-tags`, `tag-templates`, `tag-overrides`),
   status, rooms-grid, funnel-compact, export, validation, plus http/errors and
-  client hooks. See CLAUDE.md for the full module list.
-- `src/components/` - client UI components and primitives.
+  client hooks; monitoring (`monitor-status`, `monitor-urls`,
+  `monitor-targets`, `monitor-check`, `monitor-run`, `monitor-view`,
+  `monitor-scheduler`). See CLAUDE.md for the full module list.
+- `src/instrumentation.ts` - Next server-start hook; starts the monitoring
+  scheduler on the Node runtime.
+- `src/components/` - client UI components and primitives, including
+  `monitoring/` (`MonitorStatusPill`, `MonitorSummary`, `MonitorTable`,
+  `MonitorEvents`).
 - `src/middleware.ts` - HTTP Basic Auth (`ADMIN_BASIC_AUTH` / `ADMIN_AUTH_DISABLED`).
-- `scripts/` - phased migrations (Phase 2–5), data backfills, and seed/runners
+- `next.config.ts` - webpack config; aliases `src/db/client.ts` away for the
+  Edge bundle so `instrumentation.ts` compiles under the Edge runtime forced
+  by `middleware.ts` (see CLAUDE.md Deployment section).
+- `scripts/` - phased migrations (Phase 2–6), data backfills, and seed/runners
   used by tests and Docker.
 - `tests/` - Vitest suite (routes, lib, migrations, middleware).
 - `seed/` - seed database baked into the production Docker image.
