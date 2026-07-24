@@ -78,6 +78,29 @@ def test_fetch_all_accepts_bare_array_envelope():
     assert fetch_all(CFG, 'offer/get-offers', opener) == [{'offerId': 1}]
 
 
+def test_fetch_all_raises_instead_of_looping_forever_on_stuck_offset():
+    """Баг бэкенда: API стабильно отдаёт полную страницу вне зависимости от offset.
+
+    Без верхнего предела на число страниц это привело бы к бесконечному циклу.
+    """
+    page_size = 5
+    max_pages = 3
+
+    def opener(url, headers):
+        # Всегда возвращает полную страницу — offset никогда не даёт короткий хвост.
+        return json.dumps({'data': [{'offerId': i} for i in range(page_size)]})
+
+    with pytest.raises(RuntimeError) as err:
+        fetch_all(CFG, 'offer/get-offers', opener, page_size=page_size, max_pages=max_pages)
+
+    message = str(err.value)
+    assert str(max_pages) in message
+    # Сообщение об ошибке не должно содержать ключи/заголовки авторизации.
+    assert auth_header(CFG) not in message
+    assert CFG.dev_key not in message
+    assert 'Authorization' not in message
+
+
 def test_load_offers_joins_offers_with_their_tags():
     def opener(url, headers):
         if 'get-offers-tags' in url:
@@ -126,3 +149,22 @@ def test_save_snapshot_writes_json_without_credentials(tmp_path):
     payload = json.loads(text)
     assert payload[0]['offer_id'] == 1
     assert payload[0]['tags'] == ['ДБО']
+
+
+def test_save_snapshot_orders_offers_by_offer_id_for_stable_diffs(tmp_path):
+    """Снимок используется для сравнения прогонов во времени — порядок должен
+
+    быть детерминированным (по offer_id), а не зависеть от того, в каком
+    порядке пагинация API вернула записи.
+    """
+    from api_source import Offer
+
+    out = tmp_path / 'snapshot.json'
+    shuffled = [
+        Offer(offer_id=30, title='В', status='draft', tags=frozenset()),
+        Offer(offer_id=10, title='А', status='draft', tags=frozenset()),
+        Offer(offer_id=20, title='Б', status='draft', tags=frozenset()),
+    ]
+    save_snapshot(shuffled, str(out))
+    payload = json.loads(out.read_text(encoding='utf-8'))
+    assert [row['offer_id'] for row in payload] == [10, 20, 30]

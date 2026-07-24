@@ -81,14 +81,24 @@ def fetch_page(cfg, path, params, opener):
     return _unwrap(json.loads(body))
 
 
-def fetch_all(cfg, path, opener, page_size=PAGE_SIZE):
+MAX_PAGES = 1000
+
+
+def fetch_all(cfg, path, opener, page_size=PAGE_SIZE, max_pages=MAX_PAGES):
     rows = []
     offset = 0
+    pages_fetched = 0
     while True:
         page = fetch_page(cfg, path, {'limit': page_size, 'offset': offset}, opener)
         rows.extend(page)
+        pages_fetched += 1
         if len(page) < page_size:
             return rows
+        if pages_fetched >= max_pages:
+            raise RuntimeError(
+                f'Пагинация {path} не остановилась после {pages_fetched} страниц '
+                f'({len(rows)} записей набрано) — похоже на зацикливание API, прерываю.'
+            )
         offset += page_size
 
 
@@ -130,7 +140,7 @@ def save_snapshot(offers, path):
             'status': o.status,
             'tags': sorted(o.tags),
         }
-        for o in offers
+        for o in sorted(offers, key=lambda o: o.offer_id)
     ]
     with open(path, 'w', encoding='utf-8') as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2)
