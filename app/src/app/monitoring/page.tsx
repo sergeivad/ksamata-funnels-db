@@ -52,6 +52,10 @@ export default function MonitoringPage() {
   const [loadFailed, setLoadFailed] = useState(false);
   // Опрос идёт, пока сервер не скажет, что цикл закончился.
   const [polling, setPolling] = useState(false);
+  // Опрос сдался: сервер не отвечал несколько попыток подряд. Данные в state
+  // остались с момента, когда цикл ещё шёл, поэтому доверять их summary.running
+  // больше нельзя — иначе кнопка залипнет до перезагрузки страницы.
+  const [gaveUp, setGaveUp] = useState(false);
   // Тост «Проверка завершена» показываем только тому, кто сам нажал кнопку,
   // а не за компанию с циклом планировщика.
   const notifyOnFinishRef = useRef(false);
@@ -116,6 +120,10 @@ export default function MonitoringPage() {
             // оставляем баннер ошибки как есть (его выставляет сам load()).
             notifyOnFinishRef.current = false;
             setPolling(false);
+            // data осталась с прошлой удачной загрузки, где summary.running=true.
+            // Без сброса кнопка навсегда залипла бы на «Проверяем…»: опрос уже
+            // остановлен, обновить data больше некому.
+            setGaveUp(true);
           }
           return;
         }
@@ -137,13 +145,15 @@ export default function MonitoringPage() {
   // Цикл мог запустить планировщик, пока страница была закрыта: подхватываем
   // его — иначе кнопка врала бы «Проверить сейчас», а таблица не обновилась бы.
   useEffect(() => {
+    if (gaveUp) return;
     if (data?.summary.running) setPolling(true);
-  }, [data?.summary.running]);
+  }, [data?.summary.running, gaveUp]);
 
-  const running = polling || (data?.summary.running ?? false);
+  const running = !gaveUp && (polling || (data?.summary.running ?? false));
 
   async function runNow() {
     if (running) return;
+    setGaveUp(false);
     try {
       const res = await fetch('/api/monitoring/run', { method: 'POST' });
       if (res.status === 409) {

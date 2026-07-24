@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS monitor_targets (
   url             TEXT    NOT NULL UNIQUE,
   source_kind     TEXT    NOT NULL,      -- 'landings' | 'funnel_landing_url' | 'links' | 'oto' | ... | 'manual'
   enabled         INTEGER NOT NULL DEFAULT 0,
-  manual_override INTEGER NOT NULL DEFAULT 0,  -- 1, если enabled выставил человек тумблером
+  manual_override INTEGER NOT NULL DEFAULT 0,  -- 1, если человек отклонил enabled от дефолта вида источника
   note            TEXT    NOT NULL DEFAULT '',
   created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -143,8 +143,11 @@ CREATE INDEX IF NOT EXISTS idx_monitor_events_at     ON monitor_events(at);
   `enabled = 0` и снимаются связи с воронками, история инцидентов сохраняется.
   Ретайрмент гасит цель независимо от `manual_override` — проверять URL, которого
   в данных больше нет, незачем. Когда URL возвращается, автоматически оживают
-  только цели с `manual_override = 0`; цель, которую человек когда-то включил
-  руками, придётся включить снова — зато это видно в таблице, а не молча;
+  только цели с `manual_override = 0`. Под это правило попадает и ленд, который
+  человек включал руками: включение ленда совпадает с дефолтом его вида
+  источника, поэтому override снимается и авто-оживление работает. Не оживёт
+  цель, отклонённая от дефолта, — выключенный вручную ленд или включённая
+  вручную не-ленд-группа; зато такая цель помечена в таблице, а не молчит;
 - новой цели сразу создаётся строка `monitor_state` со статусом `unknown` —
   дашборд показывает «ещё не проверялось», а не пустоту.
 
@@ -250,7 +253,7 @@ CREATE INDEX IF NOT EXISTS idx_monitor_events_at     ON monitor_events(at);
   «в этом статусе с …», чипы с номерами воронок (ведут на карточку),
   тумблер вкл/выкл. Сортировка: красные наверх, затем жёлтые. Рядом с видом
   источника — тихая пометка «· переключено вручную» (`manualOverride` в
-  `MonitorTargetView`), когда тумблер отклонён от дефолта: пинned-цель видна
+  `MonitorTargetView`), когда тумблер отклонён от дефолта: такая цель видна
   в таблице, а не выглядит так же, как обычный авто-ретайрмент.
 - **Расширение охвата:** строка чипов над таблицей — `links · 164 · выкл`,
   `oto · 62 · выкл` и т. д., клик включает группу целиком.
