@@ -79,6 +79,36 @@ def test_load_expectations_groups_tags_by_funnel_and_type(tmp_path):
     assert 'АВ Продукт: ДБО' in exps[0].tags
 
 
+def test_load_expectations_keeps_tag_types_of_one_funnel_separate(tmp_path):
+    """Одна воронка, два tag_type с разными наборами тегов.
+
+    Должны получиться две отдельные записи Expectation (по одной на
+    tag_type), а не одна со слитыми тегами: если бы группировка шла только
+    по funnel_id, вышла бы одна запись с объединённым множеством тегов и
+    len(exps) == 1 здесь уже упал бы.
+    """
+    reg_tags = AV_DBO_NR_VK_IS + ['АВ Этап: Регистрация', 'только_reg_тег']
+    time19_tags = [
+        'АВ Продукт: ДБО', 'АВ Подрядчик: NR', 'АВ Канал: ВК',
+        'АВ Направление: In Stream', 'АВ Этап: Оплата', 'АВ Время: 19',
+        'только_time19_тег',
+    ]
+    db = make_db(
+        tmp_path,
+        [(11, 11, 'f11', 'ДБО NR ВК', 'active')],
+        [(11, 'reg', reg_tags), (11, 'time_19', time19_tags)],
+    )
+    exps = load_expectations(db)
+    assert len(exps) == 2
+    by_type = {e.tag_type: e for e in exps}
+    assert set(by_type) == {'reg', 'time_19'}
+    assert by_type['reg'].tags != by_type['time_19'].tags
+    assert 'только_reg_тег' in by_type['reg'].tags
+    assert 'только_reg_тег' not in by_type['time_19'].tags
+    assert 'только_time19_тег' in by_type['time_19'].tags
+    assert 'только_time19_тег' not in by_type['reg'].tags
+
+
 def test_connect_returns_a_connection_that_rejects_writes(tmp_path):
     """Запись в живую базу запрещена спеком — проверяем, а не декларируем."""
     import db_source as module
@@ -124,6 +154,28 @@ def test_find_key_collisions_detects_two_funnels_on_one_key(tmp_path):
     )
     collisions = find_key_collisions(build_av_index(load_expectations(db)))
     assert collisions == {('ЖИВО', 'НИМБ', 'Яндекс', 'РСЯ'): {34, 46}}
+
+
+def test_find_key_collisions_ignores_single_funnel_keys(tmp_path):
+    """Один ключ уникален (одна воронка), другой — коллизия (две воронки).
+
+    Должна вернуться только коллизия: если бы реализация возвращала любой
+    ключ с fids >= 1 (а не строго > 1), уникальный ключ 34 тоже попал бы
+    в результат.
+    """
+    unique = ['АВ Продукт: ЖИВО', 'АВ Подрядчик: НИМБ',
+              'АВ Канал: Яндекс', 'АВ Направление: РСЯ']
+    shared = ['АВ Продукт: КВИЗ', 'АВ Подрядчик: НИМБ',
+              'АВ Канал: ВК', 'АВ Направление: In Stream']
+    db = make_db(
+        tmp_path,
+        [(34, 34, 'f33', 'ЖИВО НИМБ РСЯ', 'active'),
+         (46, 46, 'f43', 'КВИЗ НИМБ ВК', 'active'),
+         (47, 47, 'f47', 'КВИЗ НИМБ ВК 2', 'active')],
+        [(34, 'reg', unique), (46, 'reg', shared), (47, 'reg', shared)],
+    )
+    collisions = find_key_collisions(build_av_index(load_expectations(db)))
+    assert collisions == {('КВИЗ', 'НИМБ', 'ВК', 'In Stream'): {46, 47}}
 
 
 def test_incomplete_keys_are_excluded_from_index(tmp_path):
