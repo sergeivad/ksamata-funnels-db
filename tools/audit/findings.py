@@ -304,3 +304,196 @@ def find_unresolved(groups, index):
             )
         )
     return result
+
+
+# ─── Группа III. Полнота базы относительно реестра GetCourse ────────────────
+
+
+def _offers_with_av(offers):
+    return [o for o in offers if any(t.startswith('АВ ') for t in o.tags)]
+
+
+def find_key_collision_findings(collisions, expectations):
+    """Класс 8: один АВ-ключ указывает на две воронки. Угадывать нельзя."""
+    by_id = _by_funnel_id(expectations)
+    result = []
+    for key, fids in sorted(collisions.items()):
+        labels = sorted(
+            label_of(by_id[fid]) for fid in fids if fid in by_id
+        )
+        result.append(
+            Finding(
+                cls=8,
+                funnel='—',
+                tag_type='',
+                subject=key_label(key),
+                detail='Ключ указывает более чем на одну воронку',
+                evidence=', '.join(labels),
+                first_seen='',
+                last_seen='',
+                deals=len(fids),
+            )
+        )
+    return result
+
+
+def find_unknown_av_keys(offers, index):
+    """Класс 9: четвёрка живёт в GetCourse, а воронки под неё в базе нет."""
+    counts = defaultdict(list)
+    for offer in _offers_with_av(offers):
+        key = av_key(offer.tags)
+        if is_complete_key(key) and key not in index:
+            counts[key].append(offer)
+
+    result = []
+    for key, group in sorted(counts.items()):
+        titles = sorted({o.title for o in group if o.title})
+        result.append(
+            Finding(
+                cls=9,
+                funnel='—',
+                tag_type='',
+                subject=key_label(key),
+                detail=f'Предложений с такой четвёркой: {len(group)}',
+                evidence='; '.join(titles[:3]),
+                first_seen='',
+                last_seen='',
+                deals=len(group),
+            )
+        )
+    return result
+
+
+def find_incomplete_offer_keys(offers):
+    """Класс 10: у предложения с АВ-тегами четвёрка неполна."""
+    result = []
+    for offer in _offers_with_av(offers):
+        key = av_key(offer.tags)
+        if is_complete_key(key):
+            continue
+        missing = [AXES[i] for i, part in enumerate(key) if part is None]
+        result.append(
+            Finding(
+                cls=10,
+                funnel='—',
+                tag_type='',
+                subject=f'{offer.title} (id {offer.offer_id})',
+                detail='Не хватает осей: ' + ', '.join(missing),
+                evidence=key_label(key),
+                first_seen='',
+                last_seen='',
+                deals=0,
+            )
+        )
+    return result
+
+
+def find_unknown_axes_in_registry(offers, vocabulary):
+    """Класс 11: ось есть в реестре, но её нет в словаре базы целиком."""
+    counts = defaultdict(set)
+    for offer in _offers_with_av(offers):
+        for tag in offer.tags:
+            if tag.startswith('АВ ') and tag not in vocabulary:
+                axis = tag.split(':', 1)[0] if ':' in tag else tag
+                counts[axis].add(offer.offer_id)
+
+    result = []
+    for axis, offer_ids in sorted(counts.items()):
+        result.append(
+            Finding(
+                cls=11,
+                funnel='—',
+                tag_type='',
+                subject=axis,
+                detail=f'Предложений с этой осью: {len(offer_ids)}',
+                evidence=', '.join(str(i) for i in sorted(offer_ids)[:5]),
+                first_seen='',
+                last_seen='',
+                deals=len(offer_ids),
+            )
+        )
+    return result
+
+
+def find_offers_without_autofunnel(offers):
+    """Класс 12: есть АВ Этап, но нет служебного АВ Автоворонка."""
+    result = []
+    for offer in _offers_with_av(offers):
+        has_stage = any(t.startswith('АВ Этап') for t in offer.tags)
+        if not has_stage or AUTOFUNNEL_TAG in offer.tags:
+            continue
+        result.append(
+            Finding(
+                cls=12,
+                funnel='—',
+                tag_type='',
+                subject=offer.title,
+                detail=f'Нет тега {AUTOFUNNEL_TAG}',
+                evidence=str(offer.offer_id),
+                first_seen='',
+                last_seen='',
+                deals=0,
+            )
+        )
+    return result
+
+
+# ─── Группа IV. Актуальность ────────────────────────────────────────────────
+#
+# Классы 13 и 14 намеренно НЕ сводятся: 13 смотрит от базы (воронка заведена,
+# следов нет), 14 — от GetCourse (предложение существует, заказов нет).
+# Воронка может попасть в 13, а её предложения — в 14; это разные выводы.
+
+
+def find_silent_funnels(funnels, groups, index):
+    """Класс 13: воронка active, но за период ни одного наблюдения."""
+    seen_ids = set()
+    for group in groups:
+        seen_ids.update(index.get(group.key, set()))
+
+    result = []
+    for row in funnels:
+        if row.status != 'active' or row.funnel_id in seen_ids:
+            continue
+        result.append(
+            Finding(
+                cls=13,
+                funnel=label_of(row),
+                tag_type='',
+                subject=row.product_name,
+                detail='Статус active, но наблюдений за период нет',
+                evidence='',
+                first_seen='',
+                last_seen='',
+                deals=0,
+            )
+        )
+    return result
+
+
+def find_unused_offers(offers, groups):
+    """Класс 14: предложение с АВ-тегами, по которому нет заказов.
+
+    Замена нерабочему полю status — у всех предложений оно равно 'draft'.
+    """
+    observed_keys = {g.key for g in groups if is_complete_key(g.key)}
+
+    result = []
+    for offer in _offers_with_av(offers):
+        key = av_key(offer.tags)
+        if not is_complete_key(key) or key in observed_keys:
+            continue
+        result.append(
+            Finding(
+                cls=14,
+                funnel='—',
+                tag_type='',
+                subject=f'{offer.title} (id {offer.offer_id})',
+                detail=f'Заказов за период нет. Ключ: {key_label(key)}',
+                evidence=str(offer.offer_id),
+                first_seen='',
+                last_seen='',
+                deals=0,
+            )
+        )
+    return result
