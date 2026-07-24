@@ -128,6 +128,66 @@ def test_class_15_orders_multiple_simultaneous_tag_changes_deterministically():
     )
 
 
+def test_class_15_tie_break_prefers_smallest_sorted_tagset_deterministically():
+    """Равное число наблюдений на одну file_date — победитель определяется
+    устойчивым tie-break (наименьший по tuple(sorted(tagset))), а не
+    порядком появления наблюдений во входном списке.
+
+    Первым в списке идёт набор с БОЛЬШИМИ по sorted-порядку лишними тегами
+    (ЮЮЮ/ЭЭЭ/ЯЯЯ — конец кириллического алфавита), вторым — с МЕНЬШИМИ
+    (ААА/БББ/ВВВ — начало алфавита), у обоих по одному наблюдению.
+
+    Если убрать tie-break и брать наивный max(tagset_counts.items(), key=
+    lambda pair: pair[1]), при равенстве счётчиков max() молча оставляет
+    первый встреченный элемент — то есть выберет набор с большими тегами,
+    просто потому что он попался в списке первым. Устойчивый tie-break
+    обязан выбрать набор с меньшими тегами независимо от этого порядка,
+    поэтому здесь утверждается точная строка результата.
+    """
+    base = AV + '|АВ Этап: Регистрация'
+    tags_large = base + '|ЮЮЮ|ЭЭЭ|ЯЯЯ'
+    tags_small = base + '|ААА|БББ|ВВВ'
+    observations = [
+        obs(tags_large, 2, '1'),
+        obs(tags_small, 2, '2'),
+        obs(base, 13, '3'),
+    ]
+    found = find_drift(observations, INDEX, EXPECTATIONS)
+    assert [f.cls for f in found] == [15]
+    assert found[0].subject == 'ААА, БББ, ВВВ'
+    assert found[0].detail == 'исчез: ААА, БББ, ВВВ'
+    assert found[0].first_seen == '2026-05-02'
+    assert found[0].last_seen == '2026-05-13'
+
+
+def test_class_15_majority_count_wins_even_when_larger_in_sort_order():
+    """Большинство наблюдений на дату побеждает — даже когда его набор
+    тегов больше по sorted-порядку, чем набор меньшинства.
+
+    tags_large встречается дважды, tags_small — один раз на ту же дату.
+    Правильный выбор — tags_large, потому что решает число наблюдений,
+    а tie-break применяется только при равенстве. Мутация «всегда брать
+    наименьший по sorted, игнорируя количество» выбрала бы tags_small
+    (он меньше по sorted) и тем самым сломала бы основную логику выбора
+    по большинству — этот тест должен падать на такой мутации.
+    """
+    base = AV + '|АВ Этап: Регистрация'
+    tags_large = base + '|ЮЮЮ|ЭЭЭ|ЯЯЯ'
+    tags_small = base + '|ААА|БББ|ВВВ'
+    observations = [
+        obs(tags_large, 2, '1'),
+        obs(tags_large, 2, '2'),
+        obs(tags_small, 2, '3'),
+        obs(base, 13, '4'),
+    ]
+    found = find_drift(observations, INDEX, EXPECTATIONS)
+    assert [f.cls for f in found] == [15]
+    assert found[0].subject == 'ЭЭЭ, ЮЮЮ, ЯЯЯ'
+    assert found[0].detail == 'исчез: ЭЭЭ, ЮЮЮ, ЯЯЯ'
+    assert found[0].first_seen == '2026-05-02'
+    assert found[0].last_seen == '2026-05-13'
+
+
 def test_class_16_reports_observation_and_file_counts_per_funnel():
     base = AV + '|АВ Этап: Регистрация'
     groups = group_observations([
