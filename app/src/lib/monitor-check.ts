@@ -28,9 +28,13 @@ export interface CheckOptions {
 }
 
 /** Человекочитаемая расшифровка сетевой ошибки — она попадёт прямо в дашборд. */
-function describeFetchError(err: unknown): string {
+function describeFetchError(err: unknown, timeoutMs?: number): string {
   if (!(err instanceof Error)) return 'Неизвестная ошибка';
-  if (err.name === 'TimeoutError') return `Таймаут ${CHECK_TIMEOUT_MS / 1000} с`;
+  if (err.name === 'TimeoutError') {
+    // Используем переданный таймаут, если есть; иначе фиксированный по умолчанию
+    const actualTimeoutSec = (timeoutMs ?? CHECK_TIMEOUT_MS) / 1000;
+    return `Таймаут ${actualTimeoutSec} с`;
+  }
   if (err.name === 'AbortError') return 'Запрос прерван';
   const code = (err as Error & { cause?: { code?: string } }).cause?.code;
   if (code === 'ENOTFOUND') return 'Домен не резолвится (ENOTFOUND)';
@@ -87,7 +91,7 @@ export async function checkUrl(url: string, opts: CheckOptions = {}): Promise<Ch
       httpStatus: null,
       finalUrl: '',
       latencyMs: now() - started,
-      error: describeFetchError(err),
+      error: describeFetchError(err, timeoutMs),
     };
   }
 }

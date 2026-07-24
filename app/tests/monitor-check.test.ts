@@ -106,6 +106,18 @@ describe('checkUrl', () => {
     expect(res.error).toContain('Таймаут');
   });
 
+  it('указывает в сообщении об ошибке фактический таймаут, не дефолт', async () => {
+    const timeout = new Error('timed out');
+    timeout.name = 'TimeoutError';
+    // Вызваем с кастомным таймаутом 2 секунды вместо дефолтных 10
+    const res = await checkUrl('https://a.ru/', {
+      fetchImpl: fakeFetch(timeout),
+      timeoutMs: 2000,
+    });
+    expect(res.status).toBe('down');
+    expect(res.error).toBe('Таймаут 2 с');
+  });
+
   it('расшифровывает нерезолвящийся домен', async () => {
     const dns = new Error('fetch failed');
     (dns as Error & { cause?: { code: string } }).cause = { code: 'ENOTFOUND' };
