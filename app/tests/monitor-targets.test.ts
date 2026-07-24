@@ -459,6 +459,99 @@ describe('manual_override: фиксируется только на отклон
  * должна попасть под проверку сама. Раньше групповой клик правил только те цели,
  * что существовали на момент клика, и новая приходила выключенной навсегда.
  */
+/**
+ * Проверяем только активные воронки. Страницы черновиков и архива могут лежать
+ * на законных основаниях, и их падения — шум, из-за которого перестают смотреть
+ * на настоящие.
+ */
+describe('в мониторинг попадают только активные воронки', () => {
+  function setStatus(funnelId: number, status: string) {
+    sqlite.prepare(`UPDATE funnels SET status = ? WHERE id = ?`).run(status, funnelId);
+  }
+
+  function addLanding(funnelId: number, url: string) {
+    const block = sqlite
+      .prepare(`INSERT INTO funnel_blocks (funnel_id, kind, enabled) VALUES (?, 'landings', 1)`)
+      .run(funnelId).lastInsertRowid as number;
+    sqlite.prepare(`INSERT INTO funnel_block_items (block_id, url) VALUES (?, ?)`).run(block, url);
+  }
+
+  it('не заводит цели по блокам черновика и архива', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1, f2, f3] = funnelIds(3);
+    setStatus(f1, 'active');
+    setStatus(f2, 'draft');
+    setStatus(f3, 'archive');
+    addLanding(f1, 'https://lp.example.ru/live');
+    addLanding(f2, 'https://lp.example.ru/draft');
+    addLanding(f3, 'https://lp.example.ru/archived');
+
+    const stats = syncMonitorTargets(db);
+
+    expect(stats.total).toBe(1);
+    expect(targetRow('https://lp.example.ru/live')?.enabled).toBe(1);
+    expect(targetRow('https://lp.example.ru/draft')).toBeUndefined();
+    expect(targetRow('https://lp.example.ru/archived')).toBeUndefined();
+  });
+
+  it('не берёт landing_url неактивной воронки', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    setStatus(f1, 'archive');
+    sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`)
+      .run('https://lp.example.ru/archived-field', f1);
+
+    syncMonitorTargets(db);
+
+    expect(targetRow('https://lp.example.ru/archived-field')).toBeUndefined();
+  });
+
+  it('гасит цель, когда воронку убрали из активных, и оживляет при возврате', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    setStatus(f1, 'active');
+    const url = 'https://lp.example.ru/status-flip';
+    addLanding(f1, url);
+
+    syncMonitorTargets(db);
+    expect(targetRow(url)?.enabled).toBe(1);
+
+    setStatus(f1, 'archive');
+    syncMonitorTargets(db);
+    expect(targetRow(url)?.enabled).toBe(0);
+    // История цели остаётся — цель гасится, а не удаляется.
+    expect(targetRow(url)).toBeDefined();
+
+    setStatus(f1, 'active');
+    syncMonitorTargets(db);
+    expect(targetRow(url)?.enabled).toBe(1);
+  });
+
+  it('оставляет под проверкой URL, который делят активная и архивная воронки', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1, f2] = funnelIds(2);
+    setStatus(f1, 'active');
+    setStatus(f2, 'archive');
+    const url = 'https://lp.example.ru/shared-mixed';
+    addLanding(f1, url);
+    addLanding(f2, url);
+
+    syncMonitorTargets(db);
+
+    const target = targetRow(url)!;
+    expect(target.enabled).toBe(1);
+    // В связях числится только активная — иначе чипы «Воронки» врали бы.
+    const links = sqlite
+      .prepare(`SELECT funnel_id FROM monitor_target_funnels WHERE target_id = ?`)
+      .all(target.id) as { funnel_id: number }[];
+    expect(links.map((l) => l.funnel_id)).toEqual([f1]);
+  });
+});
+
 describe('предпочтение группы наследуется новыми целями', () => {
   /** Заводит блок нужного вида под первой воронкой и возвращает его id. */
   function makeBlock(funnelId: number, kind: string): number {

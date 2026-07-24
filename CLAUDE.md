@@ -125,6 +125,10 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 - `monitor-status.ts` — monitoring status values, badge metadata, `formatAgo`.
 - `monitor-urls.ts` — URL normalization + multi-URL field splitting.
 - `monitor-targets.ts` — sync targets from funnel data, enable/disable, group defaults.
+  Only funnels with `status = 'active'` are collected (`MONITORED_FUNNEL_STATUS`);
+  drafts and archive are out of scope, and a URL left behind by a funnel leaving
+  `active` goes through the normal retirement path (muted, unlinked, history kept,
+  auto-revived when the funnel comes back).
 - `monitor-kinds.ts` — Russian labels for source kinds (reuses `BLOCK_KINDS` titles).
 - `monitor-check.ts` — pure HTTP availability check (`checkUrl`).
 - `monitor-run.ts` — check cycle, state persistence, event log.

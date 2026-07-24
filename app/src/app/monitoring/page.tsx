@@ -222,8 +222,9 @@ export default function MonitoringPage() {
     <main className="mx-auto max-w-[1120px] px-4 py-6 sm:px-6">
       <h1 className="text-[18px] font-semibold text-[var(--ink)]">Мониторинг страниц</h1>
       <p className="mt-1 text-[12px] text-[var(--muted)]">
-        Статус {MONITOR_STATUS_META.down.label.toLowerCase()} ставится, только если подряд
-        провалились две попытки — моргание сети сюда не попадает.
+        Проверяются страницы активных воронок — черновики и архив сюда не попадают. Статус{' '}
+        {MONITOR_STATUS_META.down.label.toLowerCase()} ставится, только если подряд провалились
+        две попытки: моргание сети сюда не попадает.
       </p>
 
       {loadFailed && (

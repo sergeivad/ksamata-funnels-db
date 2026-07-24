@@ -11,6 +11,12 @@ import {
 } from '../db/schema';
 import { normalizeUrl, splitUrlField } from './monitor-urls';
 
+/**
+ * Мониторим только страницы воронок в этом статусе. Черновики и архив не
+ * проверяем: их падения — шум, из-за которого перестают смотреть на настоящие.
+ */
+export const MONITORED_FUNNEL_STATUS = 'active';
+
 /** Виды источников, которые проверяются, пока по группе не было решения человека. */
 export const LANDING_SOURCE_KINDS = ['landings', 'funnel_landing_url'] as const;
 
@@ -57,7 +63,18 @@ interface Collected {
   funnelIds: Set<number>;
 }
 
-/** Собирает все пригодные для проверки URL из данных воронок. */
+/**
+ * Собирает пригодные для проверки URL — только из **активных** воронок.
+ *
+ * Черновик ещё не запущен, архив уже отработал: их страницы могут лежать на
+ * законных основаниях, и падения по ним — шум, из-за которого перестают
+ * смотреть на настоящие. URL, оставшийся только за неактивными воронками,
+ * попадает в общий авто-ретайрмент: гаснет, отвязывается от воронок, но
+ * сохраняет историю инцидентов и оживает сам, когда воронку вернут в активные.
+ *
+ * URL, который делят активная и архивная воронки, остаётся под проверкой, но
+ * в связях (и в чипах «Воронки») числится только за активной.
+ */
 function collectTargets(db: AnyDB): Map<string, Collected> {
   const out = new Map<string, Collected>();
 
@@ -81,6 +98,8 @@ function collectTargets(db: AnyDB): Map<string, Collected> {
     })
     .from(funnelBlockItems)
     .innerJoin(funnelBlocks, eq(funnelBlocks.id, funnelBlockItems.blockId))
+    .innerJoin(funnels, eq(funnels.id, funnelBlocks.funnelId))
+    .where(eq(funnels.status, MONITORED_FUNNEL_STATUS))
     .all() as { url: string; kind: string; funnelId: number }[];
 
   for (const row of items) {
@@ -91,6 +110,7 @@ function collectTargets(db: AnyDB): Map<string, Collected> {
   const funnelRows = db
     .select({ id: funnels.id, landingUrl: funnels.landingUrl })
     .from(funnels)
+    .where(eq(funnels.status, MONITORED_FUNNEL_STATUS))
     .all() as { id: number; landingUrl: string | null }[];
 
   for (const row of funnelRows) {
