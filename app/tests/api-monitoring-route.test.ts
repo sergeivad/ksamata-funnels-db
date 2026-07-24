@@ -140,17 +140,64 @@ describe('GET /api/monitoring/events', () => {
     expect(body.events).toHaveLength(2);
   });
 
-  it('игнорирует мусорный limit и не падает', async () => {
+  it('игнорирует мусорный limit и подменяет на значение по умолчанию', async () => {
+    // Добавляем 5 событий. При limit=abc должен срработать fallback (DEFAULT_LIMIT=50),
+    // который вернёт все 5, а не 0 или NaN. Если readNumber() был сломан,
+    // вернул бы NaN, 0 или undefined — тест упадёт.
+    const id = seedTarget('https://a.ru/');
+    for (let i = 0; i < 5; i += 1) {
+      sqlite
+        .prepare(`INSERT INTO monitor_events (target_id, from_status, to_status) VALUES (?, 'up', 'down')`)
+        .run(id);
+    }
     const res = await GET_EVENTS(urlReq('http://test/api/monitoring/events?limit=abc'));
     expect(res.status).toBe(200);
+    const body = await res.json();
+    // Проверяем, что fallback сработал и вернулись все 5 событий,
+    // а не 0 (если readNumber вернул NaN или 0).
+    expect(body.events).toHaveLength(5);
+  });
+
+  it('обрабатывает отрицательные и нулевые limit', async () => {
+    const id = seedTarget('https://a.ru/');
+    for (let i = 0; i < 3; i += 1) {
+      sqlite
+        .prepare(`INSERT INTO monitor_events (target_id, from_status, to_status) VALUES (?, 'up', 'down')`)
+        .run(id);
+    }
+    // limit=-5 не проходит паттерн ^\d+$, должен упасть на fallback (50).
+    const res1 = await GET_EVENTS(urlReq('http://test/api/monitoring/events?limit=-5'));
+    expect(res1.status).toBe(200);
+    const body1 = await res1.json();
+    expect(body1.events).toHaveLength(3); // все события вернулись
+
+    // limit=0 проходит паттерн и зажимается на Math.min(0, 200) = 0.
+    const res2 = await GET_EVENTS(urlReq('http://test/api/monitoring/events?limit=0'));
+    expect(res2.status).toBe(200);
+    const body2 = await res2.json();
+    expect(body2.events).toHaveLength(0); // пустой массив
   });
 });
 
 describe('POST /api/monitoring/run', () => {
-  it('отвечает 409, когда цикл уже идёт', async () => {
+  it('отвечает 409, когда цикл уже идёт (pre-check)', async () => {
     // Флаг занятости живёт в модуле monitor-run — подменяем его целиком.
+    // Тут isCycleRunning() вернёт true на строке 10, обработчик вернётся ещё до вызова runMonitorCycle.
     vi.doMock('@/lib/monitor-run', () => ({
       isCycleRunning: () => true,
+      runMonitorCycle: async () => null,
+    }));
+    const { POST } = await import('../src/app/api/monitoring/run/route');
+    const res = await POST();
+    expect(res.status).toBe(409);
+  });
+
+  it('отвечает 409, когда цикл начался между проверкой и вызовом (race)', async () => {
+    // Вторая ветка 409: isCycleRunning() вернёт false (pre-check пройдёт),
+    // но runMonitorCycle вернёт null (цикл стартовал тем временем).
+    // Это проверяет путь на строках 15-17 route.ts.
+    vi.doMock('@/lib/monitor-run', () => ({
+      isCycleRunning: () => false,
       runMonitorCycle: async () => null,
     }));
     const { POST } = await import('../src/app/api/monitoring/run/route');
