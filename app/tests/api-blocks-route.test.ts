@@ -62,4 +62,40 @@ describe('blocks route', () => {
     const res = await PUT(req({ enabled: true, mode: 'by_time', items: [] }), { params: Promise.resolve({ id: String(funnelId), kind: 'landings' }) });
     expect(res.status).toBe(400);
   });
+
+  // Такая строка не отбрасывается нормализацией, а кодируется в %20 и заводит
+  // в мониторинге отдельную вечно падающую цель — поэтому её не сохраняем.
+  it('rejects a url with a label glued into it with 400 and writes nothing', async () => {
+    const read = () =>
+      GET({} as never, { params: Promise.resolve({ id: String(funnelId), kind: 'landings' }) }).then((r) => r.json());
+    const before = await read();
+
+    const res = await PUT(
+      req({ enabled: true, mode: 'common', items: [{ slot: null, label: '', url: 'https://t.ksamata.ru/ht/boo/a (ADS)' }] }),
+      { params: Promise.resolve({ id: String(funnelId), kind: 'landings' }) },
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/items\[0\]/);
+    expect(await read()).toEqual(before);
+  });
+
+  it('rejects a url with a trailing quote with 400', async () => {
+    const res = await PUT(
+      req({ enabled: true, mode: 'common', items: [{ slot: null, label: '', url: 'https://t.ksamata.ru/nr/boo/d"' }] }),
+      { params: Promise.resolve({ id: String(funnelId), kind: 'landings' }) },
+    );
+    expect(res.status).toBe(400);
+  });
+
+  // Пометки без ссылки («сайты», «геткурс») живут в блоках годами и мониторингу
+  // не мешают: запрет на них сломал бы сохранение таких воронок.
+  it('still accepts a plain-text note in the url field', async () => {
+    const params = Promise.resolve({ id: String(funnelId), kind: 'processes' });
+    const res = await PUT(
+      req({ enabled: true, mode: 'common', items: [{ slot: null, label: 'сейлбот', url: 'сайты' }] }),
+      { params },
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()).items).toEqual([{ slot: null, label: 'сейлбот', url: 'сайты' }]);
+  });
 });

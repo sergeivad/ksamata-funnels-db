@@ -113,6 +113,13 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 - `funnel-blocks.ts` — read/replace blocks and items.
 - `blocks.ts` — static block-kind registry.
 - `block-fill.ts` — block-editing helpers (parse pasted lines, mirror slots, labels).
+- `url-field.ts` — hygiene of a block item's URL field, shared by `BlockEditor`/
+  `BlockListField` and the blocks `PUT` route. Two classes: **A** — a label glued
+  into an http(s) URL (`…/a (ADS)`, a trailing quote) is rejected, because
+  `normalizeUrl` percent-encodes it instead of dropping it and monitoring then
+  tracks a permanently-404 ghost target; **B** — plain text in the URL field
+  (`сайты`, `геткурс`) only warns: such notes predate the field and create no
+  targets. Never make class B blocking without cleaning the data first.
 - `ab-tags.ts` — A/B tag computation engine (axes ↔ names, `computeTagSet`).
 - `tag-templates.ts` / `tag-overrides.ts` — read/replace the two tag layers.
 - `status.ts` — funnel status constants/meta (active/draft/archive).

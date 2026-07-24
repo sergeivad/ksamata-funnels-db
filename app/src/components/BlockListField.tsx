@@ -1,9 +1,10 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Trash2, Plus, Copy, Check, AlertCircle, ExternalLink, ListPlus } from 'lucide-react';
+import { Trash2, Plus, Copy, Check, AlertCircle, ExternalLink, ListPlus, Wand2 } from 'lucide-react';
 import type { BlockItem } from '@/lib/funnel-blocks';
 import { parsePastedLine, missingStandardLabels } from '@/lib/block-fill';
+import { checkUrlField } from '@/lib/url-field';
 import { copyText } from '@/lib/clipboard';
 
 interface Props {
@@ -40,6 +41,19 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
 
   function add() {
     onChange([...items, { slot, label: '', url: '' }]);
+  }
+
+  /**
+   * Чинит строку класса A: чистая ссылка остаётся в поле, а затекший хвост
+   * уходит в подпись — но только если поле подписи есть и оно пустое, иначе
+   * чужую подпись бы затёрло.
+   */
+  function fixRow(indexInRows: number) {
+    const row = rows[indexInRows];
+    const check = checkUrlField(row.url);
+    if (check.level !== 'error') return;
+    const takeLabel = fields === 2 && !row.label.trim() && check.fix.label !== '';
+    update(indexInRows, { url: check.fix.url, ...(takeLabel ? { label: check.fix.label } : {}) });
   }
 
   const missingStandard = showStandardSet ? missingStandardLabels(rows.map((r) => r.label)) : [];
@@ -120,8 +134,16 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
         const hasUrl = row.url.trim() !== '';
         const openableUrl = /^https?:\/\//i.test(row.url.trim()) ? row.url.trim() : null;
         const flash = copyFlash?.index === i ? copyFlash : null;
+        const check = checkUrlField(row.url);
+        const urlBorder =
+          check.level === 'error'
+            ? 'border-[#B42318]'
+            : check.level === 'warn'
+              ? 'border-[#B4841C]'
+              : 'border-[var(--line-soft)]';
         return (
-          <div key={i} className="grid items-center gap-2" style={{ gridTemplateColumns: gtc }}>
+          <div key={i} className="flex flex-col gap-1">
+          <div className="grid items-center gap-2" style={{ gridTemplateColumns: gtc }}>
             {fields === 2 && (
               <input
                 value={row.label}
@@ -139,7 +161,8 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
                 onPaste={(e) => handleUrlPaste(i, e)}
                 placeholder="ссылка…"
                 title={row.url}
-                className="h-7 w-full min-w-0 rounded-[6px] border border-[var(--line-soft)] bg-white px-2 font-mono text-[12px] text-[var(--ink)]"
+                aria-invalid={check.level === 'error'}
+                className={`h-7 w-full min-w-0 rounded-[6px] border ${urlBorder} bg-white px-2 font-mono text-[12px] text-[var(--ink)]`}
               />
               {hasUrl && (
                 <span
@@ -188,6 +211,26 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
             <button type="button" onClick={() => remove(i)} aria-label="Удалить строку" className="flex justify-center text-[var(--faint)] hover:text-[var(--ink)]">
               <Trash2 size={15} />
             </button>
+          </div>
+          {check.level !== 'ok' && (
+            <p
+              role={check.level === 'error' ? 'alert' : undefined}
+              className={`flex flex-wrap items-center gap-2 pl-0.5 text-[11px] ${
+                check.level === 'error' ? 'text-[#B42318]' : 'text-[#8A6512]'
+              }`}
+            >
+              <span>{check.message}</span>
+              {check.level === 'error' && (
+                <button
+                  type="button"
+                  onClick={() => fixRow(i)}
+                  className="flex items-center gap-1 font-semibold text-[var(--orange)]"
+                >
+                  <Wand2 size={12} /> Исправить
+                </button>
+              )}
+            </p>
+          )}
           </div>
         );
       })}
