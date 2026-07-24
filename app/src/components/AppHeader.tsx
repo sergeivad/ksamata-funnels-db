@@ -75,6 +75,7 @@ export default function AppHeader() {
           {navLink('/', 'Воронки')}
           {navLink('/refs', 'Справочники')}
           {navLink('/tags', 'Теги')}
+          {navLink('/monitoring', 'Мониторинг')}
         </nav>
 
         <button

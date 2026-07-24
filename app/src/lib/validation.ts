@@ -126,9 +126,26 @@ export const tagsPatchSchema = z
   })
   .strict();
 
+// ── Мониторинг ───────────────────────────────────────────────────────────────
+
+export const monitorTargetPatchSchema = z
+  .object({
+    enabled: z.boolean(),
+  })
+  .strict();
+
+export const monitorTargetsBulkPatchSchema = z
+  .object({
+    sourceKind: z.string().trim().min(1).max(64),
+    enabled: z.boolean(),
+  })
+  .strict();
+
 // Inferred TypeScript types
 export type FunnelCreate = z.infer<typeof funnelCreateSchema>;
 export type FunnelUpdate = z.infer<typeof funnelUpdateSchema>;
 export type RefCreate = z.infer<typeof refCreateSchema>;
 export type TagTemplatePut = z.infer<typeof tagTemplatePutSchema>;
 export type TagsPatch = z.infer<typeof tagsPatchSchema>;
+export type MonitorTargetPatch = z.infer<typeof monitorTargetPatchSchema>;
+export type MonitorTargetsBulkPatch = z.infer<typeof monitorTargetsBulkPatchSchema>;

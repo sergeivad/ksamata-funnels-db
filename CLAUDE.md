@@ -63,6 +63,18 @@ Drizzle SQLite. Core + lookup + content + tags tables:
   `tag_templates` (global template per scenario), `funnel_tag_overrides`
   (per-funnel add/remove deltas).
 - **Other:** `salebot_configs`, `product_durations`.
+- **Monitoring (Phase 6):** `monitor_targets` (URL to check, `source_kind`,
+  `enabled`, plus `manual_override` — set to `1` only when a toggle
+  (`setTargetEnabled`/`setSourceKindEnabled`) requests an `enabled` value that
+  differs from the source kind's default (landings on, everything else off);
+  requesting the default value clears it back to `0`. `manual_override = 1`
+  makes the sync leave `enabled` alone; while it is `0` the sync recomputes
+  `enabled` from `source_kind`, so a landing that briefly vanished from the
+  funnel data comes back on by itself — and so does clicking the landings
+  group chip back on, instead of pinning it forever),
+  `monitor_target_funnels` (which funnels use the URL),
+  `monitor_state` (current status per target, 1:1), `monitor_events` (status
+  **changes** only — never one row per check).
 - **Orphaned/inactive:** `channels`, `directions` (present in schema but not
   exposed via `/api/refs`), and `funnel_links` (removed — links are now a
   `funnel_blocks` kind). Do not build on these without checking.
@@ -105,6 +117,13 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 - `validation.ts` — Zod schemas + `parseRouteId`.
 - `http.ts` / `errors.ts` — response/error helpers.
 - `clipboard.ts` / `useUnsavedGuard.ts` — client hooks.
+- `monitor-status.ts` — monitoring status values, badge metadata, `formatAgo`.
+- `monitor-urls.ts` — URL normalization + multi-URL field splitting.
+- `monitor-targets.ts` — sync targets from funnel data, enable/disable.
+- `monitor-check.ts` — pure HTTP availability check (`checkUrl`).
+- `monitor-run.ts` — check cycle, state persistence, event log.
+- `monitor-view.ts` — dashboard read models.
+- `monitor-scheduler.ts` — env config + `setInterval` (started by `src/instrumentation.ts`).
 
 ## API routes (`app/src/app/api/`)
 
@@ -119,6 +138,14 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 - `GET/POST /api/refs/[kind]` and `PATCH/DELETE /api/refs/[kind]/[id]` — refs CRUD.
 - `GET /api/tag-templates` and `PUT /api/tag-templates/[scenario]` — global template.
 - `GET /api/export` — CSV export of all funnels.
+- `GET /api/monitoring` — summary + targets with state.
+- `POST /api/monitoring/run` — start a check cycle. Returns **202** as soon as
+  the cycle has started (it is not awaited — a wide scope can take tens of
+  minutes and any proxy would cut the request); 409 if one is already running.
+  Poll `GET /api/monitoring` and watch `summary.running` for completion.
+- `PATCH /api/monitoring/targets` — bulk enable/disable by `sourceKind`.
+- `PATCH /api/monitoring/targets/[id]` — enable/disable one target.
+- `GET /api/monitoring/events` — incident history.
 
 Rooms and status have **no dedicated endpoints** — they persist through the
 funnel `PATCH` and the days `PUT`.
@@ -126,13 +153,15 @@ funnel `PATCH` and the days `PUT`.
 ## Pages & components
 
 Pages (`app/src/app/`): `page.tsx` (funnel list), `funnels/[id]/page.tsx`
-(edit), `tags/page.tsx` (global template editor), `refs/page.tsx` (lookup tables).
+(edit), `tags/page.tsx` (global template editor), `refs/page.tsx` (lookup
+tables), `monitoring/page.tsx` (landing-availability dashboard).
 
 Components (`app/src/components/`): `AppHeader`, `FunnelCard`,
 `FunnelCompactView`, `FunnelIdentity`, `FunnelSections`, `BlockEditor`,
 `BlockListField`, `RoomsEditor`, `TagTemplateEditor`, `RefSelect`/`RefTable`,
 plus UI primitives (`StatusPill`, `CodeChip`, `Segmented`, `Switch`,
-`GroupToggle`, `UrlInput`, `Toast`).
+`GroupToggle`, `UrlInput`, `Toast`). `monitoring/` (`MonitorStatusPill`,
+`MonitorSummary`, `MonitorTable`, `MonitorEvents`) backs the monitoring page.
 
 ## Database contract & WAL
 
@@ -165,9 +194,11 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
 - **Phase 5** — `tag_templates` + `funnel_tag_overrides` + template seed,
   followed by `backfill-legacy-tag-overrides.ts` (preserves legacy non-AV tags
   as `add` overrides so Phase 5's resync doesn't drop them).
+- **Phase 6** — monitoring tables (`monitor_targets`, `monitor_target_funnels`,
+  `monitor_state`, `monitor_events`).
 
 **Docker runs, in order** (`app/docker-entrypoint.sh`): Phase 2 → 3 (+data) →
-4 → 5 → legacy-tag-override backfill.
+4 → 5 → legacy-tag-override backfill → 6.
 
 One-off / local-only scripts (NOT in any automated path): `seed-phase1.ts`,
 `apply_phase2b.ts`, `apply_phase2c_boo.ts` (both operate on a scratchpad copy,
@@ -195,15 +226,26 @@ Full notes: [app/DEPLOY.md](app/DEPLOY.md).
 - Mount a persistent volume at `/data`; set `FUNNELS_DB_PATH=/data/ksamata_funnels.db`.
 - **First start:** entrypoint seeds `/data/ksamata_funnels.db` from the baked-in
   `/app/seed/` DB. Subsequent starts skip the copy and run the idempotent
-  migration chain (Phase 2→5 + backfill).
+  migration chain (Phase 2→6 + backfill).
 - Container listens on port 3000.
+- Background monitoring runs inside the container (`src/instrumentation.ts`),
+  every `MONITOR_INTERVAL_MINUTES` (default 15). Set `MONITOR_ENABLED=false`
+  to turn it off — only the exact string `false` disables it.
+- `app/next.config.ts` carries an Edge-build workaround: because
+  `middleware.ts` runs on the Edge runtime, Next also compiles
+  `src/instrumentation.ts` with the Edge compiler, and webpack statically
+  resolves its dynamic `import('./lib/monitor-scheduler')` into
+  `src/db/client.ts` (`fs`/`path`/`better-sqlite3`), which fails the Edge
+  build. The config aliases that one file's absolute path to `false` for the
+  Edge bundle only. Read the comment there before touching it.
 
 `docker-compose.yml` at the repo root is a **dev** stack (`app/Dockerfile.dev`,
 hot-reload, auth off) that bind-mounts the real repo DB at `/data`. It does
 **not** run the entrypoint seed/migration flow — that path is production-only.
 
 Env vars: `FUNNELS_DB_PATH`, `ADMIN_BASIC_AUTH`, `ADMIN_AUTH_DISABLED`,
-`NODE_ENV`, `PORT`. See [app/.env.example](app/.env.example).
+`MONITOR_ENABLED`, `MONITOR_INTERVAL_MINUTES`, `NODE_ENV`, `PORT`. See
+[app/.env.example](app/.env.example).
 
 ## Data tools (`tools/`)
 
