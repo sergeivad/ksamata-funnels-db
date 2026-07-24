@@ -38,6 +38,14 @@ interface ToastState {
 /** Период опроса, пока идёт цикл. Реже — кнопка «отвисает» заметно позже. */
 const POLL_INTERVAL_MS = 2_000;
 
+/**
+ * Сколько неудачных попыток подряд опрос терпит, прежде чем сдаться.
+ * Без этого пропавший сервер держал бы страницу в вечном опросе раз в 2 с за
+ * баннером «не удалось загрузить», а тост «Проверка завершена» оставался бы
+ * взведённым и выстрелил бы, как только сервер внезапно вернётся.
+ */
+const MAX_POLL_FAILURES = 5;
+
 export default function MonitoringPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [events, setEvents] = useState<MonitorEventView[]>([]);
@@ -95,10 +103,24 @@ export default function MonitoringPage() {
   useEffect(() => {
     if (!polling) return;
     let cancelled = false;
+    let consecutiveFailures = 0;
     const timer = setInterval(() => {
       void (async () => {
         const fresh = await load();
-        if (cancelled || !fresh || fresh.summary.running) return;
+        if (cancelled) return;
+        if (!fresh) {
+          consecutiveFailures += 1;
+          if (consecutiveFailures >= MAX_POLL_FAILURES) {
+            // Сервер не отвечает уже несколько попыток подряд — прекращаем
+            // долбить его каждые 2 с, снимаем взведённый тост «завершено» и
+            // оставляем баннер ошибки как есть (его выставляет сам load()).
+            notifyOnFinishRef.current = false;
+            setPolling(false);
+          }
+          return;
+        }
+        consecutiveFailures = 0;
+        if (fresh.summary.running) return;
         setPolling(false);
         if (notifyOnFinishRef.current) {
           notifyOnFinishRef.current = false;
