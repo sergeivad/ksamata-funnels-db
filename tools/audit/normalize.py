@@ -51,14 +51,24 @@ def fold(tag):
 
 
 def av_value(tags, axis):
-    """Значение оси, например av_value(tags, 'АВ Продукт') -> 'ДБО'."""
+    """Значение оси, например av_value(tags, 'АВ Продукт') -> 'ДБО'.
+
+    `tags` — frozenset, порядок обхода которого недетерминирован между
+    процессами (рандомизация хеша строк). Если набору соответствует
+    несколько тегов одной оси (конфликт, например одновременно
+    'АВ Продукт: ДБО' и 'АВ Продукт: ЖКТ'), выбирается лексикографически
+    наименьшее значение — стабильно независимо от PYTHONHASHSEED. Сам факт
+    конфликта эта функция не сигнализирует и не проверяет.
+    """
     prefix = axis + ':'
-    for tag in tags:
-        if tag.startswith(prefix):
-            value = normalize_tag(tag[len(prefix):])
-            if value:
-                return value
-    return None
+    values = sorted(
+        value
+        for tag in tags
+        if tag.startswith(prefix)
+        for value in (normalize_tag(tag[len(prefix):]),)
+        if value
+    )
+    return values[0] if values else None
 
 
 def av_key(tags):
