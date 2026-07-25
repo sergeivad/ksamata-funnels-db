@@ -7,7 +7,7 @@ import MonitorSummary from '@/components/monitoring/MonitorSummary';
 import MonitorTable from '@/components/monitoring/MonitorTable';
 import MonitorEvents from '@/components/monitoring/MonitorEvents';
 import { MONITOR_STATUS_META } from '@/lib/monitor-status';
-import { sourceKindLabel } from '@/lib/monitor-kinds';
+import { sourceKindLabel, sourceKindTone } from '@/lib/monitor-kinds';
 import type {
   MonitorEventView,
   MonitorSourceKindView,
@@ -244,26 +244,28 @@ export default function MonitoringPage() {
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {data.sourceKinds.map((k) => {
-                const allOn = k.enabled === k.total;
-                const noneOn = k.enabled === 0;
-                // Состояние группы должно читаться фоном, а не вычитыванием чисел.
-                const tone = allOn
-                  ? 'bg-[var(--orange)] text-white'
-                  : noneOn
+                const tone = sourceKindTone(k.enabled, k.total);
+                const allOn = tone === 'on';
+                // Состояние группы должно читаться фоном, а не вычитыванием чисел:
+                // любая проверяемая группа — оранжевая, выключенная — серая.
+                const toneClass =
+                  tone === 'off'
                     ? 'bg-[var(--chip)] text-[var(--faint)] hover:text-[var(--muted)]'
-                    : 'bg-[var(--chip)] text-[var(--ink)]';
+                    : 'bg-[var(--orange)] text-white';
                 return (
                   <button
                     key={k.sourceKind}
                     type="button"
                     onClick={() => void toggleKind(k.sourceKind, !allOn)}
-                    aria-pressed={allOn}
+                    aria-pressed={tone === 'partial' ? 'mixed' : allOn}
                     title={
-                      allOn
+                      tone === 'on'
                         ? 'Проверяется вся группа — нажмите, чтобы выключить'
-                        : 'Нажмите, чтобы проверять всю группу'
+                        : tone === 'partial'
+                          ? 'Проверяется часть группы — нажмите, чтобы проверять всю'
+                          : 'Нажмите, чтобы проверять всю группу'
                     }
-                    className={`rounded-[6px] px-2 py-1 text-[11px] transition ${tone}`}
+                    className={`rounded-[6px] px-2 py-1 text-[11px] transition ${toneClass}`}
                   >
                     {sourceKindLabel(k.sourceKind)} · {k.enabled} из {k.total}
                   </button>
