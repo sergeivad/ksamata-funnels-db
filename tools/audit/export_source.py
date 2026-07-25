@@ -81,20 +81,69 @@ def has_tags_column(path):
     return TAGS_COLUMN in header
 
 
-def discover_export_files(directory, since):
-    found = []
+def _classify_candidates(directory, since):
+    """Проходит по каталогу и классифицирует каждый файл-кандидат deal_export.
+
+    Кандидат — файл с именем на FILE_PREFIX, не служебная блокировка ('~$'),
+    расширение .csv/.xlsx. Отдаёт (полный_путь, category), где category:
+    'ok' — попадает в охват карты расхождений;
+    'too_old' — дата файла раньше since (или её вообще не удалось разобрать);
+    'no_tags' — колонки «Теги предложений» в файле нет (например, срез *_utm).
+
+    Общая точка правды для discover_export_files (только 'ok') и
+    discover_export_files_with_stats (все три категории, с подсчётом).
+    """
     for name in sorted(os.listdir(directory)):
         if name.startswith('~$') or not name.startswith(FILE_PREFIX):
             continue
         if not name.lower().endswith(('.csv', '.xlsx')):
             continue
+        full = os.path.join(directory, name)
         file_date = file_date_from_name(name)
         if file_date is None or file_date < since:
-            continue
-        full = os.path.join(directory, name)
-        if has_tags_column(full):
-            found.append(full)
-    return found
+            yield full, 'too_old'
+        elif has_tags_column(full):
+            yield full, 'ok'
+        else:
+            yield full, 'no_tags'
+
+
+def discover_export_files(directory, since):
+    return [full for full, category in _classify_candidates(directory, since)
+            if category == 'ok']
+
+
+def discover_export_files_with_stats(directory, since):
+    """Как discover_export_files, но вдобавок считает, что и почему отброшено.
+
+    Возвращает (files, stats), где files — тот же список отобранных путей,
+    что и у discover_export_files (для того же входа), а stats — словарь:
+      - 'total_candidates' — всего файлов-кандидатов deal_export,
+      - 'selected' — попало в охват (== len(files)),
+      - 'excluded_too_old' — отброшено как более старые, чем since (включая
+        файлы без разбираемой даты в имени),
+      - 'excluded_no_tags_column' — отброшено как не содержащие колонку
+        «Теги предложений».
+    Нужно для листа «Источники»: без этого читатель отчёта не может оценить
+    полноту выборки.
+    """
+    files = []
+    stats = {
+        'total_candidates': 0,
+        'selected': 0,
+        'excluded_too_old': 0,
+        'excluded_no_tags_column': 0,
+    }
+    for full, category in _classify_candidates(directory, since):
+        stats['total_candidates'] += 1
+        if category == 'ok':
+            files.append(full)
+            stats['selected'] += 1
+        elif category == 'too_old':
+            stats['excluded_too_old'] += 1
+        else:
+            stats['excluded_no_tags_column'] += 1
+    return files, stats
 
 
 def _rows(path):

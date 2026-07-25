@@ -3,6 +3,7 @@ import datetime
 from db_source import Expectation
 from export_source import Observation
 from findings import (
+    Group,
     find_contradictory_legacy,
     find_extra_axes,
     find_missing_in_getcourse,
@@ -108,3 +109,72 @@ def test_class_4_ignores_stale_contradictory_legacy_fixed_by_fresh_observation()
     groups = group_observations([obs(stale, 2), obs(fresh, 20, deal_id='2')])
     expectations = [exp('time_19', fresh)]
     assert find_contradictory_legacy(groups, expectations, INDEX) == []
+
+
+# --- Правка 1: победитель при ничьей по last_seen не должен зависеть от
+# порядка групп во входном списке (см. docstring _freshness_key в findings.py) ---
+
+
+def test_latest_groups_tiebreak_is_order_independent_not_input_order():
+    """На живых данных ничья по last_seen встречается в 61 слоте из 187, и
+    раньше побеждала группа, которая раньше встретилась во входном списке
+    groups — то есть решала оформительская сортировка group_observations
+    (`-deals, key_label`), а не содержание самих групп. Правильный
+    tie-break — по числу наблюдений (затем по тегам), и результат обязан
+    быть одинаков независимо от порядка элементов в списке groups."""
+    day = datetime.date(2026, 5, 10)
+    tags_more_deals = parse_tagset(AV + '|АВ Этап: Регистрация|автоворонки')
+    tags_fewer_deals = parse_tagset(AV + '|АВ Этап: Регистрация')
+
+    group_more = Group(key=KEY, tag_type='reg', reason=None, tags=tags_more_deals,
+                       deals=5, first_seen=day, last_seen=day, files=('a.csv',))
+    group_fewer = Group(key=KEY, tag_type='reg', reason=None, tags=tags_fewer_deals,
+                        deals=2, first_seen=day, last_seen=day, files=('b.csv',))
+
+    expectations = [exp('reg', AV + '|АВ Этап: Регистрация|автоворонки')]
+
+    forward = find_missing_in_getcourse([group_fewer, group_more], expectations, INDEX)
+    backward = find_missing_in_getcourse([group_more, group_fewer], expectations, INDEX)
+
+    assert forward == backward
+    # Побеждает группа с бо́льшим числом наблюдений (5 > 2) — она полностью
+    # покрывает ожидание базы, поэтому находок быть не должно.
+    assert forward == []
+
+
+def test_latest_by_stage_family_tiebreak_is_order_independent_not_input_order():
+    """Тот же дефект, что и выше, но для _latest_by_stage_family, которую
+    использует find_unresolved (классы 5/6/7)."""
+    day = datetime.date(2026, 5, 10)
+    broken = Group(key=KEY, tag_type=None, reason='no_time',
+                   tags=parse_tagset(AV + '|АВ Этап: Оплата'),
+                   deals=2, first_seen=day, last_seen=day, files=('a.csv',))
+    resolved = Group(key=KEY, tag_type='time_19', reason=None,
+                     tags=parse_tagset(AV + '|АВ Этап: Оплата|АВ Время: 19'),
+                     deals=5, first_seen=day, last_seen=day, files=('b.csv',))
+
+    forward = find_unresolved([broken, resolved], INDEX)
+    backward = find_unresolved([resolved, broken], INDEX)
+
+    assert forward == backward
+    # Побеждает 'resolved' (5 наблюдений > 2) — тип выводится, находок нет.
+    assert forward == []
+
+
+# --- Правка 2: find_extra_axes не должен требовать выводимый tag_type ---
+
+
+def test_class_2_reports_unknown_axis_even_when_tag_type_is_undecidable():
+    """find_extra_axes ходил по _latest_groups, которая выбрасывает группы
+    без выводимого tag_type (нужного классам 1 и 4, но не классу 2 — он
+    ищет неизвестные базе АВ-теги независимо от этапа). Из-за этого
+    неизвестные оси на группах без 'АВ Этап' (например 'АВ Время: 17')
+    молча не попадали в отчёт ни разу."""
+    raw = AV + '|АВ Время: 17'  # нет АВ Этап -> tag_type не выводится (no_stage)
+    groups = group_observations([obs(raw, 2)])
+    vocabulary = frozenset({
+        'АВ Продукт: ДБО', 'АВ Подрядчик: NR', 'АВ Канал: ВК',
+        'АВ Направление: In Stream',
+    })
+    found = find_extra_axes(groups, vocabulary)
+    assert any('АВ Время: 17' in f.subject for f in found)

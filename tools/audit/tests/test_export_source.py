@@ -7,6 +7,7 @@ import pytest
 from export_source import (
     TAGS_COLUMN,
     discover_export_files,
+    discover_export_files_with_stats,
     file_date_from_name,
     has_tags_column,
     load_observations,
@@ -66,6 +67,37 @@ def test_discover_skips_files_before_since_and_without_tags(tmp_path):
 
     found = discover_export_files(str(tmp_path), datetime.date(2026, 4, 1))
     assert [p.rsplit('/', 1)[-1] for p in found] == ['deal_export_2026-05-02_00-00-00.csv']
+
+
+def test_discover_with_stats_reports_selection_and_exclusion_counts(tmp_path):
+    """Лист «Источники» должен уметь показать не только отобранные файлы,
+    но и сколько отброшено и почему — discover_export_files_with_stats
+    считает это, не ломая сигнатуру discover_export_files (ей пользуются
+    другие тесты)."""
+    old = tmp_path / 'deal_export_2026-03-01_00-00-00.csv'
+    write_csv(old, [['1', '2026-03-01 00:00:00', 'X', 'ДБО', 'Оплачен']])
+
+    utm = tmp_path / 'deal_export_2026-05-01_00-00-00_utm.xlsx'
+    write_xlsx(utm, [['2', 'X']], headers=['ID заказа', 'Состав заказа'])
+
+    good_a = tmp_path / 'deal_export_2026-05-02_00-00-00.csv'
+    write_csv(good_a, [['3', '2026-05-02 00:00:00', 'X', 'ДБО', 'Оплачен']])
+    good_b = tmp_path / 'deal_export_2026-05-03_00-00-00.csv'
+    write_csv(good_b, [['4', '2026-05-03 00:00:00', 'X', 'ДБО', 'Оплачен']])
+
+    files, stats = discover_export_files_with_stats(str(tmp_path), datetime.date(2026, 4, 1))
+
+    assert sorted(p.rsplit('/', 1)[-1] for p in files) == [
+        'deal_export_2026-05-02_00-00-00.csv',
+        'deal_export_2026-05-03_00-00-00.csv',
+    ]
+    assert stats['selected'] == 2
+    assert stats['excluded_too_old'] == 1
+    assert stats['excluded_no_tags_column'] == 1
+    assert stats['total_candidates'] == 4
+
+    # Тот же список файлов, что и у discover_export_files для того же входа.
+    assert files == discover_export_files(str(tmp_path), datetime.date(2026, 4, 1))
 
 
 def test_discover_skips_excel_lock_files(tmp_path):

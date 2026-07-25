@@ -182,7 +182,12 @@ def load_offers(cfg, opener=urllib_opener):
                 tags=tags_by_id.get(offer_id, frozenset()),
             )
         )
-    return offers
+    # Как и все остальные загрузчики пакета (load_expectations,
+    # load_observations, group_observations, save_snapshot) — сортируем
+    # результат сами, а не полагаемся на порядок ответа GetCourse. Классы
+    # 10, 12 и 14 идут по offers напрямую; их порядок в отчёте не должен
+    # держаться на чужой (недокументированной) гарантии сортировки API.
+    return sorted(offers, key=lambda o: o.offer_id)
 
 
 def save_snapshot(offers, path):

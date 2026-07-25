@@ -90,14 +90,14 @@ def classify(tags):
 
     Возвращает (tag_type, reason). Ровно одно из двух не None:
       - ('reg' | 'messenger' | 'time_19' | 'time_15', None) — тип выведен;
-      - (None, 'no_stage' | 'predspisok' | 'no_time') — почему не выведен.
+      - (None, 'no_stage' | 'predpisok' | 'no_time') — почему не выведен.
     """
     if STAGE_REG in tags:
         return 'reg', None
     if STAGE_MESSENGER in tags:
         return 'messenger', None
     if PREDPISOK_STAGE in tags:
-        return None, 'predspisok'
+        return None, 'predpisok'
     if STAGE_PAYMENT in tags:
         if TIME_19 in tags:
             return 'time_19', None

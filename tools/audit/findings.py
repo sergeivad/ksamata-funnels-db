@@ -15,6 +15,7 @@ from normalize import (
     PREDPISOK_STAGE,
     STAGE_MESSENGER,
     STAGE_PAYMENT,
+    STAGE_PREFIX,
     STAGE_REG,
     av_key,
     classify,
@@ -109,11 +110,25 @@ def _by_funnel_id(expectations):
     return {e.funnel_id: e for e in expectations}
 
 
+def _freshness_key(group):
+    """Самодостаточный ключ «свежести» группы — не зависит от порядка входа.
+
+    (last_seen, deals, отсортированные теги): при равенстве last_seen
+    побеждает группа с бо́льшим числом наблюдений, а если и это равно —
+    устойчивый tie-break по кортежу отсортированных тегов. Без этого
+    победитель при ничьей по дате решался порядком элементов во входном
+    списке groups — оформительской сортировкой report'а, а не содержанием.
+    """
+    return (group.last_seen, group.deals, tuple(sorted(group.tags)))
+
+
 def _latest_groups(groups):
     """Для каждой пары (ключ, тип) — только самое свежее наблюдение.
 
     Спек: сравнивать с базой надо текущее состояние, иначе древние
-    наборы уедут в отчёт как ошибки.
+    наборы уедут в отчёт как ошибки. Победитель при ничьей по last_seen
+    определяется _freshness_key (число наблюдений, затем теги), а не
+    порядком групп во входном списке — см. её докстринг.
     """
     newest = {}
     for group in groups:
@@ -121,7 +136,7 @@ def _latest_groups(groups):
             continue
         slot = (group.key, group.tag_type)
         current = newest.get(slot)
-        if current is None or group.last_seen > current.last_seen:
+        if current is None or _freshness_key(group) > _freshness_key(current):
             newest[slot] = group
     return list(newest.values())
 
@@ -154,22 +169,40 @@ def _latest_by_stage_family(groups):
     tag_type, нужна чтобы свежая исправная группа ('time_19') вытесняла
     старую сломанную ('no_time') на том же АВ-ключе: у обеих семейство
     'payment', а tag_type разный.
+
+    Победитель при ничьей по last_seen определяется _freshness_key (число
+    наблюдений, затем теги), а не порядком групп во входном списке — см.
+    её докстринг.
     """
     newest = {}
     for group in groups:
         slot = (group.key, _stage_family(group.tags))
         current = newest.get(slot)
-        if current is None or group.last_seen > current.last_seen:
+        if current is None or _freshness_key(group) > _freshness_key(current):
             newest[slot] = group
     return list(newest.values())
 
 
+# Владелец решил свернуть класс 1 так же, как ранее свернули класс 3: тег,
+# которого не хватает более чем у этого числа воронок (пар ключ × tag_type),
+# даёт одну сводную находку вместо перечисления по каждой воронке — иначе
+# один шумный тег (например 'автоворонки') делает «Класс 1» равным единице
+# почти у каждой воронки и топит полезный сигнал редких расхождений.
+MASS_MISSING_TAG_THRESHOLD = 5
+
+
 def find_missing_in_getcourse(groups, expectations, index):
-    """Класс 1: база ждёт тег, а в свежем наблюдении его нет."""
+    """Класс 1: база ждёт тег, а в свежем наблюдении его нет.
+
+    Тег, отсутствующий более чем у MASS_MISSING_TAG_THRESHOLD пар (ключ ×
+    tag_type), сворачивается в одну сводную находку (funnel='—'). Теги,
+    встречающиеся у MASS_MISSING_TAG_THRESHOLD пар и менее, перечисляются
+    поштучно как раньше — именно они полезный сигнал.
+    """
     by_id = _by_funnel_id(expectations)
     by_slot = {(av_key(e.tags), e.tag_type): e for e in expectations}
 
-    result = []
+    per_group = []
     for group in _latest_groups(groups):
         exp = by_slot.get((group.key, group.tag_type))
         if exp is None:
@@ -177,12 +210,48 @@ def find_missing_in_getcourse(groups, expectations, index):
         missing = exp.tags - group.tags
         if not missing:
             continue
+        per_group.append((group, _funnel_label(index, by_id, group.key), missing))
+
+    tag_occurrences = defaultdict(list)
+    for group, funnel_label, missing in per_group:
+        for tag in missing:
+            tag_occurrences[tag].append((group, funnel_label))
+
+    mass_tags = {
+        tag for tag, occ in tag_occurrences.items()
+        if len(occ) > MASS_MISSING_TAG_THRESHOLD
+    }
+
+    result = []
+    for tag in sorted(mass_tags):
+        occ = tag_occurrences[tag]
+        contributing = [g for g, _label in occ]
+        labels = sorted({label for _g, label in occ if label != '—'})
         result.append(
             Finding(
                 cls=1,
-                funnel=_funnel_label(index, by_id, group.key),
+                funnel='—',
+                tag_type='',
+                subject=tag,
+                detail=(f'База ожидает тег {tag} на {len(occ)} парах, '
+                        'в GetCourse он отсутствует.'),
+                evidence='; '.join(labels[:5]),
+                first_seen=str(min(g.first_seen for g in contributing)),
+                last_seen=str(max(g.last_seen for g in contributing)),
+                deals=sum(g.deals for g in contributing),
+            )
+        )
+
+    for group, funnel_label, missing in per_group:
+        remaining = sorted(tag for tag in missing if tag not in mass_tags)
+        if not remaining:
+            continue
+        result.append(
+            Finding(
+                cls=1,
+                funnel=funnel_label,
                 tag_type=group.tag_type,
-                subject=', '.join(sorted(missing)),
+                subject=', '.join(remaining),
                 detail=f'Ожидается базой, нет в GetCourse. Ключ: {key_label(group.key)}',
                 evidence='; '.join(group.files[:3]),
                 first_seen=str(group.first_seen),
@@ -194,9 +263,17 @@ def find_missing_in_getcourse(groups, expectations, index):
 
 
 def find_extra_axes(groups, vocabulary):
-    """Класс 2: в наблюдении есть АВ-тег, которого база не знает."""
+    """Класс 2: в наблюдении есть АВ-тег, которого база не знает.
+
+    В отличие от классов 1 и 4, этому классу тип (tag_type) не нужен вообще
+    — он ищет неизвестные АВ-теги независимо от того, выводится ли этап.
+    Поэтому свёртка идёт через _latest_by_stage_family, а не _latest_groups:
+    последняя выбрасывает группы с tag_type is None (например, без АВ Этап
+    или с непонятым этапом), и такие группы — включая ровно те, что несут
+    неизвестные базе оси вроде 'АВ Время: 17' — тихо пропадали бы из отчёта.
+    """
     result = []
-    for group in _latest_groups(groups):
+    for group in _latest_by_stage_family(groups):
         unknown = sorted(
             tag for tag in group.tags
             if tag.startswith('АВ ') and tag not in vocabulary
@@ -297,7 +374,7 @@ def find_unresolved(groups, index):
     for group in _latest_by_stage_family(groups):
         if group.reason == 'no_time':
             cls, subject = 5, 'Оплата без АВ Время'
-        elif group.reason == 'predspisok':
+        elif group.reason == 'predpisok':
             cls, subject = 6, 'Этап Предписок'
         elif group.reason == 'no_stage':
             cls, subject = 5, 'Нет АВ Этап — тип не выводится'
@@ -435,7 +512,7 @@ def find_offers_without_autofunnel(offers):
     """Класс 12: есть АВ Этап, но нет служебного АВ Автоворонка."""
     result = []
     for offer in _offers_with_av(offers):
-        has_stage = any(t.startswith('АВ Этап') for t in offer.tags)
+        has_stage = any(t.startswith(STAGE_PREFIX) for t in offer.tags)
         if not has_stage or AUTOFUNNEL_TAG in offer.tags:
             continue
         result.append(
@@ -562,7 +639,9 @@ def find_drift(observations, index, expectations):
         slots[(av_key(o.tags), tag_type)][o.file_date][o.tags] += 1
 
     result = []
-    for (key, tag_type), by_date in sorted(slots.items(), key=lambda kv: key_label(kv[0][0])):
+    for (key, tag_type), by_date in sorted(
+        slots.items(), key=lambda kv: (key_label(kv[0][0]), kv[0][1])
+    ):
         timeline = []
         for file_date in sorted(by_date.keys()):
             tags, deals = _dominant_tagset(by_date[file_date])

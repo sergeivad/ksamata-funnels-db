@@ -63,6 +63,49 @@ def test_class_1_reports_tag_expected_in_db_but_absent_in_getcourse():
     assert 'автоворонки' in found[0].subject
 
 
+def test_class_1_collapses_mass_missing_tag_but_lists_rare_ones_individually():
+    """Владелец решил: тег, отсутствующий более чем у пяти пар (ключ ×
+    tag_type), сворачивается в одну сводную находку — иначе один шумный тег
+    ('автоворонки') делает «Класс 1» равным единице почти у каждой воронки
+    и топит редкие расхождения, которые и есть полезный сигнал.
+
+    Здесь тег 'массовый' отсутствует у шести пар (> порога 5) — должен дать
+    ровно одну сводную находку. Тег 'редкий' отсутствует только у одной из
+    них — должен остаться в перечислении поштучно."""
+    groups = []
+    expectations = []
+    index = {}
+    for i in range(6):
+        key = (f'П{i}', 'NR', 'ВК', 'In Stream')
+        present = (
+            f'АВ Продукт: П{i}|АВ Подрядчик: NR|АВ Канал: ВК|'
+            'АВ Направление: In Stream|АВ Этап: Регистрация'
+        )
+        expected_raw = present + '|массовый'
+        if i == 0:
+            expected_raw += '|редкий'
+        funnel_id = 100 + i
+        groups.extend(group_observations([obs(present, 2, deal_id=f'd{i}')]))
+        expectations.append(
+            Expectation(funnel_id=funnel_id, num=funnel_id, front_code=f'f{funnel_id}',
+                       product_name=f'П{i} NR ВК', status='active',
+                       tag_type='reg', tags=parse_tagset(expected_raw))
+        )
+        index[key] = {funnel_id}
+
+    found = find_missing_in_getcourse(groups, expectations, index)
+
+    mass = [f for f in found if f.subject == 'массовый']
+    assert len(mass) == 1
+    assert mass[0].funnel == '—'
+    assert '6' in mass[0].detail
+
+    rare = [f for f in found if 'редкий' in f.subject]
+    assert len(rare) == 1
+    assert rare[0].funnel != '—'
+    assert 'массовый' not in rare[0].subject
+
+
 def test_class_1_silent_when_sets_match():
     raw = AV + '|АВ Этап: Регистрация'
     assert find_missing_in_getcourse(group_observations([obs(raw, 2)]),

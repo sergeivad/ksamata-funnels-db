@@ -79,7 +79,16 @@ def main(argv=None, env=None):
     args = parser.parse_args(argv)
 
     since = datetime.date.fromisoformat(args.since)
+    started_at = datetime.datetime.now()
     sources = []
+
+    # В начале листа «Источники» — параметры самого прогона: без них читатель
+    # не может понять, под каким окном и когда карта была построена.
+    sources.append({'kind': 'параметры прогона', 'name': '--since', 'detail': args.since})
+    sources.append({'kind': 'параметры прогона', 'name': 'каталог выгрузок',
+                    'detail': args.downloads})
+    sources.append({'kind': 'параметры прогона', 'name': 'дата и время прогона',
+                    'detail': started_at.strftime('%Y-%m-%d %H:%M:%S')})
 
     print('Читаю базу…')
     expectations = db_source.load_expectations(paths.DB_PATH)
@@ -97,11 +106,27 @@ def main(argv=None, env=None):
           f'ключей: {len(index)}, коллизий: {len(collisions)}')
 
     print('Ищу выгрузки…')
-    files = export_source.discover_export_files(args.downloads, since)
+    files, file_stats = export_source.discover_export_files_with_stats(args.downloads, since)
     observations = export_source.load_observations(files)
     groups = F.group_observations(observations)
     for path in files:
-        sources.append({'kind': 'выгрузка', 'name': os.path.basename(path), 'detail': ''})
+        file_date = export_source.file_date_from_name(os.path.basename(path))
+        file_observations = export_source.read_observations(path)
+        sources.append({
+            'kind': 'выгрузка',
+            'name': os.path.basename(path),
+            'detail': f'дата файла {file_date}, наблюдений: {len(file_observations)}',
+        })
+    sources.append({
+        'kind': 'выгрузка (исключено)',
+        'name': f'старше --since ({args.since})',
+        'detail': f'{file_stats["excluded_too_old"]} файлов отброшено',
+    })
+    sources.append({
+        'kind': 'выгрузка (исключено)',
+        'name': 'нет колонки «Теги предложений»',
+        'detail': f'{file_stats["excluded_no_tags_column"]} файлов отброшено',
+    })
     print(f'  файлов: {len(files)}, наблюдений: {len(observations)}, групп: {len(groups)}')
 
     offers = []

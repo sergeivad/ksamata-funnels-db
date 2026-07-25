@@ -230,6 +230,27 @@ def test_load_offers_keeps_offers_missing_from_tags_endpoint():
     assert offers[0].tags == frozenset()
 
 
+def test_load_offers_returns_offers_sorted_by_offer_id_regardless_of_api_order():
+    """Все остальные загрузчики пакета сортируют результат (load_expectations,
+    load_observations, group_observations, save_snapshot) — load_offers должен
+    делать то же самое, а не отдавать предложения в порядке ответа GetCourse.
+    Классы 10, 12 и 14 идут по offers напрямую."""
+
+    def opener(url, headers):
+        if 'get-offers-tags' in url:
+            return json.dumps({'data': []})
+        if 'offset=0' in url:
+            return json.dumps({'data': [
+                {'id': 30, 'title': 'В', 'status': 'draft'},
+                {'id': 10, 'title': 'А', 'status': 'draft'},
+                {'id': 20, 'title': 'Б', 'status': 'draft'},
+            ]})
+        return json.dumps({'data': []})
+
+    offers = load_offers(CFG, opener)
+    assert [o.offer_id for o in offers] == [10, 20, 30]
+
+
 def test_save_snapshot_writes_json_without_credentials(tmp_path):
     from api_source import Offer
 

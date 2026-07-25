@@ -89,7 +89,7 @@ def test_classify_returns_tag_type(raw, expected_type):
     'raw,expected_reason',
     [
         ('АВ Этап: Оплата|АВ Продукт: ДБО', 'no_time'),
-        ('АВ Этап: Предписок|АВ Продукт: ДБО', 'predspisok'),
+        ('АВ Этап: Предписок|АВ Продукт: ДБО', 'predpisok'),
         ('АВ Продукт: ДБО|ДБО', 'no_stage'),
     ],
 )
