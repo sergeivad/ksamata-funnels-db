@@ -13,7 +13,7 @@ from findings import (
     find_unused_offers,
     group_observations,
 )
-from normalize import parse_tagset
+from normalize import MARKER_TAGS, parse_tagset
 
 KEY = ('ДБО', 'NR', 'ВК', 'In Stream')
 AV = 'АВ Продукт: ДБО|АВ Подрядчик: NR|АВ Канал: ВК|АВ Направление: In Stream'
@@ -94,12 +94,45 @@ def test_class_11_reports_axis_absent_from_db_vocabulary():
     assert 'АВ Линейка' in found[0].subject
 
 
+def test_class_11_does_not_mistake_markers_for_axes():
+    """Маркеры без двоеточия разбирались как имя новой оси.
+
+    Словарь базы знает только «АВ Автоворонка», поэтому три остальных
+    маркера попадали в отчёт как неизвестные базе оси — их там 55, 18 и 12.
+    """
+    vocabulary = frozenset({'АВ Продукт: ДБО', 'АВ Этап: Регистрация'})
+    offers = [offer(oid, f'АВ Продукт: ДБО|АВ Этап: Регистрация|{marker}')
+              for oid, marker in enumerate(sorted(MARKER_TAGS), start=1)]
+    assert find_unknown_axes_in_registry(offers, vocabulary) == []
+
+
 def test_class_12_reports_stage_without_autofunnel_tag():
     offers = [offer(1, AV + '|АВ Этап: Регистрация'),
               offer(2, AV + '|АВ Этап: Регистрация|АВ Автоворонка')]
     found = find_offers_without_autofunnel(offers)
     assert [f.cls for f in found] == [12]
     assert '1' in found[0].evidence
+
+
+def test_class_12_accepts_every_alternative_marker():
+    """«Прямые», «Квиз» и «Квиз-Лайт» — альтернативы «Автоворонке», не пропуск.
+
+    На живом реестре проверка одного лишь «АВ Автоворонка» давала 88 находок,
+    из которых 85 несли альтернативный маркер.
+    """
+    offers = [offer(oid, f'{AV}|АВ Этап: Регистрация|{marker}')
+              for oid, marker in enumerate(sorted(MARKER_TAGS), start=1)]
+    assert find_offers_without_autofunnel(offers) == []
+
+
+def test_class_12_still_fires_when_no_marker_at_all():
+    offers = [offer(1, AV + '|АВ Этап: Оплата'),
+              offer(2, AV + '|АВ Этап: Оплата|АВ Квиз')]
+    found = find_offers_without_autofunnel(offers)
+    assert [f.cls for f in found] == [12]
+    assert '1' in found[0].evidence
+    for marker in MARKER_TAGS:
+        assert marker in found[0].detail
 
 
 def test_class_13_reports_active_funnel_with_no_observations():
