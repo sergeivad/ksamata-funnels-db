@@ -139,13 +139,16 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 - `monitor-kinds.ts` — Russian labels for source kinds (reuses `BLOCK_KINDS` titles).
 - `monitor-check.ts` — pure HTTP availability check (`checkUrl`).
 - `monitor-run.ts` — check cycle, state persistence, event log.
-- `monitor-view.ts` — dashboard read models. Classifies every target by who holds
-  its URL (`usage`): `active` (an active funnel), `inactive` (only a draft/archive
-  funnel — stays in the group count with an "N в архиве" note, revives on its own)
-  or `orphan` (nobody — kept for incident history, **excluded** from the group
-  counts, so "41 из 45" never again implies four broken pages that no longer
-  exist). `inactive`/`orphan` are told apart by re-collecting funnel URLs for
-  non-active statuses via `collectFunnelUrls`, not from a stored column.
+- `monitor-view.ts` — dashboard read models. Group counters (`sourceKinds`) count
+  **only pages of active funnels**: archiving a funnel is itself the decision that
+  its pages leave monitoring, so they drop out of the denominator, as do orphaned
+  URLs — otherwise "41 из 45" implies four broken pages that no longer exist. A
+  target that a human enabled by hand still counts, so `enabled` can never exceed
+  `total`. Each target also carries `usage` — `active` / `inactive` (held only by
+  a draft/archive funnel) / `orphan` (held by nobody) — used **only** to explain
+  in the table why a row is off. `inactive` vs `orphan` is resolved by
+  re-collecting funnel URLs for non-active statuses via `collectFunnelUrls`
+  (same normalization as the sync), not from a stored column.
 - `monitor-scheduler.ts` — env config + `setInterval` (started by `src/instrumentation.ts`).
 
 ## API routes (`app/src/app/api/`)

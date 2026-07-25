@@ -67,10 +67,13 @@ function makeTarget(url: string, enabled: number, status: string, checkedAt: str
 }
 
 /**
- * Погашенная цель бывает двух сортов, и группа считает их по-разному:
- * URL за неактивной воронкой остаётся в знаменателе (вернут воронку — оживёт),
- * осиротевший не считается вовсе, иначе «41 из 45» вечно намекало бы на четыре
- * недоступные страницы, которых давно нет в данных.
+ * Группа считает только страницы активных воронок. Ушла воронка в архив или в
+ * черновик — её страницы из мониторинга исчезают, в этом и смысл архива; в
+ * знаменателе им делать нечего, как и осиротевшим URL. Иначе «41 из 45» вечно
+ * намекало бы на четыре недоступные страницы.
+ *
+ * Само разделение inactive/orphan сохраняется — но только чтобы в таблице
+ * объяснить, почему строка выключена.
  */
 describe('getMonitorDashboard · кто держит цель', () => {
   it('цель активной воронки — usage active и считается в группе', () => {
@@ -85,10 +88,9 @@ describe('getMonitorDashboard · кто держит цель', () => {
     const kind = sourceKinds.find((s) => s.sourceKind === 'landings')!;
     expect(kind.total).toBe(1);
     expect(kind.enabled).toBe(1);
-    expect(kind.inactiveArchive).toBe(0);
   });
 
-  it('URL за архивной воронкой остаётся в знаменателе с пометкой', () => {
+  it('URL за архивной воронкой выпадает из группы, но в таблице объяснён', () => {
     const url = 'https://archived.example.ru/';
     const f = holdUrlByFunnel('archive', url);
     makeTarget(url, 0, 'up', '2026-07-24 10:00:00');
@@ -97,22 +99,31 @@ describe('getMonitorDashboard · кто держит цель', () => {
     const row = targets.find((t) => t.url === url)!;
     expect(row.usage).toBe('inactive');
     expect(row.inactiveFunnels).toEqual([{ id: f.id, num: f.num, status: 'archive' }]);
-
-    const kind = sourceKinds.find((s) => s.sourceKind === 'landings')!;
-    expect(kind.total).toBe(1);
-    expect(kind.enabled).toBe(0);
-    expect(kind.inactiveArchive).toBe(1);
-    expect(kind.inactiveDraft).toBe(0);
+    expect(sourceKinds.find((s) => s.sourceKind === 'landings')).toBeUndefined();
   });
 
-  it('URL за черновиком считается отдельно от архива', () => {
+  it('URL за черновиком тоже не идёт в счёт группы', () => {
     const url = 'https://drafted.example.ru/';
-    holdUrlByFunnel('draft', url);
+    const f = holdUrlByFunnel('draft', url);
     makeTarget(url, 0, 'unknown', null);
 
+    const { targets, sourceKinds } = getMonitorDashboard(db);
+    expect(targets.find((t) => t.url === url)!.inactiveFunnels).toEqual([
+      { id: f.id, num: f.num, status: 'draft' },
+    ]);
+    expect(sourceKinds.find((s) => s.sourceKind === 'landings')).toBeUndefined();
+  });
+
+  it('включённая вручную цель неактивной воронки в группе всё же учтена', () => {
+    // Иначе она попала бы в «Проверяем», но не в знаменатель, и чип показал бы
+    // «1 из 0»: включённых не может быть больше, чем всего.
+    const url = 'https://archived-but-on.example.ru/';
+    holdUrlByFunnel('archive', url);
+    makeTarget(url, 1, 'up', '2026-07-24 10:00:00');
+
     const kind = getMonitorDashboard(db).sourceKinds.find((s) => s.sourceKind === 'landings')!;
-    expect(kind.inactiveDraft).toBe(1);
-    expect(kind.inactiveArchive).toBe(0);
+    expect(kind.total).toBe(1);
+    expect(kind.enabled).toBe(1);
   });
 
   it('осиротевший URL не считается в группе, но из списка не исчезает', () => {

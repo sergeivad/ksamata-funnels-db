@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { inactiveNote, sourceKindLabel, sourceKindTone } from '../src/lib/monitor-kinds';
+import { sourceKindLabel, sourceKindTone } from '../src/lib/monitor-kinds';
 import { BLOCK_KINDS, getBlockDef } from '../src/lib/blocks';
 
 describe('sourceKindLabel', () => {
@@ -39,25 +39,5 @@ describe('sourceKindTone', () => {
 
   it('рассинхрон (включено больше, чем всего) — это «on», а не отдельное состояние', () => {
     expect(sourceKindTone(3, 2)).toBe('on');
-  });
-});
-
-describe('inactiveNote', () => {
-  it('без неактивных страниц пометки нет — чип остаётся коротким', () => {
-    expect(inactiveNote(0, 0)).toBe('');
-  });
-
-  it('называет архив', () => {
-    expect(inactiveNote(1, 0)).toBe('1 в архиве');
-    expect(inactiveNote(3, 0)).toBe('3 в архиве');
-  });
-
-  it('склоняет черновики', () => {
-    expect(inactiveNote(0, 1)).toBe('1 в черновике');
-    expect(inactiveNote(0, 2)).toBe('2 в черновиках');
-  });
-
-  it('перечисляет оба случая через запятую', () => {
-    expect(inactiveNote(1, 2)).toBe('1 в архиве, 2 в черновиках');
   });
 });

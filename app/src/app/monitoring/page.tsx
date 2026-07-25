@@ -7,7 +7,7 @@ import MonitorSummary from '@/components/monitoring/MonitorSummary';
 import MonitorTable from '@/components/monitoring/MonitorTable';
 import MonitorEvents from '@/components/monitoring/MonitorEvents';
 import { MONITOR_STATUS_META } from '@/lib/monitor-status';
-import { inactiveNote, sourceKindLabel, sourceKindTone } from '@/lib/monitor-kinds';
+import { sourceKindLabel, sourceKindTone } from '@/lib/monitor-kinds';
 import type {
   MonitorEventView,
   MonitorSourceKindView,
@@ -246,10 +246,6 @@ export default function MonitoringPage() {
               {data.sourceKinds.map((k) => {
                 const tone = sourceKindTone(k.enabled, k.total);
                 const allOn = tone === 'on';
-                const note = inactiveNote(k.inactiveArchive, k.inactiveDraft);
-                // У полностью выключенной группы пометка ничего не объясняет —
-                // там и так ничего не проверяется. Оставляем её только в подсказке.
-                const showNote = note !== '' && tone !== 'off';
                 // Состояние группы должно читаться фоном, а не вычитыванием чисел:
                 // любая проверяемая группа — оранжевая, выключенная — серая.
                 const toneClass =
@@ -262,20 +258,16 @@ export default function MonitoringPage() {
                     type="button"
                     onClick={() => void toggleKind(k.sourceKind, !allOn)}
                     aria-pressed={tone === 'partial' ? 'mixed' : allOn}
-                    title={[
+                    title={
                       tone === 'on'
                         ? 'Проверяется вся группа — нажмите, чтобы выключить'
                         : tone === 'partial'
                           ? 'Проверяется часть группы — нажмите, чтобы проверять всю'
-                          : 'Нажмите, чтобы проверять всю группу',
-                      note && `Не проверяем: ${note} — эти страницы вернутся сами, когда воронку сделают активной`,
-                    ]
-                      .filter(Boolean)
-                      .join('. ')}
+                          : 'Нажмите, чтобы проверять всю группу'
+                    }
                     className={`rounded-[6px] px-2 py-1 text-[11px] transition ${toneClass}`}
                   >
                     {sourceKindLabel(k.sourceKind)} · {k.enabled} из {k.total}
-                    {showNote && ` (${note})`}
                   </button>
                 );
               })}

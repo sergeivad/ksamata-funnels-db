@@ -34,20 +34,6 @@ export function sourceKindLabel(sourceKind: string): string {
  */
 export type SourceKindTone = 'on' | 'partial' | 'off';
 
-/**
- * Пометка к числу на чипе: сколько страниц группы существуют, но не проверяются,
- * потому что их держит только неактивная воронка. Без неё «41 из 42» выглядело
- * бы как недоделка, хотя одна страница выключена совершенно законно.
- *
- * Пустая строка — когда таких страниц нет: чип остаётся коротким.
- */
-export function inactiveNote(archive: number, draft: number): string {
-  const parts: string[] = [];
-  if (archive > 0) parts.push(`${archive} в архиве`);
-  if (draft > 0) parts.push(draft === 1 ? '1 в черновике' : `${draft} в черновиках`);
-  return parts.join(', ');
-}
-
 export function sourceKindTone(enabled: number, total: number): SourceKindTone {
   if (enabled <= 0) return 'off';
   // Пустая группа не бывает включённой; enabled > total — только при рассинхроне,

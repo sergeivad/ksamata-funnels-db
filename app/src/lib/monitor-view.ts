@@ -75,13 +75,14 @@ export interface MonitorSummaryView {
 
 export interface MonitorSourceKindView {
   sourceKind: string;
-  /** Существующие страницы группы: активные + оставшиеся за неактивными воронками. Осиротевшие не считаются. */
+  /**
+   * Страницы группы, которые вообще подлежат проверке, — то есть те, что лежат
+   * в данных активных воронок. Ушла воронка в архив (или в черновик) — её
+   * страницы из мониторинга просто исчезают, это и есть смысл архива; в
+   * знаменателе им делать нечего, как и осиротевшим URL.
+   */
   total: number;
   enabled: number;
-  /** Из `total` — сколько держат только архивные воронки. */
-  inactiveArchive: number;
-  /** Из `total` — сколько держат только черновики. */
-  inactiveDraft: number;
 }
 
 export interface MonitorEventView {
@@ -246,18 +247,13 @@ export function getMonitorDashboard(db: AnyDB): {
   const kinds = new Map<string, MonitorSourceKindView>();
 
   for (const t of targets) {
-    if (t.usage !== 'orphan') {
-      const kind =
-        kinds.get(t.sourceKind) ??
-        { sourceKind: t.sourceKind, total: 0, enabled: 0, inactiveArchive: 0, inactiveDraft: 0 };
+    // В группу идут страницы активных воронок. Плюс — включённые вручную, даже
+    // если воронка уже неактивна: иначе такая цель попала бы в «Проверяем», но
+    // не в знаменатель, и чип показал бы «5 из 4».
+    if (t.usage === 'active' || t.enabled) {
+      const kind = kinds.get(t.sourceKind) ?? { sourceKind: t.sourceKind, total: 0, enabled: 0 };
       kind.total += 1;
       if (t.enabled) kind.enabled += 1;
-      if (t.usage === 'inactive') {
-        // Архив главнее черновика: страница, которую держит архивная воронка,
-        // читается как «отработавшая», даже если её же держит черновик.
-        if (t.inactiveFunnels.some((f) => f.status === 'archive')) kind.inactiveArchive += 1;
-        else kind.inactiveDraft += 1;
-      }
       kinds.set(t.sourceKind, kind);
     }
 
