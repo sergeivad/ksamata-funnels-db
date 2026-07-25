@@ -12,6 +12,7 @@ from db_source import label_of
 from normalize import (
     AUTOFUNNEL_TAG,
     AXES,
+    MARKER_TAGS,
     PREDPISOK_STAGE,
     STAGE_MESSENGER,
     STAGE_PAYMENT,
@@ -482,11 +483,16 @@ def find_incomplete_offer_keys(offers):
 
 
 def find_unknown_axes_in_registry(offers, vocabulary):
-    """Класс 11: ось есть в реестре, но её нет в словаре базы целиком."""
+    """Класс 11: ось есть в реестре, но её нет в словаре базы целиком.
+
+    Маркеры типа воронки исключены: двоеточия в них нет, поэтому разбор
+    «часть до двоеточия» выдавал весь тег за имя новой оси, и «АВ Прямые»,
+    «АВ Квиз», «АВ Квиз-Лайт» попадали сюда как три неизвестные оси.
+    """
     counts = defaultdict(set)
     for offer in _offers_with_av(offers):
         for tag in offer.tags:
-            if tag.startswith('АВ ') and tag not in vocabulary:
+            if tag.startswith('АВ ') and tag not in vocabulary and tag not in MARKER_TAGS:
                 axis = tag.split(':', 1)[0] if ':' in tag else tag
                 counts[axis].add(offer.offer_id)
 
@@ -509,11 +515,17 @@ def find_unknown_axes_in_registry(offers, vocabulary):
 
 
 def find_offers_without_autofunnel(offers):
-    """Класс 12: есть АВ Этап, но нет служебного АВ Автоворонка."""
+    """Класс 12: есть АВ Этап, но нет НИ ОДНОГО маркера типа воронки.
+
+    Маркеров четыре и они взаимоисключающие (MARKER_TAGS в normalize):
+    «Автоворонка», «Прямые», «Квиз», «Квиз-Лайт». Проверять только первый
+    нельзя — на реестре 2026-07-25 так получалось 88 находок, из которых
+    85 несли альтернативный маркер и были размечены правильно.
+    """
     result = []
     for offer in _offers_with_av(offers):
         has_stage = any(t.startswith(STAGE_PREFIX) for t in offer.tags)
-        if not has_stage or AUTOFUNNEL_TAG in offer.tags:
+        if not has_stage or offer.tags & MARKER_TAGS:
             continue
         result.append(
             Finding(
@@ -521,7 +533,8 @@ def find_offers_without_autofunnel(offers):
                 funnel='—',
                 tag_type='',
                 subject=offer.title,
-                detail=f'Нет тега {AUTOFUNNEL_TAG}',
+                detail='Нет ни одного маркера типа воронки: '
+                       + ', '.join(sorted(MARKER_TAGS)),
                 evidence=str(offer.offer_id),
                 first_seen='',
                 last_seen='',
