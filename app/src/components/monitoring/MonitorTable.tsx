@@ -6,6 +6,18 @@ import Switch from '@/components/Switch';
 import MonitorStatusPill from './MonitorStatusPill';
 import { formatAgo } from '@/lib/monitor-status';
 import { sourceKindLabel } from '@/lib/monitor-kinds';
+import { STATUS_META, type FunnelStatus } from '@/lib/status';
+
+/**
+ * Почему страница не проверяется — в падеже, которого нет у STATUS_META.label
+ * («Архив» → «воронка в архиве»). Короткая форма для чипа берётся из самого
+ * STATUS_META, чтобы подписи статусов не разъехались с остальным интерфейсом.
+ */
+const INACTIVE_HINT: Record<FunnelStatus, string> = {
+  active: '',
+  draft: 'воронка в черновике',
+  archive: 'воронка в архиве',
+};
 import type { MonitorTargetView } from '@/lib/monitor-view';
 
 interface Props {
@@ -81,7 +93,7 @@ export default function MonitorTable({ targets, onToggle }: Props) {
                   {formatAgo(t.since)}
                 </td>
                 <td className="px-3 py-2">
-                  <span className="flex flex-wrap gap-1">
+                  <span className="flex flex-wrap items-center gap-1">
                     {t.funnels.map((f) => (
                       <Link
                         key={f.id}
@@ -91,6 +103,27 @@ export default function MonitorTable({ targets, onToggle }: Props) {
                         №{f.num}
                       </Link>
                     ))}
+                    {/* Пустая колонка у погашенной цели ничего не объясняла: теперь
+                        видно, держит ли URL неактивная воронка или уже никто. */}
+                    {t.usage === 'inactive' &&
+                      t.inactiveFunnels.map((f) => (
+                        <Link
+                          key={f.id}
+                          href={`/funnels/${f.id}`}
+                          title={`Страница не проверяется: ${INACTIVE_HINT[f.status]}. Вернут воронку в активные — проверка возобновится сама`}
+                          className="rounded-[5px] bg-[var(--chip)] px-1.5 py-0.5 text-[11px] text-[var(--faint)] hover:text-[var(--ink)]"
+                        >
+                          №{f.num} · {STATUS_META[f.status].label.toLowerCase()}
+                        </Link>
+                      ))}
+                    {t.usage === 'orphan' && (
+                      <span
+                        title="URL больше не встречается ни в одной воронке — цель осталась только ради истории инцидентов"
+                        className="text-[11px] text-[var(--faint)]"
+                      >
+                        больше не используется
+                      </span>
+                    )}
                   </span>
                 </td>
                 <td className="px-3 py-2">

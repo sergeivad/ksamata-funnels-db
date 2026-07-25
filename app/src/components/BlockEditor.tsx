@@ -6,6 +6,7 @@ import { Wand2, Copy, Check, AlertCircle } from 'lucide-react';
 import { getBlockDef, type BlockMode } from '@/lib/blocks';
 import type { BlockState, BlockItem } from '@/lib/funnel-blocks';
 import { mirrorSlotUrl, formatBlockLinks, flattenToCommon, restoreByTime } from '@/lib/block-fill';
+import { urlFieldErrors } from '@/lib/url-field';
 import { copyText } from '@/lib/clipboard';
 import Switch from './Switch';
 import Segmented from './Segmented';
@@ -80,6 +81,11 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
     setCopiedAll(ok ? 'ok' : 'failed');
     copyAllTimer.current = setTimeout(() => setCopiedAll(null), 1500);
   }
+
+  // Строки с мусором внутри ссылки (класс A в url-field.ts). Тот же запрет
+  // стоит на сервере — здесь он только для того, чтобы человек увидел проблему
+  // до нажатия «Сохранить», а не в виде 400 из API.
+  const brokenUrlRows = urlFieldErrors(items).length;
 
   const hasAnyLink = items.some((it) => it.url.trim() !== '');
   const slot19Empty = mode === 'by_time' && items.filter((it) => it.slot === '19').length === 0;
@@ -229,13 +235,18 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
 
       <div className="mt-3 flex items-center justify-end gap-3">
         {error && <span role="alert" className="text-[11px] font-medium text-[#B42318]">{error}</span>}
+        {brokenUrlRows > 0 && (
+          <span role="alert" className="text-[11px] font-medium text-[#B42318]">
+            {brokenUrlRows === 1 ? 'Одна ссылка с лишним текстом' : `Ссылок с лишним текстом: ${brokenUrlRows}`} — сохранение недоступно
+          </span>
+        )}
         {dirty && (
           <span className="inline-flex items-center gap-1 text-[10px] text-[var(--orange)]">
             <span className="h-1.5 w-1.5 rounded-full bg-[var(--orange)]" />
             есть несохранённые изменения
           </span>
         )}
-        <button type="button" onClick={() => save()} disabled={saving}
+        <button type="button" onClick={() => save()} disabled={saving || brokenUrlRows > 0}
           className="rounded-[8px] bg-[var(--orange)] px-4 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">
           {saving ? 'Сохранение…' : 'Сохранить'}
         </button>

@@ -10,6 +10,7 @@ import os from 'os';
 import path from 'path';
 import { runMigratePhase6 } from '../scripts/migrate-phase6';
 import * as schema from '../src/db/schema';
+import { clearMonitoringState } from './helpers/monitoring';
 import { runMonitorCycle, isCycleRunning } from '../src/lib/monitor-run';
 import type { CheckResult } from '../src/lib/monitor-check';
 
@@ -70,6 +71,9 @@ beforeEach(() => {
   sqlite = new Database(tmp);
   sqlite.pragma('foreign_keys = ON');
   runMigratePhase6(sqlite);
+  // Копия реальной БД может нести цели, заведённые локальным планировщиком, —
+  // тесты ниже считают абсолютные числа, поэтому стартуем с нуля.
+  clearMonitoringState(sqlite);
   db = drizzle(sqlite, { schema });
 });
 

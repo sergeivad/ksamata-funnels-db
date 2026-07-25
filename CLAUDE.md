@@ -114,6 +114,13 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 - `funnel-blocks.ts` — read/replace blocks and items.
 - `blocks.ts` — static block-kind registry.
 - `block-fill.ts` — block-editing helpers (parse pasted lines, mirror slots, labels).
+- `url-field.ts` — hygiene of a block item's URL field, shared by `BlockEditor`/
+  `BlockListField` and the blocks `PUT` route. Two classes: **A** — a label glued
+  into an http(s) URL (`…/a (ADS)`, a trailing quote) is rejected, because
+  `normalizeUrl` percent-encodes it instead of dropping it and monitoring then
+  tracks a permanently-404 ghost target; **B** — plain text in the URL field
+  (`сайты`, `геткурс`) only warns: such notes predate the field and create no
+  targets. Never make class B blocking without cleaning the data first.
 - `ab-tags.ts` — A/B tag computation engine (axes ↔ names, `computeTagSet`).
 - `tag-templates.ts` / `tag-overrides.ts` — read/replace the two tag layers.
 - `status.ts` — funnel status constants/meta (active/draft/archive).
@@ -129,11 +136,27 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   Only funnels with `status = 'active'` are collected (`MONITORED_FUNNEL_STATUS`);
   drafts and archive are out of scope, and a URL left behind by a funnel leaving
   `active` goes through the normal retirement path (muted, unlinked, history kept,
-  auto-revived when the funnel comes back).
-- `monitor-kinds.ts` — Russian labels for source kinds (reuses `BLOCK_KINDS` titles).
+  auto-revived when the funnel comes back). Exports `collectFunnelUrls` so the
+  dashboard can collect URLs of **non**-active funnels through the very same
+  normalization.
+- `monitor-kinds.ts` — Russian labels for source kinds (reuses `BLOCK_KINDS`
+  titles) + `sourceKindTone`, which decides how a group chip reads: any group
+  with at least one checked target is orange (`on`/`partial`), only a fully
+  disabled one is grey. `partial` differs from `on` in wording and
+  `aria-pressed="mixed"`, not in colour — a partially enabled group must not
+  look switched off.
 - `monitor-check.ts` — pure HTTP availability check (`checkUrl`).
 - `monitor-run.ts` — check cycle, state persistence, event log.
-- `monitor-view.ts` — dashboard read models.
+- `monitor-view.ts` — dashboard read models. Group counters (`sourceKinds`) count
+  **only pages of active funnels**: archiving a funnel is itself the decision that
+  its pages leave monitoring, so they drop out of the denominator, as do orphaned
+  URLs — otherwise "41 из 45" implies four broken pages that no longer exist. A
+  target that a human enabled by hand still counts, so `enabled` can never exceed
+  `total`. Each target also carries `usage` — `active` / `inactive` (held only by
+  a draft/archive funnel) / `orphan` (held by nobody) — used **only** to explain
+  in the table why a row is off. `inactive` vs `orphan` is resolved by
+  re-collecting funnel URLs for non-active statuses via `collectFunnelUrls`
+  (same normalization as the sync), not from a stored column.
 - `monitor-scheduler.ts` — env config + `setInterval` (started by `src/instrumentation.ts`).
 
 ## API routes (`app/src/app/api/`)
@@ -191,11 +214,10 @@ runs. Before copying the DB to `app/seed/` or making a backup:
 `*.db-wal` / `*.db-shm` sidecars and `*.db.bak_*` backups are gitignored.
 
 **Monitoring gotcha:** the tracked DB's `monitor_*` tables are intentionally
-**empty**, and several tests copy the file and assert absolute row counts
-against it. But running the dev server starts the background scheduler, which
-syncs ~600 targets and writes check results straight into that same tracked
-file. So after any live run — `npm run dev`, a manual cycle, a browser check —
-restore it before committing anything:
+**empty**. Running the dev server starts the background scheduler, which syncs
+~600 targets and writes check results straight into that same tracked file. So
+after any live run — `npm run dev`, a manual cycle, a browser check — restore it
+before committing anything:
 
 ```sh
 sqlite3 ksamata_funnels.db 'PRAGMA wal_checkpoint(TRUNCATE);'
@@ -204,11 +226,16 @@ rm -f ksamata_funnels.db-wal ksamata_funnels.db-shm
 ```
 
 Verify with `sqlite3 ksamata_funnels.db "select count(*) from monitor_targets;"`
-→ must print `0`, and `git status --porcelain` must be clean. If tests start
-failing on counts, suspect a polluted fixture before you suspect the tests —
-do not "fix" them by clearing tables inside the test file. Set
+→ must print `0`, and `git status --porcelain` must be clean. Set
 `MONITOR_ENABLED=false` in `.env.local` to keep the dev server from doing this
 (and from hitting live landing pages) in the first place.
+
+The monitoring tests no longer depend on that hygiene: every one of them wipes
+the `monitor_*` tables of its own temp copy right after `runMigratePhase6`, via
+`clearMonitoringState` in [app/tests/helpers/monitoring.ts](app/tests/helpers/monitoring.ts).
+Those tables are the tests' own state, not source data, so clearing them is
+correct — keep new monitoring tests on the same helper, and do not extend it to
+funnel data (that stays as it is in the copied DB).
 
 ## Process state must be a real singleton
 

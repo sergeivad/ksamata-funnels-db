@@ -56,6 +56,8 @@ Keep `ksamata_funnels.db` at the repository root unless you intentionally update
 
 SQLite WAL sidecars (`*.db-wal`, `*.db-shm`) are ignored. Before copying or baking a database seed, stop any running dev server and run a WAL checkpoint so the main `.db` file contains the latest data.
 
+A running dev server (local or the Docker dev stack, which live-mounts the same file) also starts the background monitoring scheduler: it fills the `monitor_*` tables and hits real landing pages. Set `MONITOR_ENABLED=false` in `app/.env.local` if you don't want that, and restore the database before committing — see the monitoring gotcha in [CLAUDE.md](CLAUDE.md).
+
 ## Deployment
 
 Dokploy deployment notes live in [app/DEPLOY.md](app/DEPLOY.md). The production

@@ -3,6 +3,7 @@ import { db } from '@/db/client';
 import { getBlock, replaceBlock, type BlockItem } from '@/lib/funnel-blocks';
 import { funnelExists } from '@/lib/funnel-days';
 import { isBlockKind, getBlockDef, type BlockKind } from '@/lib/blocks';
+import { checkUrlField } from '@/lib/url-field';
 import { internalError } from '@/lib/http';
 import { parseRouteId } from '@/lib/validation';
 
@@ -55,6 +56,14 @@ export async function PUT(req: NextRequest, { params }: Params) {
     }
     if (it.label.length > MAX_STR || it.url.length > MAX_STR) {
       return NextResponse.json({ error: `items[${i}] label/url too long (max ${MAX_STR})` }, { status: 400 });
+    }
+    // Ссылка со слипшейся подписью (`…/a (ADS)`) не отбрасывается нормализацией,
+    // а кодируется в %20 и заводит в мониторинге отдельную вечно падающую цель.
+    // Правило то же, что в редакторе (url-field.ts): текст без http(s) пропускаем
+    // — это пометки, а вот мусор внутри ссылки не сохраняем.
+    const check = checkUrlField(it.url);
+    if (check.level === 'error') {
+      return NextResponse.json({ error: `items[${i}]: ${check.message}` }, { status: 400 });
     }
     const slot = it.slot === '15' || it.slot === '19' ? it.slot : null;
     items.push({ slot, label: it.label, url: it.url });
