@@ -112,14 +112,36 @@ def test_class_1_silent_when_sets_match():
                                      [exp('reg', raw)], INDEX) == []
 
 
+VOCABULARY_2 = frozenset({'АВ Продукт: ДБО', 'АВ Подрядчик: NR', 'АВ Канал: ВК',
+                          'АВ Направление: In Stream', 'АВ Этап: Мессенджер'})
+
+
 def test_class_2_reports_axis_present_in_getcourse_but_absent_from_db_vocabulary():
-    raw = AV + '|АВ Этап: Мессенджер|АВ Мессенджер: МАКС'
+    raw = AV + '|АВ Этап: Мессенджер|АВ Время: 17'
     groups = group_observations([obs(raw, 2)])
-    vocabulary = frozenset({'АВ Продукт: ДБО', 'АВ Подрядчик: NR', 'АВ Канал: ВК',
-                            'АВ Направление: In Stream', 'АВ Этап: Мессенджер'})
-    found = find_extra_axes(groups, vocabulary)
+    found = find_extra_axes(groups, VOCABULARY_2)
     assert [f.cls for f in found] == [2]
-    assert 'АВ Мессенджер: МАКС' in found[0].subject
+    assert 'АВ Время: 17' in found[0].subject
+
+
+def test_class_2_ignores_tags_that_live_only_in_getcourse():
+    """Мессенджер и линейка базе не нужны — «база их не знает» это норма.
+
+    Мессенджер различает заказы ВНУТРИ воронки (36 четвёрок из 37 несут все
+    три значения сразу), а линейка выводится из продукта `ЖИВО*`.
+    """
+    raw = AV + '|АВ Этап: Мессенджер|АВ Мессенджер: МАКС|АВ Линейка: ЖИВО'
+    groups = group_observations([obs(raw, 2)])
+    assert find_extra_axes(groups, VOCABULARY_2) == []
+
+
+def test_class_2_still_reports_funnel_type_markers():
+    """Маркеры, в отличие от внешних тегов, — настоящий пробел модели базы."""
+    raw = AV + '|АВ Этап: Мессенджер|АВ Квиз'
+    groups = group_observations([obs(raw, 2)])
+    found = find_extra_axes(groups, VOCABULARY_2)
+    assert [f.cls for f in found] == [2]
+    assert 'АВ Квиз' in found[0].subject
 
 
 def test_class_3_reports_predpisok_stage():

@@ -21,6 +21,7 @@ from normalize import (
     av_key,
     classify,
     is_complete_key,
+    is_external_tag,
     key_label,
 )
 
@@ -272,12 +273,17 @@ def find_extra_axes(groups, vocabulary):
     последняя выбрасывает группы с tag_type is None (например, без АВ Этап
     или с непонятым этапом), и такие группы — включая ровно те, что несут
     неизвестные базе оси вроде 'АВ Время: 17' — тихо пропадали бы из отчёта.
+
+    Теги из EXTERNAL_TAG_PREFIXES пропускаются: база их не знает намеренно.
+    Маркеры типа воронки, наоборот, НЕ пропускаются — база их действительно
+    не умеет выражать, и это настоящий пробел модели, а не решённый вопрос.
     """
     result = []
     for group in _latest_by_stage_family(groups):
         unknown = sorted(
             tag for tag in group.tags
             if tag.startswith('АВ ') and tag not in vocabulary
+            and not is_external_tag(tag)
         )
         if not unknown:
             continue
@@ -488,11 +494,15 @@ def find_unknown_axes_in_registry(offers, vocabulary):
     Маркеры типа воронки исключены: двоеточия в них нет, поэтому разбор
     «часть до двоеточия» выдавал весь тег за имя новой оси, и «АВ Прямые»,
     «АВ Квиз», «АВ Квиз-Лайт» попадали сюда как три неизвестные оси.
+
+    Теги из EXTERNAL_TAG_PREFIXES тоже исключены: база их не знает намеренно,
+    так что это не расхождение (см. комментарий в normalize).
     """
     counts = defaultdict(set)
     for offer in _offers_with_av(offers):
         for tag in offer.tags:
-            if tag.startswith('АВ ') and tag not in vocabulary and tag not in MARKER_TAGS:
+            if (tag.startswith('АВ ') and tag not in vocabulary
+                    and tag not in MARKER_TAGS and not is_external_tag(tag)):
                 axis = tag.split(':', 1)[0] if ':' in tag else tag
                 counts[axis].add(offer.offer_id)
 

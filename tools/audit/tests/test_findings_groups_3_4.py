@@ -88,10 +88,10 @@ def test_class_10_ignores_offers_without_any_av_tags():
 
 def test_class_11_reports_axis_absent_from_db_vocabulary():
     vocabulary = frozenset({'АВ Продукт: ДБО', 'АВ Этап: Регистрация'})
-    offers = [offer(1, 'АВ Продукт: ДБО|АВ Этап: Регистрация|АВ Линейка: Базовая')]
+    offers = [offer(1, 'АВ Продукт: ДБО|АВ Этап: Регистрация|АВ Гео: США')]
     found = find_unknown_axes_in_registry(offers, vocabulary)
     assert [f.cls for f in found] == [11]
-    assert 'АВ Линейка' in found[0].subject
+    assert 'АВ Гео' in found[0].subject
 
 
 def test_class_11_does_not_mistake_markers_for_axes():
@@ -103,6 +103,14 @@ def test_class_11_does_not_mistake_markers_for_axes():
     vocabulary = frozenset({'АВ Продукт: ДБО', 'АВ Этап: Регистрация'})
     offers = [offer(oid, f'АВ Продукт: ДБО|АВ Этап: Регистрация|{marker}')
               for oid, marker in enumerate(sorted(MARKER_TAGS), start=1)]
+    assert find_unknown_axes_in_registry(offers, vocabulary) == []
+
+
+def test_class_11_ignores_tags_that_live_only_in_getcourse():
+    """«АВ Мессенджер» и «АВ Линейка» база не хранит намеренно, не расхождение."""
+    vocabulary = frozenset({'АВ Продукт: ДБО', 'АВ Этап: Регистрация'})
+    offers = [offer(1, 'АВ Продукт: ДБО|АВ Этап: Регистрация|'
+                       'АВ Мессенджер: МАКС|АВ Линейка: ЖИВО')]
     assert find_unknown_axes_in_registry(offers, vocabulary) == []
 
 
