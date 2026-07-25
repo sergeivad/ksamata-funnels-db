@@ -1,0 +1,161 @@
+import openpyxl
+
+from db_source import FunnelRow
+from findings import CLASS_TITLES, Finding
+from report import (
+    CLASS_HEADERS,
+    SOURCES_SHEET,
+    SUMMARY_SHEET,
+    TOTAL_LABEL,
+    UNASSIGNED_LABEL,
+    build_summary_rows,
+    write_report,
+)
+
+
+def finding(cls, funnel='f11', subject='S'):
+    return Finding(cls=cls, funnel=funnel, tag_type='reg', subject=subject,
+                   detail='D', evidence='E', first_seen='2026-05-02',
+                   last_seen='2026-05-13', deals=3)
+
+
+FUNNELS = [
+    FunnelRow(funnel_id=11, num=11, front_code='f11', product_name='ДБО NR ВК', status='active'),
+    FunnelRow(funnel_id=12, num=12, front_code='f12', product_name='ЖКТ NR ВК', status='active'),
+]
+
+
+def test_summary_counts_findings_per_funnel_and_class():
+    rows = build_summary_rows([finding(1), finding(1), finding(4)], FUNNELS)
+    header, first, second = rows[0], rows[1], rows[2]
+    assert header[0] == 'Воронка'
+    assert first[0] == 'f11'
+    assert first[header.index('Класс 1')] == 2
+    assert first[header.index('Класс 4')] == 1
+    assert second[0] == 'f12'
+    assert second[header.index('Класс 1')] == 0
+
+
+def test_write_report_creates_summary_sources_and_one_sheet_per_class(tmp_path):
+    out = tmp_path / 'report.xlsx'
+    sources = [{'kind': 'выгрузка', 'name': 'deal_export_2026-05-02.csv', 'detail': '120 строк'}]
+    write_report(str(out), [finding(1), finding(15)], FUNNELS, sources)
+
+    wb = openpyxl.load_workbook(out)
+    assert SUMMARY_SHEET in wb.sheetnames
+    assert SOURCES_SHEET in wb.sheetnames
+    # Лист заводится на каждый класс, даже пустой — чтобы «ноль находок»
+    # был виден явно, а не выглядел как забытая проверка.
+    for cls in CLASS_TITLES:
+        assert f'Класс {cls}' in wb.sheetnames
+
+
+def test_class_sheet_carries_decision_column_left_empty(tmp_path):
+    out = tmp_path / 'report.xlsx'
+    write_report(str(out), [finding(1)], FUNNELS, [])
+    ws = openpyxl.load_workbook(out)['Класс 1']
+    # _write_sheet: строка 1 — название листа, 2 — пустая, 3 — заголовки, 4+ — данные.
+    header = [c.value for c in ws[3]]
+    assert 'Решение' in header
+    assert ws.cell(row=4, column=header.index('Решение') + 1).value is None
+
+
+def test_class_sheet_title_row_names_the_class(tmp_path):
+    out = tmp_path / 'report.xlsx'
+    write_report(str(out), [], FUNNELS, [])
+    ws = openpyxl.load_workbook(out)['Класс 16']
+    assert CLASS_TITLES[16] in str(ws['A1'].value or ws['A2'].value or '')
+
+
+def test_sources_sheet_lists_inputs(tmp_path):
+    out = tmp_path / 'report.xlsx'
+    sources = [
+        {'kind': 'выгрузка', 'name': 'deal_export_2026-05-02.csv', 'detail': '120 строк'},
+        {'kind': 'API', 'name': 'offer/get-offers', 'detail': '7679 предложений'},
+    ]
+    write_report(str(out), [], FUNNELS, sources)
+    ws = openpyxl.load_workbook(out)[SOURCES_SHEET]
+    values = [str(row[1].value) for row in ws.iter_rows(min_row=2) if row[1].value]
+    assert 'deal_export_2026-05-02.csv' in values
+    assert 'offer/get-offers' in values
+
+
+def _class_cols(header):
+    return [i for i, name in enumerate(header) if name.startswith('Класс ')]
+
+
+def test_summary_never_drops_findings_without_a_single_funnel():
+    """Инвариант полноты: сумма классов по всем строкам (кроме «Всего»)
+    равна общему числу находок. 11 из 16 классов структурно ставят
+    funnel='—' (уровень предложения/оси/ключа) — без агрегирующей строки
+    они бесследно пропадали бы из сводки.
+    """
+    findings = [
+        finding(1, funnel='f11'),
+        finding(1, funnel='f11'),
+        finding(4, funnel='f12'),
+        finding(2, funnel='—'),
+        finding(3, funnel='—'),
+        finding(9, funnel='—'),
+        finding(8, funnel='no-such-funnel-label'),
+    ]
+    rows = build_summary_rows(findings, FUNNELS)
+    header = rows[0]
+    cols = _class_cols(header)
+    data_rows = rows[1:-1]  # без итоговой строки, чтобы не задвоить
+    total = sum(row[i] for row in data_rows for i in cols)
+    assert total == len(findings)
+
+
+def test_unassigned_row_carries_findings_with_no_matching_funnel_label():
+    findings = [
+        finding(1, funnel='f11'),
+        finding(2, funnel='—'),
+        finding(2, funnel='—'),
+        finding(3, funnel='—'),
+        finding(9, funnel='some-nonexistent-label'),
+    ]
+    rows = build_summary_rows(findings, FUNNELS)
+    header = rows[0]
+    unassigned = next(row for row in rows if row[0] == UNASSIGNED_LABEL)
+    assert unassigned[header.index('Класс 1')] == 0
+    assert unassigned[header.index('Класс 2')] == 2
+    assert unassigned[header.index('Класс 3')] == 1
+    assert unassigned[header.index('Класс 9')] == 1
+    assert unassigned[header.index('Всего')] == 4
+
+
+def test_total_row_sums_all_rows_above():
+    findings = [
+        finding(1, funnel='f11'),
+        finding(1, funnel='f12'),
+        finding(4, funnel='f11'),
+        finding(2, funnel='—'),
+        finding(9, funnel='ghost-label'),
+    ]
+    rows = build_summary_rows(findings, FUNNELS)
+    header = rows[0]
+    cols = _class_cols(header)
+    total_row = rows[-1]
+    assert total_row[0] == TOTAL_LABEL
+    expected_per_class = [sum(row[i] for row in rows[1:-1]) for i in cols]
+    assert [total_row[i] for i in cols] == expected_per_class
+    assert total_row[header.index('Всего')] == sum(expected_per_class)
+
+
+def test_class_sheet_row_order_is_deterministic(tmp_path):
+    """Порядок находок внутри листа класса — порядок входного списка,
+    без сортировки по set/frozenset. В пакете уже пять раз находили
+    дефекты недетерминизма в подобных местах."""
+    out = tmp_path / 'report.xlsx'
+    ordered = [
+        finding(1, funnel='f11', subject='third'),
+        finding(1, funnel='f12', subject='first'),
+        finding(1, funnel='f11', subject='second'),
+        finding(1, funnel='f12', subject='fourth'),
+    ]
+    write_report(str(out), ordered, FUNNELS, [])
+    ws = openpyxl.load_workbook(out)['Класс 1']
+    subject_col = CLASS_HEADERS.index('Находка') + 1
+    subjects = [ws.cell(row=r, column=subject_col).value for r in range(4, 4 + len(ordered))]
+    assert subjects == ['third', 'first', 'second', 'fourth']

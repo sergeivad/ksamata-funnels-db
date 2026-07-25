@@ -23,6 +23,7 @@ build and export the same database from Excel sources.
 | `data/generated/` | Generated workbook exports (gitignored). |
 | `tools/data-import/` | Python scripts that build or mutate the root SQLite DB. |
 | `tools/data-export/` | Python scripts that export the DB to XLSX reports. |
+| `tools/audit/` | Tag drift map: reconciles the GetCourse offer registry, `deal_export` history, and the DB. Read-only; output is an XLSX in `data/generated/`. See [tools/audit/README.md](tools/audit/README.md). |
 | `docs/` | Development notes, project map, docs index, and historical plans/specs. See [docs/README.md](docs/README.md). |
 
 `ksamata-leak-funnels/` (local reference dataset) and `*.db.bak_*` backups are
@@ -305,6 +306,13 @@ location), so they run from any working directory.
   `add_pereliv_funnels.py`, `add_quiz_funnels.py`. All idempotent.
 - **Export** (`tools/data-export/`): `ksamata_funnels_export.py` → summary XLSX
   in `data/generated/`.
+- **Audit** (`tools/audit/`): `run_audit.py` builds a tag drift map across
+  three sources — the GetCourse offer registry, `deal_export` history, and
+  the DB — into an XLSX report with 16 finding classes; it fixes nothing, in
+  the DB or in GetCourse. The DB is opened read-only; GetCourse credentials
+  are read from the environment (`GC_DEV_KEY`, `GC_API_KEY`, `GC_DOMAIN`) and
+  never committed. `--no-api` skips GetCourse (classes 9-12 and 14 stay
+  empty). Tests: `python3 -m pytest tools/audit/tests`.
 
 ## Conventions
 
