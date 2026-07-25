@@ -9,6 +9,26 @@ import {
 } from '../db/schema';
 import { MONITOR_STATUS_META, isMonitorStatus, type MonitorStatus } from './monitor-status';
 import { isCycleRunning } from './monitor-run';
+import { collectFunnelUrls, MONITORED_FUNNEL_STATUS } from './monitor-targets';
+import { FUNNEL_STATUS_VALUES, isFunnelStatus, type FunnelStatus } from './status';
+
+/** Статусы воронки, страницы которых не проверяются (черновик, архив). */
+const INACTIVE_FUNNEL_STATUSES: readonly FunnelStatus[] = FUNNEL_STATUS_VALUES.filter(
+  (s) => s !== MONITORED_FUNNEL_STATUS,
+);
+
+/**
+ * Кто держит цель — от этого зависит, считать ли её в группе.
+ *
+ *  - `active`   — URL лежит в данных активной воронки: обычная рабочая цель;
+ *  - `inactive` — URL остался только у черновика или архива. Проверять нечего,
+ *    но цель не мусор: вернут воронку в активные — оживёт сама, поэтому она
+ *    остаётся в знаменателе группы с пометкой;
+ *  - `orphan`   — URL не держит уже никто (ссылку заменили, опечатку
+ *    исправили). Существует только как история инцидентов и в счёт группы не
+ *    идёт — иначе «41 из 45» вечно намекало бы на четыре недоступные страницы.
+ */
+export type MonitorTargetUsage = 'active' | 'inactive' | 'orphan';
 
 export interface MonitorFunnelRef {
   id: number;
@@ -31,9 +51,18 @@ export interface MonitorTargetView {
   since: string | null;
   consecutiveFailures: number;
   funnels: MonitorFunnelRef[];
+  /** Кто держит URL — см. MonitorTargetUsage. */
+  usage: MonitorTargetUsage;
+  /** Заполнен только для `usage === 'inactive'`: чьи это страницы теперь. */
+  inactiveFunnels: MonitorInactiveFunnelRef[];
+}
+
+export interface MonitorInactiveFunnelRef extends MonitorFunnelRef {
+  status: FunnelStatus;
 }
 
 export interface MonitorSummaryView {
+  /** Все строки monitor_targets, включая списанные: размер таблицы, а не «сколько страниц у нас есть». */
   total: number;
   enabled: number;
   up: number;
@@ -46,8 +75,13 @@ export interface MonitorSummaryView {
 
 export interface MonitorSourceKindView {
   sourceKind: string;
+  /** Существующие страницы группы: активные + оставшиеся за неактивными воронками. Осиротевшие не считаются. */
   total: number;
   enabled: number;
+  /** Из `total` — сколько держат только архивные воронки. */
+  inactiveArchive: number;
+  /** Из `total` — сколько держат только черновики. */
+  inactiveDraft: number;
 }
 
 export interface MonitorEventView {
@@ -100,6 +134,21 @@ export function funnelsByTarget(db: AnyDB, targetIds?: number[]): Map<number, Mo
   return map;
 }
 
+/** Номер и статус воронки по id — одним запросом, для пометок «в архиве»/«в черновике». */
+function funnelRefsById(db: AnyDB): Map<number, MonitorInactiveFunnelRef> {
+  const rows = db
+    .select({ id: funnels.id, num: funnels.num, status: funnels.status })
+    .from(funnels)
+    .all() as { id: number; num: number; status: string }[];
+
+  const map = new Map<number, MonitorInactiveFunnelRef>();
+  for (const row of rows) {
+    if (!isFunnelStatus(row.status)) continue;
+    map.set(row.id, { id: row.id, num: row.num, status: row.status });
+  }
+  return map;
+}
+
 export function getMonitorDashboard(db: AnyDB): {
   summary: MonitorSummaryView;
   sourceKinds: MonitorSourceKindView[];
@@ -140,23 +189,42 @@ export function getMonitorDashboard(db: AnyDB): {
     }[];
 
   const links = funnelsByTarget(db);
+  // Погашенная цель бывает двух сортов, и различает их только сверка с данными
+  // воронок: URL, который ещё держит черновик или архив, и URL, которого нет
+  // уже нигде. Синк этого различия не хранит, поэтому считаем при чтении —
+  // неактивных воронок мало, и запрос дешёвый.
+  const inactiveUrls = collectFunnelUrls(db, INACTIVE_FUNNEL_STATUSES);
+  const funnelRefs =
+    inactiveUrls.size === 0 ? new Map<number, MonitorInactiveFunnelRef>() : funnelRefsById(db);
 
-  const targets: MonitorTargetView[] = rows.map((r) => ({
-    id: r.id,
-    url: r.url,
-    sourceKind: r.sourceKind,
-    enabled: r.enabled === 1,
-    manualOverride: r.manualOverride === 1,
-    status: isMonitorStatus(r.status) ? r.status : 'unknown',
-    httpStatus: r.httpStatus,
-    finalUrl: r.finalUrl ?? '',
-    error: r.error ?? '',
-    latencyMs: r.latencyMs,
-    checkedAt: r.checkedAt,
-    since: r.since,
-    consecutiveFailures: r.consecutiveFailures ?? 0,
-    funnels: links.get(r.id) ?? [],
-  }));
+  const targets: MonitorTargetView[] = rows.map((r) => {
+    const funnelLinks = links.get(r.id) ?? [];
+    const heldBy = funnelLinks.length > 0 ? [] : (inactiveUrls.get(r.url) ?? []);
+    const usage: MonitorTargetUsage =
+      funnelLinks.length > 0 ? 'active' : heldBy.length > 0 ? 'inactive' : 'orphan';
+
+    return {
+      id: r.id,
+      url: r.url,
+      sourceKind: r.sourceKind,
+      enabled: r.enabled === 1,
+      manualOverride: r.manualOverride === 1,
+      status: isMonitorStatus(r.status) ? r.status : 'unknown',
+      httpStatus: r.httpStatus,
+      finalUrl: r.finalUrl ?? '',
+      error: r.error ?? '',
+      latencyMs: r.latencyMs,
+      checkedAt: r.checkedAt,
+      since: r.since,
+      consecutiveFailures: r.consecutiveFailures ?? 0,
+      funnels: funnelLinks,
+      usage,
+      inactiveFunnels: heldBy
+        .map((id) => funnelRefs.get(id))
+        .filter((f): f is MonitorInactiveFunnelRef => f !== undefined)
+        .sort((a, b) => a.num - b.num),
+    };
+  });
 
   // Сначала то, что требует внимания; внутри статуса — по URL, чтобы порядок был стабильным.
   targets.sort((a, b) => {
@@ -178,10 +246,20 @@ export function getMonitorDashboard(db: AnyDB): {
   const kinds = new Map<string, MonitorSourceKindView>();
 
   for (const t of targets) {
-    const kind = kinds.get(t.sourceKind) ?? { sourceKind: t.sourceKind, total: 0, enabled: 0 };
-    kind.total += 1;
-    if (t.enabled) kind.enabled += 1;
-    kinds.set(t.sourceKind, kind);
+    if (t.usage !== 'orphan') {
+      const kind =
+        kinds.get(t.sourceKind) ??
+        { sourceKind: t.sourceKind, total: 0, enabled: 0, inactiveArchive: 0, inactiveDraft: 0 };
+      kind.total += 1;
+      if (t.enabled) kind.enabled += 1;
+      if (t.usage === 'inactive') {
+        // Архив главнее черновика: страница, которую держит архивная воронка,
+        // читается как «отработавшая», даже если её же держит черновик.
+        if (t.inactiveFunnels.some((f) => f.status === 'archive')) kind.inactiveArchive += 1;
+        else kind.inactiveDraft += 1;
+      }
+      kinds.set(t.sourceKind, kind);
+    }
 
     if (!t.enabled) continue;
     summary.enabled += 1;

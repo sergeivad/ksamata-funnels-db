@@ -64,7 +64,9 @@ interface Collected {
 }
 
 /**
- * Собирает пригодные для проверки URL — только из **активных** воронок.
+ * Собирает URL из данных воронок. По умолчанию — только из **активных**: именно
+ * этот набор синк держит под проверкой. Параметр `statuses` нужен дашборду,
+ * чтобы тем же способом собрать URL неактивных воронок (см. collectFunnelUrls).
  *
  * Черновик ещё не запущен, архив уже отработал: их страницы могут лежать на
  * законных основаниях, и падения по ним — шум, из-за которого перестают
@@ -75,7 +77,10 @@ interface Collected {
  * URL, который делят активная и архивная воронки, остаётся под проверкой, но
  * в связях (и в чипах «Воронки») числится только за активной.
  */
-function collectTargets(db: AnyDB): Map<string, Collected> {
+function collectTargets(
+  db: AnyDB,
+  statuses: readonly string[] = [MONITORED_FUNNEL_STATUS],
+): Map<string, Collected> {
   const out = new Map<string, Collected>();
 
   const add = (url: string, sourceKind: string, funnelId: number) => {
@@ -99,7 +104,7 @@ function collectTargets(db: AnyDB): Map<string, Collected> {
     .from(funnelBlockItems)
     .innerJoin(funnelBlocks, eq(funnelBlocks.id, funnelBlockItems.blockId))
     .innerJoin(funnels, eq(funnels.id, funnelBlocks.funnelId))
-    .where(eq(funnels.status, MONITORED_FUNNEL_STATUS))
+    .where(inArray(funnels.status, [...statuses]))
     .all() as { url: string; kind: string; funnelId: number }[];
 
   for (const row of items) {
@@ -110,7 +115,7 @@ function collectTargets(db: AnyDB): Map<string, Collected> {
   const funnelRows = db
     .select({ id: funnels.id, landingUrl: funnels.landingUrl })
     .from(funnels)
-    .where(eq(funnels.status, MONITORED_FUNNEL_STATUS))
+    .where(inArray(funnels.status, [...statuses]))
     .all() as { id: number; landingUrl: string | null }[];
 
   for (const row of funnelRows) {
@@ -119,6 +124,23 @@ function collectTargets(db: AnyDB): Map<string, Collected> {
     }
   }
 
+  return out;
+}
+
+/**
+ * URL, которые держат воронки перечисленных статусов: url → id воронок.
+ *
+ * Нужна дашборду, чтобы отличить два вида погашенных целей: URL, который ещё
+ * лежит в блоке неактивной воронки (архив/черновик — вернут в активные, и цель
+ * оживёт), от осиротевшего, который не держит уже никто. Нормализация та же, что
+ * у синка, — иначе два места считали бы «тот же URL» по-разному.
+ */
+export function collectFunnelUrls(db: AnyDB, statuses: readonly string[]): Map<string, number[]> {
+  const out = new Map<string, number[]>();
+  if (statuses.length === 0) return out;
+  for (const item of collectTargets(db, statuses).values()) {
+    out.set(item.url, [...item.funnelIds]);
+  }
   return out;
 }
 

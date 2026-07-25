@@ -31,6 +31,31 @@ afterEach(() => {
   fs.rmSync(tmp, { force: true });
 });
 
+/** Первая активная воронка фикстуры — «хозяйка» рабочих целей. */
+function activeFunnel(): { id: number; num: number } {
+  return sqlite
+    .prepare(`SELECT id, num FROM funnels WHERE status = 'active' ORDER BY id LIMIT 1`)
+    .get() as { id: number; num: number };
+}
+
+function linkToFunnel(targetId: number, funnelId: number) {
+  sqlite
+    .prepare(`INSERT INTO monitor_target_funnels (target_id, funnel_id) VALUES (?, ?)`)
+    .run(targetId, funnelId);
+}
+
+/**
+ * Делает воронку неактивной и вешает на неё URL через landing_url — так проще,
+ * чем через блок: у воронок фикстуры блок `landings` уже занят.
+ */
+function holdUrlByFunnel(status: 'draft' | 'archive', url: string): { id: number; num: number } {
+  const f = sqlite
+    .prepare(`SELECT id, num FROM funnels ORDER BY id DESC LIMIT 1 OFFSET ?`)
+    .get(status === 'draft' ? 0 : 1) as { id: number; num: number };
+  sqlite.prepare(`UPDATE funnels SET status = ?, landing_url = ? WHERE id = ?`).run(status, url, f.id);
+  return f;
+}
+
 function makeTarget(url: string, enabled: number, status: string, checkedAt: string | null) {
   const id = sqlite
     .prepare(`INSERT INTO monitor_targets (url, source_kind, enabled) VALUES (?, 'landings', ?)`)
@@ -40,6 +65,76 @@ function makeTarget(url: string, enabled: number, status: string, checkedAt: str
     .run(id, status, checkedAt);
   return id;
 }
+
+/**
+ * Погашенная цель бывает двух сортов, и группа считает их по-разному:
+ * URL за неактивной воронкой остаётся в знаменателе (вернут воронку — оживёт),
+ * осиротевший не считается вовсе, иначе «41 из 45» вечно намекало бы на четыре
+ * недоступные страницы, которых давно нет в данных.
+ */
+describe('getMonitorDashboard · кто держит цель', () => {
+  it('цель активной воронки — usage active и считается в группе', () => {
+    const id = makeTarget('https://live.example.ru/', 1, 'up', '2026-07-24 10:00:00');
+    const f = activeFunnel();
+    linkToFunnel(id, f.id);
+
+    const { targets, sourceKinds } = getMonitorDashboard(db);
+    const row = targets.find((t) => t.url === 'https://live.example.ru/')!;
+    expect(row.usage).toBe('active');
+    expect(row.inactiveFunnels).toEqual([]);
+    const kind = sourceKinds.find((s) => s.sourceKind === 'landings')!;
+    expect(kind.total).toBe(1);
+    expect(kind.enabled).toBe(1);
+    expect(kind.inactiveArchive).toBe(0);
+  });
+
+  it('URL за архивной воронкой остаётся в знаменателе с пометкой', () => {
+    const url = 'https://archived.example.ru/';
+    const f = holdUrlByFunnel('archive', url);
+    makeTarget(url, 0, 'up', '2026-07-24 10:00:00');
+
+    const { targets, sourceKinds } = getMonitorDashboard(db);
+    const row = targets.find((t) => t.url === url)!;
+    expect(row.usage).toBe('inactive');
+    expect(row.inactiveFunnels).toEqual([{ id: f.id, num: f.num, status: 'archive' }]);
+
+    const kind = sourceKinds.find((s) => s.sourceKind === 'landings')!;
+    expect(kind.total).toBe(1);
+    expect(kind.enabled).toBe(0);
+    expect(kind.inactiveArchive).toBe(1);
+    expect(kind.inactiveDraft).toBe(0);
+  });
+
+  it('URL за черновиком считается отдельно от архива', () => {
+    const url = 'https://drafted.example.ru/';
+    holdUrlByFunnel('draft', url);
+    makeTarget(url, 0, 'unknown', null);
+
+    const kind = getMonitorDashboard(db).sourceKinds.find((s) => s.sourceKind === 'landings')!;
+    expect(kind.inactiveDraft).toBe(1);
+    expect(kind.inactiveArchive).toBe(0);
+  });
+
+  it('осиротевший URL не считается в группе, но из списка не исчезает', () => {
+    makeTarget('https://gone.example.ru/', 0, 'down', '2026-07-24 10:00:00');
+
+    const { targets, sourceKinds } = getMonitorDashboard(db);
+    const row = targets.find((t) => t.url === 'https://gone.example.ru/')!;
+    expect(row.usage).toBe('orphan');
+    expect(sourceKinds.find((s) => s.sourceKind === 'landings')).toBeUndefined();
+  });
+
+  it('осиротевшие не раздувают знаменатель работающей группы', () => {
+    const liveId = makeTarget('https://live.example.ru/', 1, 'up', null);
+    linkToFunnel(liveId, activeFunnel().id);
+    makeTarget('https://ghost1.example.ru/', 0, 'down', null);
+    makeTarget('https://ghost2.example.ru/', 0, 'down', null);
+
+    const kind = getMonitorDashboard(db).sourceKinds.find((s) => s.sourceKind === 'landings')!;
+    expect(kind.enabled).toBe(1);
+    expect(kind.total).toBe(1);
+  });
+});
 
 describe('getMonitorDashboard', () => {
   it('считает сводку только по включённым целям', () => {
@@ -89,9 +184,11 @@ describe('getMonitorDashboard', () => {
 
   it('считает цели по видам источников', () => {
     makeTarget('https://a.ru/', 1, 'up', null);
-    sqlite
+    const linksId = sqlite
       .prepare(`INSERT INTO monitor_targets (url, source_kind, enabled) VALUES ('https://g.ru/', 'links', 0)`)
-      .run();
+      .run().lastInsertRowid as number;
+    // Цель должна кем-то использоваться, иначе она осиротевшая и в счёт не идёт.
+    linkToFunnel(linksId, activeFunnel().id);
 
     const { sourceKinds } = getMonitorDashboard(db);
     const links = sourceKinds.find((s) => s.sourceKind === 'links')!;

@@ -139,7 +139,13 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 - `monitor-kinds.ts` — Russian labels for source kinds (reuses `BLOCK_KINDS` titles).
 - `monitor-check.ts` — pure HTTP availability check (`checkUrl`).
 - `monitor-run.ts` — check cycle, state persistence, event log.
-- `monitor-view.ts` — dashboard read models.
+- `monitor-view.ts` — dashboard read models. Classifies every target by who holds
+  its URL (`usage`): `active` (an active funnel), `inactive` (only a draft/archive
+  funnel — stays in the group count with an "N в архиве" note, revives on its own)
+  or `orphan` (nobody — kept for incident history, **excluded** from the group
+  counts, so "41 из 45" never again implies four broken pages that no longer
+  exist). `inactive`/`orphan` are told apart by re-collecting funnel URLs for
+  non-active statuses via `collectFunnelUrls`, not from a stored column.
 - `monitor-scheduler.ts` — env config + `setInterval` (started by `src/instrumentation.ts`).
 
 ## API routes (`app/src/app/api/`)
