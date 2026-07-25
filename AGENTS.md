@@ -29,11 +29,15 @@ These are not style preferences — each one caused a real defect in this repo.
 
 - **Restore the database after any live run.** Starting the dev server runs the
   monitoring scheduler, which writes ~600 rows into the tracked
-  `ksamata_funnels.db`. Tests copy that file and assert absolute counts, so a
-  polluted fixture makes unrelated tests fail. Checkpoint WAL, `git checkout --`
-  the file, drop the sidecars, and confirm `monitor_targets` is back to 0. If
-  counts start failing, suspect the fixture before the tests — do not "fix" them
-  by clearing tables inside the test file.
+  `ksamata_funnels.db` — rows that have no business in a commit, and that the
+  Docker seed refresh would carry into production. Checkpoint WAL,
+  `git checkout --` the file, drop the sidecars, and confirm `monitor_targets` is
+  back to 0. Better: set `MONITOR_ENABLED=false` in `app/.env.local`, or point
+  `FUNNELS_DB_PATH` at a scratch copy, so the run never touches the tracked file.
+  (Monitoring tests no longer break on a polluted fixture — they wipe the
+  `monitor_*` tables of their own temp copy via `tests/helpers/monitoring.ts`.
+  That applies to monitoring's own tables only: funnel data in the copy is
+  fixture input and must be left alone.)
 - **Process-wide state goes on `globalThis`.** A module-level `let` is not a
   singleton in the production bundle: webpack emits separate module copies for
   the instrumentation graph and the API-route graph. Unit tests cannot catch

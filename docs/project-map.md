@@ -22,12 +22,12 @@ File-level map of the repo. For architecture and conventions see
   tag-templates, refs, export, monitoring).
 - `src/db/schema.ts` - Drizzle table definitions.
 - `src/db/client.ts` - DB path resolution (`FUNNELS_DB_PATH` / repo-root default).
-- `src/lib/` - domain helpers: funnels, refs, days, blocks (+ block-fill),
-  the three-layer tags system (`ab-tags`, `tag-templates`, `tag-overrides`),
-  status, rooms-grid, funnel-compact, export, validation, plus http/errors and
-  client hooks; monitoring (`monitor-status`, `monitor-urls`,
-  `monitor-targets`, `monitor-check`, `monitor-run`, `monitor-view`,
-  `monitor-scheduler`). See CLAUDE.md for the full module list.
+- `src/lib/` - domain helpers: funnels, refs, days, blocks (+ block-fill,
+  url-field), the three-layer tags system (`ab-tags`, `tag-templates`,
+  `tag-overrides`), status, rooms-grid, funnel-compact, export, validation, plus
+  http/errors and client hooks; monitoring (`monitor-status`, `monitor-urls`,
+  `monitor-kinds`, `monitor-targets`, `monitor-check`, `monitor-run`,
+  `monitor-view`, `monitor-scheduler`). See CLAUDE.md for the full module list.
 - `src/instrumentation.ts` - Next server-start hook; starts the monitoring
   scheduler on the Node runtime.
 - `src/components/` - client UI components and primitives, including
@@ -39,7 +39,9 @@ File-level map of the repo. For architecture and conventions see
   by `middleware.ts` (see CLAUDE.md Deployment section).
 - `scripts/` - phased migrations (Phase 2–6), data backfills, and seed/runners
   used by tests and Docker.
-- `tests/` - Vitest suite (routes, lib, migrations, middleware).
+- `tests/` - Vitest suite (routes, lib, migrations, middleware);
+  `tests/helpers/` holds fixtures shared between suites (e.g. `monitoring.ts`,
+  which wipes the copied DB's `monitor_*` tables before each test).
 - `seed/` - seed database baked into the production Docker image.
 - `Dockerfile` / `Dockerfile.dev` / `docker-entrypoint.sh` - prod image, dev
   image, and prod seed+migration entrypoint.

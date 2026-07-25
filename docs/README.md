@@ -21,7 +21,7 @@ active backlog below, plus Basic Memory.
 
 | File | Topic | Status |
 |---|---|---|
-| [plans/2026-07-18-ux-improvements-backlog.md](plans/2026-07-18-ux-improvements-backlog.md) | Admin UX-review backlog (P1/P2/P3 + tech debt) | **Active** — most items done; ~10 open (data-quality checks, DRY refactors, N+1 in `listFunnels`, legacy schema columns) |
+| [plans/2026-07-18-ux-improvements-backlog.md](plans/2026-07-18-ux-improvements-backlog.md) | Admin UX-review backlog (P1/P2/P3 + tech debt) | **Active** — most items done; ~10 open (DRY refactors, N+1 in `listFunnels`, legacy schema columns, retiring old monitor targets). URL-field hygiene and the monitoring group counters shipped 2026-07-25 |
 
 ## Shipped — historical record
 
@@ -38,3 +38,4 @@ All features below are merged. Specs and plans are kept for context.
 | AV-taxonomy tags (7-axis) | [av-taxonomy-design](superpowers/specs/2026-06-03-av-taxonomy-tags-design.md) | — (data commits) |
 | Repo cleanup | [cleanup-design](plans/2026-07-07-project-cleanup-design.md) | [cleanup](plans/2026-07-07-project-cleanup.md) |
 | Landing-availability monitoring | [landing-monitoring-design](superpowers/specs/2026-07-24-landing-monitoring-design.md) | [landing-monitoring](superpowers/plans/2026-07-24-landing-monitoring.md) |
+| Monitoring: per-group on/off decisions (`monitor_source_kind_prefs`) | — | [monitoring-source-kind-prefs](plans/2026-07-24-monitoring-source-kind-prefs.md) |

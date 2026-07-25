@@ -135,8 +135,15 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   Only funnels with `status = 'active'` are collected (`MONITORED_FUNNEL_STATUS`);
   drafts and archive are out of scope, and a URL left behind by a funnel leaving
   `active` goes through the normal retirement path (muted, unlinked, history kept,
-  auto-revived when the funnel comes back).
-- `monitor-kinds.ts` — Russian labels for source kinds (reuses `BLOCK_KINDS` titles).
+  auto-revived when the funnel comes back). Exports `collectFunnelUrls` so the
+  dashboard can collect URLs of **non**-active funnels through the very same
+  normalization.
+- `monitor-kinds.ts` — Russian labels for source kinds (reuses `BLOCK_KINDS`
+  titles) + `sourceKindTone`, which decides how a group chip reads: any group
+  with at least one checked target is orange (`on`/`partial`), only a fully
+  disabled one is grey. `partial` differs from `on` in wording and
+  `aria-pressed="mixed"`, not in colour — a partially enabled group must not
+  look switched off.
 - `monitor-check.ts` — pure HTTP availability check (`checkUrl`).
 - `monitor-run.ts` — check cycle, state persistence, event log.
 - `monitor-view.ts` — dashboard read models. Group counters (`sourceKinds`) count
