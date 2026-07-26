@@ -13,6 +13,7 @@ Navigation for this repo's documentation and planning notes.
 - `docs/superpowers/` — the spec-then-plan workflow. Each feature has a design
   **spec** and an implementation **plan** (usually a pair).
 - `docs/plans/` — Codex-authored cleanup and backlog notes.
+- `docs/reviews/` — dated service-wide review reports (findings + action plan).
 
 Planning docs are a **historical record**. The live source of TODOs is the one
 active backlog below, plus Basic Memory.
@@ -22,6 +23,7 @@ active backlog below, plus Basic Memory.
 | File | Topic | Status |
 |---|---|---|
 | [plans/2026-07-18-ux-improvements-backlog.md](plans/2026-07-18-ux-improvements-backlog.md) | Admin UX-review backlog (P1/P2/P3 + tech debt) | **Active** — most items done; ~10 open (DRY refactors, N+1 in `listFunnels`, legacy schema columns, retiring old monitor targets). URL-field hygiene and the monitoring group counters shipped 2026-07-25 |
+| [reviews/2026-07-26-service-review.md](reviews/2026-07-26-service-review.md) | Service-wide review: 7 dimensions, 48 verified findings + 4-wave action plan | **Active** — nothing fixed yet. Wave 1 is a Dokploy config change (`ADMIN_AUTH_DISABLED`); wave 2 is silent data loss (day deletion in rooms, PATCH tags, `ksamata_funnels_db.py` deleting the live DB, monitoring retirement vs `manual_override`) |
 
 ## Shipped — historical record
 
