@@ -136,7 +136,11 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   Only funnels with `status = 'active'` are collected (`MONITORED_FUNNEL_STATUS`);
   drafts and archive are out of scope, and a URL left behind by a funnel leaving
   `active` goes through the normal retirement path (muted, unlinked, history kept,
-  auto-revived when the funnel comes back). Exports `collectFunnelUrls` so the
+  auto-revived when the funnel comes back) — **unless** `manual_override = 1`,
+  in which case retirement unlinks it but leaves `enabled` alone, same as the
+  live branch. Muting an overridden target would strand it: the override stays
+  set, so the live branch would then refuse to recompute `enabled` and the
+  returning URL would never come back on. Exports `collectFunnelUrls` so the
   dashboard can collect URLs of **non**-active funnels through the very same
   normalization.
 - `monitor-kinds.ts` — Russian labels for source kinds (reuses `BLOCK_KINDS`
@@ -166,9 +170,12 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 - `GET/PATCH/DELETE /api/funnels/[id]` — detail / update (incl. status/archive
   and rooms toggles) / delete.
 - `POST /api/funnels/[id]/duplicate` — duplicate.
-- `GET/PUT /api/funnels/[id]/days` — read/replace days.
+- `GET/PUT /api/funnels/[id]/days` — read/replace days. A true replace within the
+  funnel: a day absent from the payload is deleted, so callers send the whole grid.
 - `GET/PUT /api/funnels/[id]/blocks/[kind]` — read/replace one block kind.
-- `PATCH /api/funnels/[id]/tags` — apply per-funnel tag overrides.
+- `PATCH /api/funnels/[id]/tags` — apply per-funnel tag overrides. Genuinely
+  partial: a scenario the body omits keeps its stored overrides; clear one by
+  naming it with empty `add`/`remove`.
 - `GET/POST /api/refs/[kind]` and `PATCH/DELETE /api/refs/[kind]/[id]` — refs CRUD.
 - `GET /api/tag-templates` and `PUT /api/tag-templates/[scenario]` — global template.
 - `GET /api/export` — CSV export of all funnels.
@@ -328,9 +335,12 @@ Env vars: `FUNNELS_DB_PATH`, `ADMIN_BASIC_AUTH`, `ADMIN_AUTH_DISABLED`,
 Python scripts resolve paths from the **repo root** (via their own file
 location), so they run from any working directory.
 
-- **Import** (`tools/data-import/`): `ksamata_funnels_db.py` (full build from
-  Excel), `add_av_tags.py`, `add_durations.py`, `add_dih_funnel.py`,
-  `add_pereliv_funnels.py`, `add_quiz_funnels.py`. All idempotent.
+- **Import** (`tools/data-import/`): `add_av_tags.py`, `add_durations.py`,
+  `add_dih_funnel.py`, `add_pereliv_funnels.py`, `add_quiz_funnels.py` — all
+  idempotent. `ksamata_funnels_db.py` is **not**: it rebuilds the whole DB from
+  Excel and therefore deletes the existing file, wiping everything edited through
+  the admin UI. It refuses to run when the DB exists unless given `--force`.
+  Tests: `python3 -m pytest tools/data-import/tests`.
 - **Export** (`tools/data-export/`): `ksamata_funnels_export.py` → summary XLSX
   in `data/generated/`.
 - **Audit** (`tools/audit/`): `run_audit.py` builds a tag drift map across

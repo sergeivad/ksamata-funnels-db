@@ -302,6 +302,57 @@ describe('manual_override: ручной тумблер против авто-р�
     expect(targetRow(url)?.enabled).toBe(0);
   });
 
+  /** Ссылка в блоке links: группа по умолчанию выключена, так что тумблер на ней = override. */
+  function setLinksUrl(funnelId: number, url: string) {
+    sqlite.prepare(`DELETE FROM funnel_block_items WHERE block_id IN (SELECT id FROM funnel_blocks WHERE funnel_id = ? AND kind = 'links')`).run(funnelId);
+    sqlite.prepare(`DELETE FROM funnel_blocks WHERE funnel_id = ? AND kind = 'links'`).run(funnelId);
+    if (!url) return;
+    const blockId = sqlite
+      .prepare(`INSERT INTO funnel_blocks (funnel_id, kind, enabled) VALUES (?, 'links', 1)`)
+      .run(funnelId).lastInsertRowid as number;
+    sqlite.prepare(`INSERT INTO funnel_block_items (block_id, url) VALUES (?, ?)`).run(blockId, url);
+  }
+
+  it('не гасит цель, которую человек включил вопреки дефолту группы', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    const url = 'https://gc.example.ru/pinned';
+
+    setLinksUrl(f1, url);
+    syncMonitorTargets(db);
+    const target = targetRow(url)!;
+    expect(target.enabled).toBe(0); // группа links выключена по умолчанию
+
+    setTargetEnabled(db, target.id, true);
+    expect(targetRow(url)?.manual_override).toBe(1);
+
+    // URL пропал из данных воронки — цель осиротела.
+    setLinksUrl(f1, '');
+    syncMonitorTargets(db);
+
+    expect(targetRow(url)?.enabled).toBe(1);
+  });
+
+  it('возвращает под проверку ручную цель, чей URL пропадал и вернулся', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    const url = 'https://gc.example.ru/pinned-roundtrip';
+
+    setLinksUrl(f1, url);
+    syncMonitorTargets(db);
+    setTargetEnabled(db, targetRow(url)!.id, true);
+
+    setLinksUrl(f1, '');
+    syncMonitorTargets(db);
+    setLinksUrl(f1, url);
+    syncMonitorTargets(db);
+
+    expect(targetRow(url)?.enabled).toBe(1);
+    expect(targetRow(url)?.manual_override).toBe(1);
+  });
+
   it('оставляет включённой группу не-лендов, включённую человеком', () => {
     clearMonitoringState();
     wipeFunnelUrls();

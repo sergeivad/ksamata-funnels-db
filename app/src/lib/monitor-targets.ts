@@ -212,24 +212,35 @@ export function syncMonitorTargets(db: AnyDB): { total: number; created: number;
     }
 
     const liveUrls = [...collected.keys()];
+    const cols = { id: monitorTargets.id, manualOverride: monitorTargets.manualOverride };
     const stale = (
       liveUrls.length === 0
-        ? tx.select({ id: monitorTargets.id }).from(monitorTargets).all()
+        ? tx.select(cols).from(monitorTargets).all()
         : tx
-            .select({ id: monitorTargets.id })
+            .select(cols)
             .from(monitorTargets)
             .where(notInArray(monitorTargets.url, liveUrls))
             .all()
-    ) as { id: number }[];
+    ) as { id: number; manualOverride: number }[];
 
     if (stale.length > 0) {
       const ids = stale.map((s) => s.id);
-      tx.update(monitorTargets)
-        .set({ enabled: 0, updatedAt: sql`(datetime('now'))` })
-        .where(inArray(monitorTargets.id, ids))
-        .run();
+      // Ручной тумблер неприкосновенен и здесь, ровно как в ветке выше. Иначе
+      // цель, включённую человеком вопреки дефолту группы, гасило бы первым же
+      // исчезновением URL, а override оставался бы стоять — и живая ветка потом
+      // отказывалась бы пересчитать enabled обратно. Вернувшийся URL оставался
+      // бы выключенным навсегда, то есть решение человека терялось молча.
+      const mutable = stale.filter((s) => s.manualOverride === 0).map((s) => s.id);
+      if (mutable.length > 0) {
+        tx.update(monitorTargets)
+          .set({ enabled: 0, updatedAt: sql`(datetime('now'))` })
+          .where(inArray(monitorTargets.id, mutable))
+          .run();
+      }
+      // Связи с воронками снимаем у всех осиротевших целей: их действительно
+      // больше никто не использует, независимо от тумблера.
       tx.delete(monitorTargetFunnels).where(inArray(monitorTargetFunnels.targetId, ids)).run();
-      retired = ids.length;
+      retired = mutable.length;
     }
   });
 
