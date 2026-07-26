@@ -4,10 +4,21 @@ set -e
 # Seed the persistent volume on first run.
 # If FUNNELS_DB_PATH is set and the file does not yet exist,
 # copy the baked-in seed database to that location.
+#
+# Copy to a temp file and rename, never straight onto the target: a container
+# killed mid-cp would leave a truncated file that still satisfies `[ ! -f ]` on
+# the next start, so seeding would be skipped and every migration would run
+# against a corrupt database. Rename within one directory is atomic, so the
+# target either does not exist yet or is a complete DB.
 if [ -n "$FUNNELS_DB_PATH" ] && [ ! -f "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] $FUNNELS_DB_PATH not found — seeding from /app/seed/ksamata_funnels.db"
   mkdir -p "$(dirname "$FUNNELS_DB_PATH")"
-  cp /app/seed/ksamata_funnels.db "$FUNNELS_DB_PATH"
+  seed_tmp="$FUNNELS_DB_PATH.seed.$$"
+  rm -f "$FUNNELS_DB_PATH".seed.*   # остатки прерванных попыток
+  trap 'rm -f "$seed_tmp"' EXIT INT TERM
+  cp /app/seed/ksamata_funnels.db "$seed_tmp"
+  mv "$seed_tmp" "$FUNNELS_DB_PATH"
+  trap - EXIT INT TERM
   echo "[entrypoint] Seed complete."
 fi
 

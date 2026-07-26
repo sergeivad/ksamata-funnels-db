@@ -94,6 +94,37 @@ describe('PUT /api/tag-templates/[scenario]', () => {
     expect(body.issues).toBeDefined();
   });
 
+  it('откатывает шаблон, если resync упал — полусохранённое состояние хуже отказа', async () => {
+    const regNames = () =>
+      (sqlite
+        .prepare(`SELECT name FROM tag_templates WHERE scenario = 'reg' ORDER BY position`)
+        .all() as { name: string }[]).map((r) => r.name);
+    const before = regNames();
+    expect(before.length).toBeGreaterThan(0);
+
+    vi.resetModules();
+    vi.doMock('@/db/client', () => ({ db }));
+    vi.doMock('@/lib/funnels', async () => {
+      const actual = await vi.importActual<typeof import('../src/lib/funnels')>('@/lib/funnels');
+      return {
+        ...actual,
+        resyncAllFunnels: () => {
+          throw new Error('resync упал');
+        },
+      };
+    });
+    const failingPUT = (await import('../src/app/api/tag-templates/[scenario]/route')).PUT;
+
+    const res = await failingPUT(jsonReq('PUT', { names: ['совсем', 'другое'] }), params('reg'));
+
+    // Мок снимаем здесь же: doMock живёт до конца файла и иначе подменил бы
+    // resyncAllFunnels и в следующих тестах.
+    vi.doUnmock('@/lib/funnels');
+
+    expect(res.status).toBe(500);
+    expect(regNames()).toEqual(before);
+  });
+
   it('resyncs funnels: overrides survive, defaults from the new template propagate', async () => {
     const funnelId = (sqlite.prepare('SELECT id FROM funnels LIMIT 1').get() as { id: number }).id;
     replaceOverrides(db, funnelId, {

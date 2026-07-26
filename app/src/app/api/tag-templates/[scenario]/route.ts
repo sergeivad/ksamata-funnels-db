@@ -30,8 +30,14 @@ export async function PUT(req: NextRequest, { params }: Params) {
   }
 
   try {
-    replaceTemplateScenario(db, scenario as Scenario, parsed.data.names);
-    resyncAllFunnels(db); // propagate the new defaults to every funnel (overrides preserved)
+    // Both in one transaction: the template alone is not a valid state. If the
+    // resync fails midway, a committed template would leave every funnel's
+    // materialized tags describing the previous one, with nothing to show that
+    // they disagree — and the next edit would silently build on the mismatch.
+    db.transaction((tx) => {
+      replaceTemplateScenario(tx, scenario as Scenario, parsed.data.names);
+      resyncAllFunnels(tx); // propagate the new defaults to every funnel (overrides preserved)
+    });
     return NextResponse.json({ ok: true, names: parsed.data.names });
   } catch (err: unknown) {
     return internalError('PUT /api/tag-templates/[scenario]', err);
