@@ -162,6 +162,27 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   hop through `resolveRedirectTarget`; a refused hop reports a generic error and
   never echoes the destination back to the dashboard. One `AbortSignal.timeout`
   covers the whole chain, so N hops cannot stretch into N timeouts.
+  **Before every connection — including each redirect hop — the hostname is
+  resolved and every returned address checked** (`lookupImpl`, default
+  `resolveHostAddresses`). A hostname is a promise, not an address:
+  `10.0.0.5.nip.io` passes `normalizeUrl` (dotted name, no literal) and lands in
+  the private network, so the literal filter alone is not a defence. A refused
+  host reports the same generic "внутренняя сеть" error — never the IP.
+  `dns.lookup` ignores `AbortSignal`, so the lookup gets its own budget equal to
+  `timeoutMs`; without it a hung resolver would hold a cycle worker for as long
+  as the system `getaddrinfo` felt like. Residual risk, accepted knowingly: the
+  connection re-resolves, so an attacker controlling DNS with a very short TTL
+  could still rebind between check and connect. Closing that needs pinning the
+  connection to the vetted IP (a custom `undici` dispatcher, a new dependency).
+- `monitor-dns.ts` — pure address classifier (`isPrivateAddress`) + the
+  `LookupFn` type. Fails closed: an address it cannot parse counts as private.
+  Understands IPv4 embedded in IPv6 (`::ffff:127.0.0.1`, NAT64, 6to4), because
+  the wrapper form is exactly how a loopback address sneaks past a naive check.
+  No network here — that is why it is testable and stays in the edge bundle.
+- `monitor-resolver.ts` — the real `node:dns` lookup, alone in its own file.
+  It is the second Node-only leaf after `db/client.ts`, and `next.config.ts`
+  aliases it away for the edge build (see below). Keep it that way: put
+  anything checkable-without-network in `monitor-dns.ts` instead.
 - `monitor-run.ts` — check cycle, state persistence, event log.
 - `monitor-view.ts` — dashboard read models. Group counters (`sourceKinds`) count
   **only pages of active funnels**: archiving a funnel is itself the decision that
@@ -331,8 +352,13 @@ Full notes: [app/DEPLOY.md](app/DEPLOY.md).
   `src/instrumentation.ts` with the Edge compiler, and webpack statically
   resolves its dynamic `import('./lib/monitor-scheduler')` into
   `src/db/client.ts` (`fs`/`path`/`better-sqlite3`), which fails the Edge
-  build. The config aliases that one file's absolute path to `false` for the
-  Edge bundle only. Read the comment there before touching it.
+  build. The config aliases that file's absolute path to `false` for the
+  Edge bundle only — plus `src/lib/monitor-resolver.ts`, reached by the same
+  chain and Node-only for the same reason (`node:dns`). Read the comment there
+  before touching it. **Adding a Node-only import anywhere under
+  `monitor-*.ts` will break `npm run build` even though tests and `tsc` stay
+  green** — isolate it in its own leaf file and alias that, rather than
+  widening the alias to a whole subtree.
 
 `docker-compose.yml` at the repo root is a **dev** stack (`app/Dockerfile.dev`,
 hot-reload, auth off) that bind-mounts the real repo DB at `/data`. It does
