@@ -7,6 +7,15 @@ import { syncMonitorTargets } from './monitor-targets';
 export const RETRY_DELAY_MS = 3_000;
 export const CONCURRENCY = 8;
 
+/**
+ * Сколько держим историю смен статуса. `monitor_events` пишется только на
+ * ПЕРЕХОД, но «мигающая» цель даёт под две сотни строк в сутки, а целей около
+ * шестисот — без границы таблица не перестанет расти никогда. Квартала хватает,
+ * чтобы разобрать «когда этот ленд начал падать»; всё, что старше, не читает
+ * никто. Индекс по `at` уже есть, удаление дешёвое.
+ */
+export const EVENT_RETENTION_DAYS = 90;
+
 export interface CycleResult {
   checked: number;
   up: number;
@@ -72,6 +81,19 @@ async function checkWithRetry(
   if (first.status !== 'down') return first;
   await sleep(retryDelayMs);
   return check(url);
+}
+
+/**
+ * Чистим историю по завершении цикла, а не по таймеру: цикл — единственный
+ * писатель этой таблицы, и в проде он и так идёт каждые 15 минут. Отдельный
+ * планировщик уборки ради этого заводить незачем.
+ */
+export function pruneEvents(db: AnyDB, retentionDays = EVENT_RETENTION_DAYS): number {
+  const res = db
+    .delete(monitorEvents)
+    .where(sql`${monitorEvents.at} < datetime('now', ${'-' + retentionDays + ' days'})`)
+    .run();
+  return Number((res as { changes?: number }).changes ?? 0);
 }
 
 function persist(db: AnyDB, target: TargetRow, result: CheckResult): void {
@@ -184,6 +206,8 @@ export async function runMonitorCycle(
     await Promise.all(
       Array.from({ length: Math.min(concurrency, Math.max(targets.length, 1)) }, worker)
     );
+
+    pruneEvents(db);
 
     return {
       checked,

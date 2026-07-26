@@ -27,20 +27,32 @@ const startDateSchema = z
     { message: "startDate must be '' or a valid YYYY-MM-DD date" }
   );
 
-// Either '' or a valid URL
+/**
+ * Верхняя граница длины URL. Не 2000, как обычно берут по мотивам старого IE:
+ * в живой базе лежит настоящая ссылка на сегмент GetCourse длиной 2019
+ * символов, и такой лимит отверг бы рабочие данные. 4096 оставляет запас,
+ * оставаясь границей.
+ */
+export const URL_MAX = 4096;
+
+// Либо '' , либо http(s)-адрес разумной длины.
 const landingUrlSchema = z
   .string()
+  .max(URL_MAX)
   .refine(
     (v) => {
       if (v === '') return true;
       try {
-        new URL(v);
-        return true;
+        // new URL() радостно принимает javascript:, data: и file: — для поля
+        // посадочной страницы это не адрес, а способ подсунуть ссылку, по
+        // которой потом кто-то кликнет из админки.
+        const parsed = new URL(v);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
       } catch {
         return false;
       }
     },
-    { message: "landingUrl must be '' or a valid URL" }
+    { message: "landingUrl must be '' or an http(s) URL" }
   );
 
 // Shared cap for reference-name fields (product/contractor/channel/direction/

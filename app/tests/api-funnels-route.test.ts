@@ -17,6 +17,7 @@ import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import * as schema from '../src/db/schema';
+import { copyDbForTest } from './helpers/db';
 
 const REAL_DB = path.resolve(process.cwd(), '..', 'ksamata_funnels.db');
 let tmp: string;
@@ -37,7 +38,7 @@ let draftPOST: typeof import('../src/app/api/funnels/draft/route').POST;
 
 beforeEach(async () => {
   tmp = path.join(os.tmpdir(), `fr-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
-  fs.copyFileSync(REAL_DB, tmp);
+  copyDbForTest(REAL_DB, tmp);
   sqlite = new Database(tmp);
   runMigratePhase3(sqlite);
   runMigrateMessengerTagType(sqlite);

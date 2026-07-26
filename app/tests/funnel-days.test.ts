@@ -6,6 +6,7 @@ import os from 'os';
 import path from 'path';
 import { listDays, replaceDays, type DayCell } from '../src/lib/funnel-days';
 import * as schema from '../src/db/schema';
+import { copyDbForTest } from './helpers/db';
 
 const REAL_DB = path.resolve(process.cwd(), '..', 'ksamata_funnels.db');
 let tmp: string;
@@ -15,7 +16,7 @@ let funnelId: number;
 
 beforeEach(() => {
   tmp = path.join(os.tmpdir(), `fd-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
-  fs.copyFileSync(REAL_DB, tmp);
+  copyDbForTest(REAL_DB, tmp);
   sqlite = new Database(tmp);
   db = drizzle(sqlite, { schema });
   funnelId = (sqlite.prepare('SELECT id FROM funnels LIMIT 1').get() as { id: number }).id;

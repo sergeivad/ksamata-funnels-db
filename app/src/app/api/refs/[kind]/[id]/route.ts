@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/db/client';
-import { isValidKind, VALID_KINDS, renameRef, deleteRef } from '@/lib/refs';
+import {
+  isValidKind,
+  isImmutableKind,
+  IMMUTABLE_KIND_MESSAGE,
+  VALID_KINDS,
+  renameRef,
+  deleteRef,
+} from '@/lib/refs';
 import { REF_MAX, parseRouteId } from '@/lib/validation';
 import { internalError } from '@/lib/http';
 
@@ -28,11 +35,8 @@ function parseId(id: string): number | null {
  * automatically by renameRef/deleteRef on those kinds instead.
  */
 function guardMutableKind(kind: string): NextResponse | null {
-  if (kind === 'tags') {
-    return NextResponse.json(
-      { error: 'Справочник тегов нельзя изменять: АВ-теги управляются автоматически' },
-      { status: 400 }
-    );
+  if (isImmutableKind(kind)) {
+    return NextResponse.json({ error: IMMUTABLE_KIND_MESSAGE }, { status: 400 });
   }
   return null;
 }

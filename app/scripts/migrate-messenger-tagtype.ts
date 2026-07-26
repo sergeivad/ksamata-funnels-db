@@ -49,7 +49,9 @@ export function runMigrateMessengerTagType(sqlite: import('better-sqlite3').Data
 if (require.main === module) {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const Database = require('better-sqlite3');
-  const dbPath = process.env.FUNNELS_DB_PATH ?? '../ksamata_funnels.db';
+  // Путь резолвится от расположения скрипта, а не от cwd (см. cli-db-path.ts).
+  const { resolveCliDbPath } = require('./cli-db-path') as typeof import('./cli-db-path');
+  const dbPath = resolveCliDbPath();
   const sqlite = new Database(dbPath);
   console.log(`Messenger tag_type migration on: ${dbPath}`);
   runMigrateMessengerTagType(sqlite);

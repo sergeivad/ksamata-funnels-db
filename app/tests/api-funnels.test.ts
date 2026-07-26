@@ -20,6 +20,7 @@ import {
   updateFunnel,
   deleteFunnel,
   duplicateFunnel,
+  resyncAllFunnels,
 } from '../src/lib/funnels';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
@@ -28,13 +29,14 @@ import { replaceDays, listDays } from '../src/lib/funnel-days';
 import { ConflictError } from '../src/lib/errors';
 import { replaceBlock, getBlock } from '../src/lib/funnel-blocks';
 import { replaceOverrides } from '../src/lib/tag-overrides';
+import { copyDbForTest } from './helpers/db';
 
 // __dirname = app/tests/ → go up 2 levels to repo root for the DB
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
 const TMP_DB  = join(tmpdir(), `ksamata_funnels_test_${Date.now()}_${process.pid}.db`);
 
 // Copy real DB to temp location — never touch the real file
-copyFileSync(REAL_DB, TMP_DB);
+copyDbForTest(REAL_DB, TMP_DB);
 
 const sqlite = new Database(TMP_DB);
 sqlite.pragma('journal_mode = WAL');
@@ -587,5 +589,74 @@ describe('roomsEnabled flag', () => {
     updateFunnel(testDb, src.id, { roomsEnabled: false });
     const dup = duplicateFunnel(testDb, src.id)!;
     expect(getFunnel(testDb, dup.id)!.roomsEnabled).toBe(false);
+  });
+});
+
+describe('гонка по num между процессами', () => {
+  /**
+   * Проверка уникальности num идёт до транзакции. Между ней и вставкой другой
+   * писатель того же файла БД (python-тулза, второй инстанс) успевает занять
+   * номер. Моделируем это буквально: вторым соединением вставляем строку
+   * ровно в этот промежуток — прокси перехватывает вызов db.transaction.
+   */
+  function racingDb(num: number) {
+    const other = new Database(TMP_DB);
+    const cols = (
+      other
+        .prepare("select name from pragma_table_info('funnels') where name not in ('id','num')")
+        .all() as { name: string }[]
+    ).map((r) => `"${r.name}"`);
+
+    return new Proxy(testDb as object, {
+      get(target, prop, recv) {
+        if (prop === 'transaction') {
+          return (cb: unknown) => {
+            // Клонируем любую существующую строку под занимаемым номером —
+            // так не приходится знать все NOT NULL-колонки наизусть.
+            other
+              .prepare(
+                `insert into funnels (num, ${cols.join(',')}) ` +
+                  `select ?, ${cols.join(',')} from funnels order by id limit 1`
+              )
+              .run(num);
+            other.close();
+            return (target as { transaction: (c: unknown) => unknown }).transaction(cb);
+          };
+        }
+        const value = Reflect.get(target, prop, recv);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    }) as typeof testDb;
+  }
+
+  it('отдаёт ConflictError, а не сырую ошибку UNIQUE (иначе роут ответит 500 вместо 409)', () => {
+    expect(() => createFunnel(racingDb(9971), { ...BASE_FUNNEL_DATA, num: 9971 }))
+      .toThrow(ConflictError);
+  });
+});
+
+describe('resyncAllFunnels и пустые черновики', () => {
+  it('не наполняет черновик без осей шаблонными тегами', () => {
+    // createDraftFunnel намеренно создаёт воронку БЕЗ АВ-тегов: карточка
+    // показывает пустые селекты. Пересинк по всем воронкам записывал в такой
+    // черновик шаблонные дефолты — и содержимое черновика начинало зависеть от
+    // того, правил ли кто-то глобальный шаблон между его созданием и заполнением.
+    const draft = createDraftFunnel(testDb);
+    const countTags = () =>
+      (sqlite.prepare('select count(*) as n from funnel_tags where funnel_id = ?')
+        .get(draft.id) as { n: number }).n;
+    expect(countTags(), 'черновик создаётся без тегов').toBe(0);
+
+    resyncAllFunnels(testDb);
+
+    expect(countTags(), 'пересинк наполнил пустой черновик шаблоном').toBe(0);
+    expect(getFunnel(testDb, draft.id)!.axes)
+      .toEqual({ product: '', contractor: '', channel: '', direction: '' });
+  });
+
+  it('обычную воронку пересинк по-прежнему обрабатывает', () => {
+    const created = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9899 });
+    resyncAllFunnels(testDb);
+    expect(getFunnel(testDb, created.id)!.axes.product).toBe(BASE_FUNNEL_DATA.product);
   });
 });

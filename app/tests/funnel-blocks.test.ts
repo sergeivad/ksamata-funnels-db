@@ -7,6 +7,7 @@ import path from 'path';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { getBlock, listBlocks, replaceBlock } from '../src/lib/funnel-blocks';
 import * as schema from '../src/db/schema';
+import { copyDbForTest } from './helpers/db';
 
 const REAL_DB = path.resolve(process.cwd(), '..', 'ksamata_funnels.db');
 let tmp: string;
@@ -16,7 +17,7 @@ let funnelId: number;
 
 beforeEach(() => {
   tmp = path.join(os.tmpdir(), `fb-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
-  fs.copyFileSync(REAL_DB, tmp);
+  copyDbForTest(REAL_DB, tmp);
   sqlite = new Database(tmp);
   runMigratePhase3(sqlite);
   db = drizzle(sqlite, { schema });
