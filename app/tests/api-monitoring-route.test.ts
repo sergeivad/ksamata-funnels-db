@@ -128,6 +128,21 @@ describe('PATCH /api/monitoring/targets', () => {
     const res = await PATCH_BULK(jsonReq('PATCH', { sourceKind: '', enabled: true }));
     expect(res.status).toBe(400);
   });
+
+  it('отвергает несуществующий вид источника, а не пишет его в предпочтения навсегда', async () => {
+    const res = await PATCH_BULK(jsonReq('PATCH', { sourceKind: 'lnks', enabled: true }));
+
+    expect(res.status).toBe(400);
+    const rows = sqlite
+      .prepare(`SELECT source_kind FROM monitor_source_kind_prefs WHERE source_kind = 'lnks'`)
+      .all();
+    expect(rows).toEqual([]);
+  });
+
+  it('принимает лендинг воронки — это вид источника, но не вид блока', async () => {
+    const res = await PATCH_BULK(jsonReq('PATCH', { sourceKind: 'funnel_landing_url', enabled: true }));
+    expect(res.status).toBe(200);
+  });
 });
 
 describe('GET /api/monitoring/events', () => {

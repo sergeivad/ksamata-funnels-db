@@ -69,6 +69,36 @@ describe('PATCH /api/funnels/[id]/tags', () => {
     expect(body.tagSets.reg.suppressed).toContain('автоворонки');
   });
 
+  it('keeps overrides of scenarios the patch does not mention', async () => {
+    await PATCH(jsonReq('PATCH', { time_15: { add: ['держим'], remove: [] } }), params(existingId));
+
+    const res = await PATCH(jsonReq('PATCH', { reg: { add: ['новый'], remove: [] } }), params(existingId));
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const time15 = body.tagSets.time_15.tags.map((t: { name: string }) => t.name);
+    expect(time15).toContain('держим');
+  });
+
+  it('clears a scenario when the patch mentions it with empty lists', async () => {
+    await PATCH(jsonReq('PATCH', { time_15: { add: ['временный'], remove: [] } }), params(existingId));
+
+    const res = await PATCH(jsonReq('PATCH', { time_15: { add: [], remove: [] } }), params(existingId));
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const time15 = body.tagSets.time_15.tags.map((t: { name: string }) => t.name);
+    expect(time15).not.toContain('временный');
+  });
+
+  it('одно имя разом в add и remove → 400, а не 500', async () => {
+    const res = await PATCH(
+      jsonReq('PATCH', { reg: { add: ['спорный'], remove: ['спорный'] } }),
+      params(existingId)
+    );
+    expect(res.status).toBe(400);
+  });
+
   it('returns 400 for a non-numeric id', async () => {
     const res = await PATCH(jsonReq('PATCH', {}), params('abc'));
     expect(res.status).toBe(400);

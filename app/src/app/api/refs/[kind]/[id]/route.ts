@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/db/client';
 import { isValidKind, VALID_KINDS, renameRef, deleteRef } from '@/lib/refs';
-import { REF_MAX } from '@/lib/validation';
+import { REF_MAX, parseRouteId } from '@/lib/validation';
 import { internalError } from '@/lib/http';
 
 type Params = { params: Promise<{ kind: string; id: string }> };
@@ -11,9 +11,14 @@ const refRenameSchema = z.object({
   value: z.string().trim().min(1).max(REF_MAX),
 });
 
+/**
+ * Строгий разбор, общий с остальными роутами. Свой Number(id) здесь принимал
+ * '1e2' как 100 и '0x10' как 16 — запрос переименовывал или удалял строку,
+ * которой в адресе визуально не было, и DELETE здесь разрушающий.
+ */
 function parseId(id: string): number | null {
-  const numId = Number(id);
-  return Number.isInteger(numId) && numId > 0 ? numId : null;
+  const numId = parseRouteId(id);
+  return numId !== null && numId > 0 ? numId : null;
 }
 
 /**

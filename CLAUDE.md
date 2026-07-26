@@ -126,17 +126,29 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 - `status.ts` — funnel status constants/meta (active/draft/archive).
 - `rooms-grid.ts` — build/flatten the rooms grid (slot × day).
 - `funnel-compact.ts` — grouping/visibility for the compact view.
-- `export.ts` — build export rows + CSV serialization.
+- `export.ts` — build export rows + CSV serialization. Fields starting with
+  `=`, `+`, `-`, `@`, TAB or CR get a leading apostrophe: the route serves a BOM
+  and `;` so Excel opens the file, and Excel executes such a cell on open.
+  RFC 4180 quoting does not prevent that — it strips the quotes and evaluates.
 - `validation.ts` — Zod schemas + `parseRouteId`.
 - `http.ts` / `errors.ts` — response/error helpers.
 - `clipboard.ts` / `useUnsavedGuard.ts` — client hooks.
 - `monitor-status.ts` — monitoring status values, badge metadata, `formatAgo`.
-- `monitor-urls.ts` — URL normalization + multi-URL field splitting.
+- `monitor-urls.ts` — URL normalization + multi-URL field splitting. A checkable
+  target is http(s), has a dotted hostname (no IP literals) and a standard port —
+  otherwise the dashboard becomes an SSRF oracle and a port scanner for the
+  container's own network. `resolveRedirectTarget` applies the very same rule to
+  each redirect hop; keep the two in one place, a hop that skips the check
+  reopens the whole hole.
 - `monitor-targets.ts` — sync targets from funnel data, enable/disable, group defaults.
   Only funnels with `status = 'active'` are collected (`MONITORED_FUNNEL_STATUS`);
   drafts and archive are out of scope, and a URL left behind by a funnel leaving
   `active` goes through the normal retirement path (muted, unlinked, history kept,
-  auto-revived when the funnel comes back). Exports `collectFunnelUrls` so the
+  auto-revived when the funnel comes back) — **unless** `manual_override = 1`,
+  in which case retirement unlinks it but leaves `enabled` alone, same as the
+  live branch. Muting an overridden target would strand it: the override stays
+  set, so the live branch would then refuse to recompute `enabled` and the
+  returning URL would never come back on. Exports `collectFunnelUrls` so the
   dashboard can collect URLs of **non**-active funnels through the very same
   normalization.
 - `monitor-kinds.ts` — Russian labels for source kinds (reuses `BLOCK_KINDS`
@@ -145,7 +157,32 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   disabled one is grey. `partial` differs from `on` in wording and
   `aria-pressed="mixed"`, not in colour — a partially enabled group must not
   look switched off.
-- `monitor-check.ts` — pure HTTP availability check (`checkUrl`).
+- `monitor-check.ts` — pure HTTP availability check (`checkUrl`). Follows
+  redirects itself (`redirect: 'manual'`, ≤ `MAX_REDIRECTS`), validating every
+  hop through `resolveRedirectTarget`; a refused hop reports a generic error and
+  never echoes the destination back to the dashboard. One `AbortSignal.timeout`
+  covers the whole chain, so N hops cannot stretch into N timeouts.
+  **Before every connection — including each redirect hop — the hostname is
+  resolved and every returned address checked** (`lookupImpl`, default
+  `resolveHostAddresses`). A hostname is a promise, not an address:
+  `10.0.0.5.nip.io` passes `normalizeUrl` (dotted name, no literal) and lands in
+  the private network, so the literal filter alone is not a defence. A refused
+  host reports the same generic "внутренняя сеть" error — never the IP.
+  `dns.lookup` ignores `AbortSignal`, so the lookup gets its own budget equal to
+  `timeoutMs`; without it a hung resolver would hold a cycle worker for as long
+  as the system `getaddrinfo` felt like. Residual risk, accepted knowingly: the
+  connection re-resolves, so an attacker controlling DNS with a very short TTL
+  could still rebind between check and connect. Closing that needs pinning the
+  connection to the vetted IP (a custom `undici` dispatcher, a new dependency).
+- `monitor-dns.ts` — pure address classifier (`isPrivateAddress`) + the
+  `LookupFn` type. Fails closed: an address it cannot parse counts as private.
+  Understands IPv4 embedded in IPv6 (`::ffff:127.0.0.1`, NAT64, 6to4), because
+  the wrapper form is exactly how a loopback address sneaks past a naive check.
+  No network here — that is why it is testable and stays in the edge bundle.
+- `monitor-resolver.ts` — the real `node:dns` lookup, alone in its own file.
+  It is the second Node-only leaf after `db/client.ts`, and `next.config.ts`
+  aliases it away for the edge build (see below). Keep it that way: put
+  anything checkable-without-network in `monitor-dns.ts` instead.
 - `monitor-run.ts` — check cycle, state persistence, event log.
 - `monitor-view.ts` — dashboard read models. Group counters (`sourceKinds`) count
   **only pages of active funnels**: archiving a funnel is itself the decision that
@@ -166,9 +203,12 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 - `GET/PATCH/DELETE /api/funnels/[id]` — detail / update (incl. status/archive
   and rooms toggles) / delete.
 - `POST /api/funnels/[id]/duplicate` — duplicate.
-- `GET/PUT /api/funnels/[id]/days` — read/replace days.
+- `GET/PUT /api/funnels/[id]/days` — read/replace days. A true replace within the
+  funnel: a day absent from the payload is deleted, so callers send the whole grid.
 - `GET/PUT /api/funnels/[id]/blocks/[kind]` — read/replace one block kind.
-- `PATCH /api/funnels/[id]/tags` — apply per-funnel tag overrides.
+- `PATCH /api/funnels/[id]/tags` — apply per-funnel tag overrides. Genuinely
+  partial: a scenario the body omits keeps its stored overrides; clear one by
+  naming it with empty `add`/`remove`.
 - `GET/POST /api/refs/[kind]` and `PATCH/DELETE /api/refs/[kind]/[id]` — refs CRUD.
 - `GET /api/tag-templates` and `PUT /api/tag-templates/[scenario]` — global template.
 - `GET /api/export` — CSV export of all funnels.
@@ -312,8 +352,13 @@ Full notes: [app/DEPLOY.md](app/DEPLOY.md).
   `src/instrumentation.ts` with the Edge compiler, and webpack statically
   resolves its dynamic `import('./lib/monitor-scheduler')` into
   `src/db/client.ts` (`fs`/`path`/`better-sqlite3`), which fails the Edge
-  build. The config aliases that one file's absolute path to `false` for the
-  Edge bundle only. Read the comment there before touching it.
+  build. The config aliases that file's absolute path to `false` for the
+  Edge bundle only — plus `src/lib/monitor-resolver.ts`, reached by the same
+  chain and Node-only for the same reason (`node:dns`). Read the comment there
+  before touching it. **Adding a Node-only import anywhere under
+  `monitor-*.ts` will break `npm run build` even though tests and `tsc` stay
+  green** — isolate it in its own leaf file and alias that, rather than
+  widening the alias to a whole subtree.
 
 `docker-compose.yml` at the repo root is a **dev** stack (`app/Dockerfile.dev`,
 hot-reload, auth off) that bind-mounts the real repo DB at `/data`. It does
@@ -328,9 +373,12 @@ Env vars: `FUNNELS_DB_PATH`, `ADMIN_BASIC_AUTH`, `ADMIN_AUTH_DISABLED`,
 Python scripts resolve paths from the **repo root** (via their own file
 location), so they run from any working directory.
 
-- **Import** (`tools/data-import/`): `ksamata_funnels_db.py` (full build from
-  Excel), `add_av_tags.py`, `add_durations.py`, `add_dih_funnel.py`,
-  `add_pereliv_funnels.py`, `add_quiz_funnels.py`. All idempotent.
+- **Import** (`tools/data-import/`): `add_av_tags.py`, `add_durations.py`,
+  `add_dih_funnel.py`, `add_pereliv_funnels.py`, `add_quiz_funnels.py` — all
+  idempotent. `ksamata_funnels_db.py` is **not**: it rebuilds the whole DB from
+  Excel and therefore deletes the existing file, wiping everything edited through
+  the admin UI. It refuses to run when the DB exists unless given `--force`.
+  Tests: `python3 -m pytest tools/data-import/tests`.
 - **Export** (`tools/data-export/`): `ksamata_funnels_export.py` → summary XLSX
   in `data/generated/`.
 - **Audit** (`tools/audit/`): `run_audit.py` builds a tag drift map across

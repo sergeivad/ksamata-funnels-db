@@ -25,6 +25,7 @@ import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { replaceDays, listDays } from '../src/lib/funnel-days';
+import { ConflictError } from '../src/lib/errors';
 import { replaceBlock, getBlock } from '../src/lib/funnel-blocks';
 import { replaceOverrides } from '../src/lib/tag-overrides';
 
@@ -227,8 +228,9 @@ describe('updateFunnel', () => {
   it('throws 409 when changing num to one already taken by another funnel', () => {
     const a = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9980 });
     createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9981 });
-    // Renaming a → 9981 collides with the second funnel.
-    expect(() => updateFunnel(testDb, a.id, { num: 9981 })).toThrow(/409/);
+    // Renaming a → 9981 collides with the second funnel. Тип, а не текст:
+    // раньше конфликт опознавали по префиксу «409:» в сообщении.
+    expect(() => updateFunnel(testDb, a.id, { num: 9981 })).toThrow(ConflictError);
     // Setting num to its own current value is a no-op, not a collision.
     expect(() => updateFunnel(testDb, a.id, { num: 9980 })).not.toThrow();
   });

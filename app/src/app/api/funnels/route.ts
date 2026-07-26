@@ -3,6 +3,7 @@ import { db } from '@/db/client';
 import { funnelCreateSchema } from '@/lib/validation';
 import { listFunnels, createFunnel } from '@/lib/funnels';
 import { internalError } from '@/lib/http';
+import { ConflictError } from '@/lib/errors';
 
 export async function GET() {
   try {
@@ -34,10 +35,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(funnel, { status: 201 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error';
-    // Friendly pre-check path: createFunnel throws "409: ..." on duplicate num
-    // TOCTOU path: SQLite UNIQUE constraint fires inside the transaction
+    // Friendly pre-check path: createFunnel throws ConflictError on duplicate num.
+    // TOCTOU path: SQLite UNIQUE constraint fires inside the transaction — эта
+    // строка приходит из драйвера, поэтому здесь сравнение с текстом уместно.
     if (
-      message.includes('409') ||
+      err instanceof ConflictError ||
       message.includes('UNIQUE constraint failed: funnels.num')
     ) {
       return NextResponse.json(

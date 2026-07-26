@@ -132,10 +132,17 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
   // flip is rolled back when the save fails so a rejected request can't
   // masquerade as persisted. Scoped to the toggle — the explicit «Сохранить»
   // must not revert `enabled`, so the rollback lives here, not inside save().
+  //
+  // The payload carries the LAST SAVED items and mode, never the live ones: the
+  // toggle is a statement about the block, not about the draft in the fields.
+  // Sending live items would commit half-typed edits nobody asked to save, and
+  // a class-A URL error somewhere in that draft would make the block
+  // impossible to switch off at all — the server would 400 the whole request.
+  // Same contract as RoomsEditor, where the toggle never PUTs the days.
   async function toggleEnabled(v: boolean) {
     const prev = enabled;
     setEnabled(v);
-    const ok = await save({ enabled: v });
+    const ok = await save({ enabled: v, mode: saved.mode, items: saved.items });
     if (!ok) setEnabled(prev);
   }
 

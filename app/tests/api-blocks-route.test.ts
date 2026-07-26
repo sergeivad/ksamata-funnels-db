@@ -53,6 +53,30 @@ describe('blocks route', () => {
     expect(body.items).toEqual([{ slot: null, label: '', url: 'https://a' }]);
   });
 
+  it('отвергает неизвестный slot вместо тихого приведения к null', async () => {
+    const params = Promise.resolve({ id: String(funnelId), kind: 'tariffs' });
+    const res = await PUT(
+      req({ enabled: true, mode: 'by_time', items: [{ slot: '17', label: '', url: 'https://a' }] }),
+      { params }
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('по-прежнему принимает slot null и отсутствующий slot', async () => {
+    const params = Promise.resolve({ id: String(funnelId), kind: 'tariffs' });
+    const withNull = await PUT(
+      req({ enabled: true, mode: 'common', items: [{ slot: null, label: '', url: 'https://a' }] }),
+      { params }
+    );
+    expect(withNull.status).toBe(200);
+
+    const omitted = await PUT(
+      req({ enabled: true, mode: 'common', items: [{ label: '', url: 'https://b' }] }),
+      { params: Promise.resolve({ id: String(funnelId), kind: 'tariffs' }) }
+    );
+    expect(omitted.status).toBe(200);
+  });
+
   it('rejects unknown kind with 400', async () => {
     const res = await GET({} as never, { params: Promise.resolve({ id: String(funnelId), kind: 'rooms' }) });
     expect(res.status).toBe(400);

@@ -184,6 +184,14 @@ describe('PATCH /api/refs/[kind]/[id]', () => {
     const res = await idPATCH(makeReq('PATCH', { value: 'x' }), idParams('products', '999999999'));
     expect(res.status).toBe(404);
   });
+
+  // Number('1e2') === 100, Number('0x10') === 16, Number(' 12 ') === 12: адрес,
+  // которого в URL визуально не было, попадал бы в renameRef/deleteRef. Тот же
+  // строгий разбор, что и в остальных роутах (parseRouteId).
+  it.each(['1e2', '0x10', ' 12', '12.0', '+7', '1_0'])('id %j → 400, а не молчаливое приведение', async (bad) => {
+    const res = await idPATCH(makeReq('PATCH', { value: 'x' }), idParams('products', bad));
+    expect(res.status).toBe(400);
+  });
 });
 
 // ── DELETE ───────────────────────────────────────────────────────────────────

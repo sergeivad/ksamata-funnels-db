@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeUrl, splitUrlField } from '../src/lib/monitor-urls';
+import { normalizeUrl, splitUrlField, resolveRedirectTarget } from '../src/lib/monitor-urls';
 
 describe('normalizeUrl', () => {
   it('приводит голый хост к каноническому виду со слэшем', () => {
@@ -42,6 +42,28 @@ describe('normalizeUrl', () => {
   it('пропускает обычные доменные имена, в том числе с цифрами', () => {
     expect(normalizeUrl('https://lp.ksamata.ru/izh-yo')).toBe('https://lp.ksamata.ru/izh-yo');
     expect(normalizeUrl('https://t2.ksamata.ru/a')).toBe('https://t2.ksamata.ru/a');
+  });
+
+  it('отбраковывает нестандартный порт — публичная страница живёт на 80/443', () => {
+    expect(normalizeUrl('http://intranet.example.com:6379/')).toBeNull();
+    expect(normalizeUrl('https://a.example.com:8080/admin')).toBeNull();
+  });
+
+  it('пропускает явно указанные 80 и 443 — URL сам сводит их к пустому порту', () => {
+    expect(normalizeUrl('http://a.example.com:80/x')).toBe('http://a.example.com/x');
+    expect(normalizeUrl('https://a.example.com:443/x')).toBe('https://a.example.com/x');
+  });
+});
+
+describe('resolveRedirectTarget', () => {
+  it('достраивает относительный Location до абсолютного адреса', () => {
+    expect(resolveRedirectTarget('/new', 'https://a.ru/old')).toBe('https://a.ru/new');
+  });
+
+  it('отбраковывает шаг редиректа по тем же правилам, что и заведение цели', () => {
+    expect(resolveRedirectTarget('http://169.254.169.254/', 'https://a.ru/')).toBeNull();
+    expect(resolveRedirectTarget('http://a.ru:6379/', 'https://a.ru/')).toBeNull();
+    expect(resolveRedirectTarget('ftp://a.ru/f', 'https://a.ru/')).toBeNull();
   });
 });
 

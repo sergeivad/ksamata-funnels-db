@@ -181,6 +181,24 @@ describe('resolveAuthDecision (pure decision logic)', () => {
     ).toBe('unauthorized');
   });
 
+  // RFC 7235: имя схемы регистронезависимо. Клиент, шлющий "basic ", получал
+  // 401 с верным паролем — и причину такого отказа не видно ни в логах, ни в теле.
+  it('принимает имя схемы в любом регистре', () => {
+    const cred = basic('admin', 's3cret').slice(6);
+    for (const scheme of ['Basic', 'basic', 'BASIC', 'BaSiC']) {
+      expect(
+        resolveAuthDecision({ ADMIN_BASIC_AUTH: 'admin:s3cret', NODE_ENV: 'production' }, `${scheme} ${cred}`)
+      ).toBe('ok');
+    }
+  });
+
+  it('не путает схему с чужой: Bearer с тем же телом — не авторизация', () => {
+    const cred = basic('admin', 's3cret').slice(6);
+    expect(
+      resolveAuthDecision({ ADMIN_BASIC_AUTH: 'admin:s3cret', NODE_ENV: 'production' }, `Bearer ${cred}`)
+    ).toBe('unauthorized');
+  });
+
   it('is "ok" when configured and header matches, regardless of NODE_ENV', () => {
     expect(
       resolveAuthDecision({ ADMIN_BASIC_AUTH: 'admin:s3cret', NODE_ENV: 'production' }, basic('admin', 's3cret'))

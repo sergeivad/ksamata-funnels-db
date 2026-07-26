@@ -31,13 +31,20 @@ function createSingleton(): DbSingleton {
     ? envPath
     : path.resolve(process.cwd(), '..', 'ksamata_funnels.db');
 
-  // Safety guard for the default path only: if the DB file doesn't exist we
-  // refuse to create an empty one — better-sqlite3 would silently do so otherwise.
-  if (!envPath && !fs.existsSync(dbPath)) {
+  // Никогда не создаём базу на пустом месте — better-sqlite3 иначе делает это
+  // молча, и приложение поднимается над пустым файлом: схему оно не создаёт
+  // (её накатывают миграции), так что вместо данных везде будет пусто, а
+  // причина — опечатка в пути — ничем себя не проявит. Гарантия одинаковая и
+  // для пути по умолчанию, и для заданного через FUNNELS_DB_PATH. В Docker
+  // файл к этому моменту уже посеян энтрипойнтом, так что проверка безопасна.
+  if (!fs.existsSync(dbPath)) {
     throw new Error(
-      `Database not found at default path: ${dbPath}\n` +
-      `Set FUNNELS_DB_PATH to the absolute path of the SQLite file, ` +
-      `or ensure process.cwd() is the app/ directory.`
+      envPath
+        ? `Database not found at FUNNELS_DB_PATH: ${dbPath}\n` +
+          `The app never creates a database — it is seeded and migrated before start.`
+        : `Database not found at default path: ${dbPath}\n` +
+          `Set FUNNELS_DB_PATH to the absolute path of the SQLite file, ` +
+          `or ensure process.cwd() is the app/ directory.`
     );
   }
 

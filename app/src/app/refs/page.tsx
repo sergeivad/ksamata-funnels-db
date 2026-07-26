@@ -30,7 +30,10 @@ const KINDS: Array<{ key: keyof RefsState; label: string }> = [
 
 async function fetchKind(kind: string): Promise<RefRow[]> {
   const res = await fetch(`/api/refs/${kind}`);
-  if (!res.ok) return [];
+  // Не глотаем неуспех: пустой справочник и недоступный справочник выглядят на
+  // экране одинаково, но означают противоположное — во втором случае человек
+  // начнёт заводить продукт, который на самом деле уже есть.
+  if (!res.ok) throw new Error(`${kind}: ${res.status}`);
   return res.json();
 }
 
@@ -45,20 +48,40 @@ export default function RefsPage() {
     directions: [],
   });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    Promise.all(KINDS.map(({ key }) => fetchKind(key).then((rows) => ({ key, rows })))).then(
-      (results) => {
-        const next = { ...refs };
-        results.forEach(({ key, rows }) => {
-          next[key] = rows;
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+
+    Promise.all(KINDS.map(({ key }) => fetchKind(key).then((rows) => ({ key, rows }))))
+      .then((results) => {
+        if (cancelled) return;
+        setRefs((prev) => {
+          const next = { ...prev };
+          results.forEach(({ key, rows }) => {
+            next[key] = rows;
+          });
+          return next;
         });
-        setRefs(next);
-        setLoading(false);
-      }
-    );
+      })
+      .catch((e) => {
+        // Без этого обработчика упавший запрос оставлял страницу на «Загрузка...»
+        // навсегда: setLoading(false) стоял только в ветке успеха.
+        if (cancelled) return;
+        setLoadError(e instanceof Error ? e.message : 'Не удалось загрузить справочники');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reloadKey]);
 
   async function handleAdd(
     kind: keyof RefsState,
@@ -145,6 +168,19 @@ export default function RefsPage() {
 
       {loading ? (
         <p className="text-[13px] text-[var(--color-text-secondary)]">Загрузка...</p>
+      ) : loadError ? (
+        <div role="alert" className="flex flex-wrap items-center gap-3 rounded-[10px] border border-[#FDA29B] bg-[#FFFBFA] px-3.5 py-2.5">
+          <span className="text-[13px] text-[#B42318]">
+            Не удалось загрузить справочники ({loadError}). Данные не показаны — это сбой загрузки, а не пустые таблицы.
+          </span>
+          <button
+            type="button"
+            onClick={() => setReloadKey((k) => k + 1)}
+            className="ml-auto rounded-[6px] border border-[#FDA29B] px-2.5 py-1 text-[12px] text-[#B42318] hover:bg-white transition"
+          >
+            Повторить
+          </button>
+        </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {KINDS.map(({ key, label }) => (

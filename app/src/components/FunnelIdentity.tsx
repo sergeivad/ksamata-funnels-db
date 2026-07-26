@@ -91,6 +91,12 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   };
   const [ov, setOv] = useState(seedOverrides);
   const [savedOv, setSavedOv] = useState(seedOverrides);
+
+  // Осевые теги — производная от продукта/подрядчика/канала/направления, и
+  // пересчитывает их сервер. Пока это читалось прямо из пропа, страница после
+  // сохранения осей продолжала показывать теги от прежних: сервер уже отдал
+  // новые в ответе на PATCH, а на экране оставались старые до перезагрузки.
+  const [tagSets, setTagSets] = useState(funnel.tagSets);
   const [tagInput, setTagInput] = useState('');
   const [savingTags, setSavingTags] = useState(false);
   const [tagsError, setTagsError] = useState<string | null>(null);
@@ -105,7 +111,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   // Server-provided effective set already encodes template + axes. To reflect
   // live edits without a round-trip, re-derive: start from server tags of this
   // scenario, drop those in ov.remove, and append ov.add customs not already shown.
-  const serverSet = funnel.tagSets[activeScenario];
+  const serverSet = tagSets[activeScenario];
   const removeSet = new Set(ov[activeScenario].remove);
   const shown = serverSet.tags
     .filter((t) => !(t.source !== 'axis' && removeSet.has(t.name)))
@@ -166,10 +172,11 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(ov),
       });
+      const b = await res.json().catch(() => null);
       if (!res.ok) {
-        const b = await res.json().catch(() => null);
         throw new Error(b?.error ?? `Не удалось сохранить теги (${res.status})`);
       }
+      if (b?.tagSets) setTagSets(b.tagSets);
       setSavedOv(ov);
     } catch (e) {
       setTagsError(e instanceof Error ? e.message : 'Не удалось сохранить теги');
@@ -210,11 +217,22 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
           comment: submitted.comment, timeLabelA: submitted.ta, timeLabelB: submitted.tb,
         }),
       });
+      const body = await res.json().catch(() => null);
       if (!res.ok) {
-        const body = await res.json().catch(() => null);
         throw new Error(body?.error ?? `Не удалось сохранить (${res.status})`);
       }
       setSaved(submitted);
+      // Осевые теги пересчитал сервер, но ответ PATCH — это сводка воронки без
+      // tagSets, поэтому дочитываем деталь. Без этого чипы показывали бы теги
+      // от прежних осей до перезагрузки страницы. Отдельный catch: сохранение
+      // уже прошло, и неудача этого дочитывания не должна выглядеть как
+      // несохранённые изменения.
+      try {
+        const detail = await (await fetch(`/api/funnels/${funnel.id}`)).json();
+        if (detail?.tagSets) setTagSets(detail.tagSets);
+      } catch {
+        // теги обновятся при следующей загрузке страницы
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось сохранить');
     } finally { setSaving(false); }

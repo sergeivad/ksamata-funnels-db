@@ -3,6 +3,7 @@ import { db } from '@/db/client';
 import { funnelUpdateSchema, parseRouteId } from '@/lib/validation';
 import { getFunnel, updateFunnel, deleteFunnel } from '@/lib/funnels';
 import { internalError } from '@/lib/http';
+import { ConflictError } from '@/lib/errors';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -51,10 +52,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json(updated);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error';
-    // updateFunnel throws "409: ..." on a duplicate num; SQLite may also raise
-    // the raw UNIQUE constraint under a TOCTOU race. Map both to 409.
+    // updateFunnel throws ConflictError on a duplicate num; SQLite may also
+    // raise the raw UNIQUE constraint under a TOCTOU race. Map both to 409.
+    // Текстовое сравнение оставлено только для строки от драйвера.
     if (
-      message.includes('409') ||
+      err instanceof ConflictError ||
       message.includes('UNIQUE constraint failed: funnels.num')
     ) {
       return NextResponse.json(
