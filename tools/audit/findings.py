@@ -24,6 +24,7 @@ from normalize import (
     is_external_tag,
     key_label,
 )
+from retired import is_retired
 
 CLASS_TITLES = {
     1: 'Тег ожидается в базе, но в GetCourse отсутствует',
@@ -97,6 +98,11 @@ def group_observations(observations):
         )
     groups.sort(key=lambda g: (-g.deals, key_label(g.key)))
     return groups
+
+
+def observed_keys_of(groups):
+    """Полные АВ-четвёрки, по которым в выгрузках есть заказы."""
+    return {g.key for g in groups if is_complete_key(g.key)}
 
 
 def _funnel_label(index, expectations_by_id, key):
@@ -446,12 +452,17 @@ def find_key_collision_findings(collisions, expectations):
     return result
 
 
-def find_unknown_av_keys(offers, index):
-    """Класс 9: четвёрка живёт в GetCourse, а воронки под неё в базе нет."""
+def find_unknown_av_keys(offers, index, observed_keys):
+    """Класс 9: четвёрка живёт в GetCourse, а воронки под неё в базе нет.
+
+    Отставленные четвёрки (`retired.RETIRED_KEYS`) пропускаются — но только пока
+    по ним нет заказов. `observed_keys` — четвёрки, встреченные в выгрузках;
+    заказ по отставленной связке возвращает её в отчёт.
+    """
     counts = defaultdict(list)
     for offer in _offers_with_av(offers):
         key = av_key(offer.tags)
-        if is_complete_key(key) and key not in index:
+        if is_complete_key(key) and key not in index and not is_retired(key, observed_keys):
             counts[key].append(offer)
 
     result = []
@@ -600,13 +611,18 @@ def find_unused_offers(offers, groups):
     """Класс 14: предложение с АВ-тегами, по которому нет заказов.
 
     Замена нерабочему полю status — у всех предложений оно равно 'draft'.
+
+    Отставленные четвёрки (`retired.RETIRED_KEYS`) пропускаются: решение «связка
+    больше не крутится» уже принято, и повторять его каждым прогоном не нужно.
     """
-    observed_keys = {g.key for g in groups if is_complete_key(g.key)}
+    observed_keys = observed_keys_of(groups)
 
     result = []
     for offer in _offers_with_av(offers):
         key = av_key(offer.tags)
         if not is_complete_key(key) or key in observed_keys:
+            continue
+        if is_retired(key, observed_keys):
             continue
         result.append(
             Finding(

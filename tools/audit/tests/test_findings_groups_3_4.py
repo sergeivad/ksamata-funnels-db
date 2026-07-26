@@ -53,7 +53,7 @@ def test_class_9_reports_av_key_present_in_registry_but_absent_from_db():
     offers = [offer(1, AV + '|АВ Этап: Регистрация'),
               offer(2, 'АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
                        'АВ Направление: РСЯ|АВ Этап: Регистрация')]
-    found = find_unknown_av_keys(offers, INDEX)
+    found = find_unknown_av_keys(offers, INDEX, frozenset())
     assert [f.cls for f in found] == [9]
     assert 'ЩЖ' in found[0].subject
 
@@ -62,7 +62,7 @@ def test_class_9_ignores_offer_with_incomplete_quadruple():
     offers = [offer(1, 'АВ Продукт: ДБО|АВ Канал: ВК|АВ Этап: Регистрация'),
               offer(2, 'АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
                        'АВ Направление: РСЯ|АВ Этап: Регистрация')]
-    found = find_unknown_av_keys(offers, INDEX)
+    found = find_unknown_av_keys(offers, INDEX, frozenset())
     assert [f.cls for f in found] == [9]
     assert 'ЩЖ' in found[0].subject
 
@@ -70,7 +70,7 @@ def test_class_9_ignores_offer_with_incomplete_quadruple():
 def test_class_9_counts_offers_per_key():
     raw = ('АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
            'АВ Направление: РСЯ|АВ Этап: Регистрация')
-    found = find_unknown_av_keys([offer(1, raw), offer(2, raw)], INDEX)
+    found = find_unknown_av_keys([offer(1, raw), offer(2, raw)], INDEX, frozenset())
     assert len(found) == 1
     assert found[0].deals == 2
 

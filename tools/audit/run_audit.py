@@ -56,7 +56,7 @@ def collect_findings(expectations, funnels, vocabulary, index, collisions,
     result += F.find_contradictory_legacy(groups, expectations, index)
     result += F.find_unresolved(groups, index)
     result += F.find_key_collision_findings(collisions, expectations)
-    result += F.find_unknown_av_keys(offers, index)
+    result += F.find_unknown_av_keys(offers, index, F.observed_keys_of(groups))
     result += F.find_incomplete_offer_keys(offers)
     result += F.find_unknown_axes_in_registry(offers, vocabulary)
     result += F.find_offers_without_autofunnel(offers)

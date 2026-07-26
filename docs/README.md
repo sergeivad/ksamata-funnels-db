@@ -7,6 +7,8 @@ Navigation for this repo's documentation and planning notes.
 - **Orientation:** [../README.md](../README.md)
 - **Local setup & DB contract:** [development.md](development.md)
 - **File-level map:** [project-map.md](project-map.md)
+- **Эталон f-кодов (LeakEngine):** [leak-engine.md](leak-engine.md) — откуда
+  берётся `funnels.front_code` и как забрать реестр через внутренний API.
 
 ## Conventions
 
