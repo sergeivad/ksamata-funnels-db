@@ -169,7 +169,10 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   set, so the live branch would then refuse to recompute `enabled` and the
   returning URL would never come back on. Exports `collectFunnelUrls` so the
   dashboard can collect URLs of **non**-active funnels through the very same
-  normalization.
+  normalization. The retirement branch touches only targets that are still
+  `enabled = 1`, so `retired` counts what this run actually muted and the
+  `updatedAt` of a long-retired target is not rewritten by every sync —
+  otherwise the stamp could never tell you when a target actually dropped out.
 - `monitor-kinds.ts` — Russian labels for source kinds (reuses `BLOCK_KINDS`
   titles) + `sourceKindTone`, which decides how a group chip reads: any group
   with at least one checked target is orange (`on`/`partial`), only a fully
@@ -408,7 +411,12 @@ location), so they run from any working directory.
 
 - **Import** (`tools/data-import/`): `add_av_tags.py`, `add_durations.py`,
   `add_dih_funnel.py`, `add_pereliv_funnels.py`, `add_quiz_funnels.py` — all
-  idempotent. `ksamata_funnels_db.py` is **not**: it rebuilds the whole DB from
+  idempotent. **They no longer write `funnel_tags`**: `guard_tag_write`
+  (`tag_write_guard.py`) stops them with an explanation, because that table is
+  the materialized result of template + overrides and the first resync in the
+  admin wipes anything written by hand — silently. Escape hatch `--force-tags`
+  for a deliberate one-off, mirroring the `--force` idiom below.
+  `ksamata_funnels_db.py` is **not** idempotent: it rebuilds the whole DB from
   Excel and therefore deletes the existing file, wiping everything edited through
   the admin UI. It refuses to run when the DB exists unless given `--force`.
   Tests: `python3 -m pytest tools/data-import/tests`.
