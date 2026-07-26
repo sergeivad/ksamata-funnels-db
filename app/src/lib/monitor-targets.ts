@@ -212,7 +212,11 @@ export function syncMonitorTargets(db: AnyDB): { total: number; created: number;
     }
 
     const liveUrls = [...collected.keys()];
-    const cols = { id: monitorTargets.id, manualOverride: monitorTargets.manualOverride };
+    const cols = {
+      id: monitorTargets.id,
+      manualOverride: monitorTargets.manualOverride,
+      enabled: monitorTargets.enabled,
+    };
     const stale = (
       liveUrls.length === 0
         ? tx.select(cols).from(monitorTargets).all()
@@ -221,7 +225,7 @@ export function syncMonitorTargets(db: AnyDB): { total: number; created: number;
             .from(monitorTargets)
             .where(notInArray(monitorTargets.url, liveUrls))
             .all()
-    ) as { id: number; manualOverride: number }[];
+    ) as { id: number; manualOverride: number; enabled: number }[];
 
     if (stale.length > 0) {
       const ids = stale.map((s) => s.id);
@@ -230,7 +234,14 @@ export function syncMonitorTargets(db: AnyDB): { total: number; created: number;
       // исчезновением URL, а override оставался бы стоять — и живая ветка потом
       // отказывалась бы пересчитать enabled обратно. Вернувшийся URL оставался
       // бы выключенным навсегда, то есть решение человека терялось молча.
-      const mutable = stale.filter((s) => s.manualOverride === 0).map((s) => s.id);
+      // Только те, кого этот прогон действительно гасит. Раньше сюда попадали
+      // и давно погашенные: `retired` показывал «сколько всего осиротевших»
+      // вместо «сколько списано сейчас», а `updatedAt` погашенных строк
+      // затирался каждым синком — по нему нельзя было понять, когда цель
+      // на самом деле выбыла.
+      const mutable = stale
+        .filter((s) => s.manualOverride === 0 && s.enabled === 1)
+        .map((s) => s.id);
       if (mutable.length > 0) {
         tx.update(monitorTargets)
           .set({ enabled: 0, updatedAt: sql`(datetime('now'))` })

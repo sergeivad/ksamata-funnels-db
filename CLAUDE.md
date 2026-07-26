@@ -169,7 +169,10 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   set, so the live branch would then refuse to recompute `enabled` and the
   returning URL would never come back on. Exports `collectFunnelUrls` so the
   dashboard can collect URLs of **non**-active funnels through the very same
-  normalization.
+  normalization. The retirement branch touches only targets that are still
+  `enabled = 1`, so `retired` counts what this run actually muted and the
+  `updatedAt` of a long-retired target is not rewritten by every sync —
+  otherwise the stamp could never tell you when a target actually dropped out.
 - `monitor-kinds.ts` — Russian labels for source kinds (reuses `BLOCK_KINDS`
   titles) + `sourceKindTone`, which decides how a group chip reads: any group
   with at least one checked target is orange (`on`/`partial`), only a fully

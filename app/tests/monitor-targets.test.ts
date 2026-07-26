@@ -720,3 +720,42 @@ describe('setTargetEnabled', () => {
     expect(setTargetEnabled(db, 999999, true)).toBe(false);
   });
 });
+
+describe('счётчик retired', () => {
+  it('считает списанные в этот прогон, а не все погашенные разом', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`)
+      .run('https://retired-once.example.ru/x', f1);
+    syncMonitorTargets(db);
+
+    sqlite.prepare(`UPDATE funnels SET landing_url = '' WHERE id = ?`).run(f1);
+    expect(syncMonitorTargets(db).retired, 'первый синк действительно списывает').toBe(1);
+
+    // Цель уже погашена — второй синк не списывает её заново.
+    expect(syncMonitorTargets(db).retired, 'повторный синк ничего не списывает').toBe(0);
+  });
+
+  it('не переписывает updatedAt у давно погашенной цели', () => {
+    clearMonitoringState();
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`)
+      .run('https://stale-stamp.example.ru/x', f1);
+    syncMonitorTargets(db);
+    sqlite.prepare(`UPDATE funnels SET landing_url = '' WHERE id = ?`).run(f1);
+    syncMonitorTargets(db);
+
+    const id = targetRow('https://stale-stamp.example.ru/x')!.id;
+    sqlite.prepare(`UPDATE monitor_targets SET updated_at = '2020-01-01 00:00:00' WHERE id = ?`).run(id);
+
+    syncMonitorTargets(db);
+
+    const after = sqlite
+      .prepare(`SELECT updated_at AS u FROM monitor_targets WHERE id = ?`)
+      .get(id) as { u: string };
+    expect(after.u, 'штамп погашенной цели не должен обновляться каждым синком')
+      .toBe('2020-01-01 00:00:00');
+  });
+});
