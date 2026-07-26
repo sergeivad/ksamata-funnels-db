@@ -20,6 +20,7 @@ import {
   updateFunnel,
   deleteFunnel,
   duplicateFunnel,
+  resyncAllFunnels,
 } from '../src/lib/funnels';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
@@ -631,5 +632,31 @@ describe('гонка по num между процессами', () => {
   it('отдаёт ConflictError, а не сырую ошибку UNIQUE (иначе роут ответит 500 вместо 409)', () => {
     expect(() => createFunnel(racingDb(9971), { ...BASE_FUNNEL_DATA, num: 9971 }))
       .toThrow(ConflictError);
+  });
+});
+
+describe('resyncAllFunnels и пустые черновики', () => {
+  it('не наполняет черновик без осей шаблонными тегами', () => {
+    // createDraftFunnel намеренно создаёт воронку БЕЗ АВ-тегов: карточка
+    // показывает пустые селекты. Пересинк по всем воронкам записывал в такой
+    // черновик шаблонные дефолты — и содержимое черновика начинало зависеть от
+    // того, правил ли кто-то глобальный шаблон между его созданием и заполнением.
+    const draft = createDraftFunnel(testDb);
+    const countTags = () =>
+      (sqlite.prepare('select count(*) as n from funnel_tags where funnel_id = ?')
+        .get(draft.id) as { n: number }).n;
+    expect(countTags(), 'черновик создаётся без тегов').toBe(0);
+
+    resyncAllFunnels(testDb);
+
+    expect(countTags(), 'пересинк наполнил пустой черновик шаблоном').toBe(0);
+    expect(getFunnel(testDb, draft.id)!.axes)
+      .toEqual({ product: '', contractor: '', channel: '', direction: '' });
+  });
+
+  it('обычную воронку пересинк по-прежнему обрабатывает', () => {
+    const created = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9899 });
+    resyncAllFunnels(testDb);
+    expect(getFunnel(testDb, created.id)!.axes.product).toBe(BASE_FUNNEL_DATA.product);
   });
 });

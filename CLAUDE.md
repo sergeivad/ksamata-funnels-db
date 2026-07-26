@@ -116,7 +116,16 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   than given (`createDraftFunnel`, `duplicateFunnel`), the wrapper is
   `withNumRetry` instead: recomputing MAX+1 is the right answer there, while a
   user-specified `num` must fail rather than silently become a different one.
-- `refs.ts` — lookup-table CRUD + usage counting (`TABLE_MAP`, `VALID_KINDS`).
+  `resyncAllFunnels` **skips funnels whose four axes are all empty** — that is a
+  blank draft, and `createDraftFunnel` leaves it without AV tags on purpose.
+  Materializing the template into it would make a draft's contents depend on
+  whether someone edited the global template between its creation and its
+  first save.
+- `refs.ts` — lookup-table CRUD + usage counting (`TABLE_MAP`, `VALID_KINDS`),
+  plus `IMMUTABLE_KINDS` / `isImmutableKind`: `tags` is read-only through the
+  refs API for **every** method. `POST` used to be open while `PATCH`/`DELETE`
+  were blocked, so a tag created by hand could never be removed through the API.
+  Tags are owned by the template/override engine.
 - `funnel-days.ts` — read/replace `funnel_days`.
 - `funnel-blocks.ts` — read/replace blocks and items.
 - `blocks.ts` — static block-kind registry.
@@ -137,7 +146,10 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   `=`, `+`, `-`, `@`, TAB or CR get a leading apostrophe: the route serves a BOM
   and `;` so Excel opens the file, and Excel executes such a cell on open.
   RFC 4180 quoting does not prevent that — it strips the quotes and evaluates.
-- `validation.ts` — Zod schemas + `parseRouteId`.
+- `validation.ts` — Zod schemas + `parseRouteId`. `landingUrl` accepts `''` or
+  an **http(s)** URL up to `URL_MAX` (4096) — `new URL()` alone happily accepts
+  `javascript:` and `data:`. The cap is 4096 rather than the customary 2000
+  because the live DB holds a genuine 2019-character GetCourse segment link.
 - `http.ts` / `errors.ts` — response/error helpers.
 - `clipboard.ts` / `useUnsavedGuard.ts` — client hooks.
 - `monitor-status.ts` — monitoring status values, badge metadata, `formatAgo`.
@@ -190,7 +202,12 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   It is the second Node-only leaf after `db/client.ts`, and `next.config.ts`
   aliases it away for the edge build (see below). Keep it that way: put
   anything checkable-without-network in `monitor-dns.ts` instead.
-- `monitor-run.ts` — check cycle, state persistence, event log.
+- `monitor-run.ts` — check cycle, state persistence, event log. The cycle ends
+  with `pruneEvents`: `monitor_events` older than `EVENT_RETENTION_DAYS` (90)
+  are dropped. Events are written only on a **change** of status, but a flapping
+  target still produces ~190 rows a day and there are ~600 targets, so without a
+  bound the table never stops growing. Pruning rides the cycle because the cycle
+  is the table's only writer — no separate cleanup schedule to forget about.
 - `monitor-view.ts` — dashboard read models. Group counters (`sourceKinds`) count
   **only pages of active funnels**: archiving a funnel is itself the decision that
   its pages leave monitoring, so they drop out of the denominator, as do orphaned

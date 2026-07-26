@@ -148,4 +148,16 @@ describe('POST /api/refs/[kind]', () => {
     const res = await POST(req, params('channels'));
     expect(res.status).toBe(400);
   });
+  it('POST /api/refs/tags запрещён — симметрично PATCH и DELETE', async () => {
+    // Создать тег через справочник было можно, а удалить или переименовать —
+    // нет: тег оставался в базе навсегда. Теги ведёт движок шаблонов и
+    // оверрайдов, ручное создание здесь плодит только сирот.
+    const req = new NextRequest('http://localhost:3000', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'АВ Продукт: Выдумка' }),
+    });
+    const res = await POST(req, params('tags'));
+    expect(res.status).toBe(400);
+  });
 });

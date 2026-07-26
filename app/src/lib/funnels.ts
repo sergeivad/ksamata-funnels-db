@@ -497,6 +497,12 @@ export function resyncAllFunnels(db: DB): void {
   db.transaction((tx) => {
     for (const { id } of rows) {
       const axes = getAxesForFunnel(tx, id);
+      // Ни одной оси — это пустой черновик (createDraftFunnel заводит воронку
+      // БЕЗ АВ-тегов намеренно, карточка показывает пустые селекты).
+      // Материализовать ему шаблон значит поставить содержимое черновика в
+      // зависимость от того, правил ли кто-то глобальный шаблон между его
+      // созданием и заполнением. Осей нет — выводить теги не из чего.
+      if (!axes.product && !axes.contractor && !axes.channel && !axes.direction) continue;
       materializeFunnelTags(tx, id, axes);
     }
   });

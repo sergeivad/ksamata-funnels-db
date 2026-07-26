@@ -11,7 +11,7 @@ import path from 'path';
 import { runMigratePhase6 } from '../scripts/migrate-phase6';
 import * as schema from '../src/db/schema';
 import { clearMonitoringState } from './helpers/monitoring';
-import { runMonitorCycle, isCycleRunning } from '../src/lib/monitor-run';
+import { runMonitorCycle, EVENT_RETENTION_DAYS, isCycleRunning } from '../src/lib/monitor-run';
 import type { CheckResult } from '../src/lib/monitor-check';
 import { copyDbForTest } from './helpers/db';
 
@@ -305,5 +305,46 @@ describe('общий слот флага на globalThis', () => {
     release();
     await running;
     expect(globalThis.__ksamataMonitorRun?.cycleRunning).toBe(false);
+  });
+});
+
+describe('ретеншен истории инцидентов', () => {
+  /** Событие «задним числом» — как будто оно записано N дней назад. */
+  function seedOldEvent(targetId: number, daysAgo: number) {
+    sqlite
+      .prepare(
+        `INSERT INTO monitor_events (target_id, from_status, to_status, at)
+         VALUES (?, 'up', 'down', datetime('now', ?))`
+      )
+      .run(targetId, `-${daysAgo} days`);
+  }
+
+  it('срок хранения — 90 дней (решение принято явно, не деталь реализации)', () => {
+    expect(EVENT_RETENTION_DAYS).toBe(90);
+  });
+
+  it(`удаляет события старше ${EVENT_RETENTION_DAYS} дней по завершении цикла`, async () => {
+    const id = seedTarget();
+    seedOldEvent(id, EVENT_RETENTION_DAYS + 1);
+    seedOldEvent(id, EVENT_RETENTION_DAYS - 1);
+    expect(events(id)).toHaveLength(2);
+
+    await runMonitorCycle(db, { check: scriptedCheck([up]).fn, sync: false, sleep: noSleep });
+
+    // Осталось свежее событие плюс переход unknown → up этого цикла.
+    expect(events(id)).toHaveLength(2);
+    const rows = sqlite
+      .prepare(`SELECT at FROM monitor_events WHERE target_id = ? ORDER BY at`)
+      .all(id) as { at: string }[];
+    const oldest = new Date(rows[0].at + 'Z').getTime();
+    const cutoff = Date.now() - EVENT_RETENTION_DAYS * 24 * 3600 * 1000;
+    expect(oldest).toBeGreaterThan(cutoff);
+  });
+
+  it('историю в пределах срока не трогает', async () => {
+    const id = seedTarget();
+    seedOldEvent(id, 1);
+    await runMonitorCycle(db, { check: scriptedCheck([up]).fn, sync: false, sleep: noSleep });
+    expect(events(id)).toHaveLength(2);
   });
 });

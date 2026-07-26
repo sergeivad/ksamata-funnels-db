@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { refCreateSchema } from '@/lib/validation';
-import { listRefs, createRef, isValidKind, VALID_KINDS } from '@/lib/refs';
+import {
+  listRefs,
+  createRef,
+  isValidKind,
+  isImmutableKind,
+  IMMUTABLE_KIND_MESSAGE,
+  VALID_KINDS,
+} from '@/lib/refs';
 import { internalError } from '@/lib/http';
 
 type Params = { params: Promise<{ kind: string }> };
@@ -32,6 +39,12 @@ export async function POST(req: NextRequest, { params }: Params) {
       { error: `Invalid kind "${kind}". Must be one of: ${VALID_KINDS.join(', ')}.` },
       { status: 400 }
     );
+  }
+
+  // Тот же запрет, что у PATCH/DELETE в refs/[kind]/[id]: иначе тег можно
+  // создать, но не удалить — он остаётся в справочнике навсегда.
+  if (isImmutableKind(kind)) {
+    return NextResponse.json({ error: IMMUTABLE_KIND_MESSAGE }, { status: 400 });
   }
 
   // Parse and validate body
