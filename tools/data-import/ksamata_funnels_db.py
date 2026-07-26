@@ -8,6 +8,7 @@ import sqlite3
 import openpyxl
 import re
 import os
+import sys
 import json
 from datetime import datetime
 
@@ -566,10 +567,29 @@ def extract_block(ws, anchor, sn):
 # 5. POPULATE DATABASE
 # ============================================================
 
-def populate(db_path):
-    # Remove old DB if exists
-    if os.path.exists(db_path):
-        os.remove(db_path)
+def claim_db_path(db_path, force=False):
+    """
+    Готовит путь под новую базу.
+
+    Скрипт собирает базу с нуля, поэтому существующий файл он удаляет целиком.
+    А по этому пути лежит рабочая база сервиса, которую правят через админку, —
+    так что снос должен быть осознанным, а не побочным эффектом запуска
+    «просто посмотреть».
+    """
+    if not os.path.exists(db_path):
+        return
+    if not force:
+        raise SystemExit(
+            f"Отказ: {db_path} уже существует.\n"
+            "Этот скрипт пересобирает базу с нуля и удалит файл целиком, "
+            "включая всё, что правили через админку.\n"
+            "Если это действительно нужно — сделайте копию и запустите с --force."
+        )
+    os.remove(db_path)
+
+
+def populate(db_path, force=False):
+    claim_db_path(db_path, force)
 
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
@@ -854,5 +874,5 @@ def verify(conn):
 
 
 if __name__ == '__main__':
-    conn = populate(DB_PATH)
+    conn = populate(DB_PATH, force='--force' in sys.argv[1:])
     verify(conn)
