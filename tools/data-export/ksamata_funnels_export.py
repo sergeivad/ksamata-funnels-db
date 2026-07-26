@@ -22,7 +22,10 @@ OUT_PATH = os.path.join(ROOT_DIR, 'data', 'generated', 'Сводная_табл�
 # ============================================================
 
 def load_all(db_path):
-    conn = sqlite3.connect(db_path)
+    # Только чтение, как в tools/audit/db_source.py. Обычный connect создал бы
+    # пустую БД при отсутствии файла — на месте настоящей базы осталась бы
+    # пустышка, а скрипт упал бы на первом SELECT с невнятным «no such table».
+    conn = sqlite3.connect(f'file:{db_path}?mode=ro', uri=True)
     conn.row_factory = sqlite3.Row
 
     # Funnels with source, product, contractor names

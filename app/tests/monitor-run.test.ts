@@ -13,6 +13,7 @@ import * as schema from '../src/db/schema';
 import { clearMonitoringState } from './helpers/monitoring';
 import { runMonitorCycle, isCycleRunning } from '../src/lib/monitor-run';
 import type { CheckResult } from '../src/lib/monitor-check';
+import { copyDbForTest } from './helpers/db';
 
 const REAL_DB = path.resolve(process.cwd(), '..', 'ksamata_funnels.db');
 let tmp: string;
@@ -67,7 +68,7 @@ function events(id: number) {
 
 beforeEach(() => {
   tmp = path.join(os.tmpdir(), `mr-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
-  fs.copyFileSync(REAL_DB, tmp);
+  copyDbForTest(REAL_DB, tmp);
   sqlite = new Database(tmp);
   sqlite.pragma('foreign_keys = ON');
   runMigratePhase6(sqlite);

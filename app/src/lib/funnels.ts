@@ -120,6 +120,21 @@ function isNumConflict(err: unknown): boolean {
     && err.message.includes('UNIQUE constraint failed: funnels.num');
 }
 
+/**
+ * Там, где `num` задаёт человек, ретрай бессмыслен — номер нужен именно этот.
+ * Но проверка «свободен ли номер» идёт до транзакции, и другой писатель того же
+ * файла БД (python-тулза, второй инстанс) успевает занять его в промежутке.
+ * Тогда наружу летела сырая ошибка SQLite, и роут отдавал 500 вместо 409.
+ */
+function asNumConflict<T>(num: number, fn: () => T): T {
+  try {
+    return fn();
+  } catch (err) {
+    if (isNumConflict(err)) throw new ConflictError(`Funnel with num=${num} already exists`);
+    throw err;
+  }
+}
+
 function withNumRetry<T>(fn: () => T, attempts = 5): T {
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
@@ -210,7 +225,7 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
 
   let createdFunnel: FunnelListItem;
 
-  db.transaction((tx) => {
+  asNumConflict(data.num, () => db.transaction((tx) => {
     // Get-or-create foreign key refs
     const productRow    = createRef(tx, 'products',    data.product);
     const contractorRow = createRef(tx, 'contractors', data.contractor);
@@ -253,7 +268,7 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
       name:        funnelName(axes),
       axes,
     };
-  });
+  }));
 
   return createdFunnel!;
 }
@@ -351,7 +366,7 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
 
   let result: FunnelListItem | null = null;
 
-  db.transaction((tx) => {
+  asNumConflict(data.num ?? existing.num, () => db.transaction((tx) => {
     // Build scalar update payload (exclude axes fields)
     const scalarUpdate: Partial<typeof funnels.$inferInsert> = {};
 
@@ -432,7 +447,7 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
       name:        funnelName(finalAxes),
       axes:        finalAxes,
     };
-  });
+  }));
 
   return result;
 }

@@ -12,11 +12,12 @@ import { copyFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
+import { copyDbForTest } from './helpers/db';
 
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
 const TMP_DB = join(tmpdir(), `ksamata_export_route_test_${Date.now()}.db`);
 
-copyFileSync(REAL_DB, TMP_DB);
+copyDbForTest(REAL_DB, TMP_DB);
 
 // Seed Phase-5 (tag_templates + funnel_tag_overrides) via a throwaway handle
 // on the same temp file — getFunnel/listFunnels now read tag_templates when
@@ -84,7 +85,7 @@ describe('buildExportRows — roomsEnabled gating', () => {
     const { updateFunnel } = await import('../src/lib/funnels');
 
     const tmp = join(tmpdir(), `ksamata_export_gate_${Date.now()}.db`);
-    copyFileSync(REAL_DB, tmp);
+    copyDbForTest(REAL_DB, tmp);
     const sqlite = new Database(tmp);
     const db = drizzle(sqlite, { schema });
 

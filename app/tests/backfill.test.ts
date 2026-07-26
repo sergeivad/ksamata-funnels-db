@@ -10,13 +10,14 @@ import { funnels } from '../src/db/schema';
 import { runBackfill } from '../scripts/backfill-status';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
+import { copyDbForTest } from './helpers/db';
 
 // __dirname = app/tests/  →  go up 2 levels to repo root
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
 const TMP_DB  = join(tmpdir(), `ksamata_test_${Date.now()}.db`);
 
 // Copy real DB to a temp file — backfill runs against the copy only
-copyFileSync(REAL_DB, TMP_DB);
+copyDbForTest(REAL_DB, TMP_DB);
 
 const sqlite = new Database(TMP_DB);
 sqlite.pragma('journal_mode = WAL');

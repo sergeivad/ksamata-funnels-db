@@ -12,10 +12,11 @@ import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { backfillLegacyTagOverrides } from '../scripts/backfill-legacy-tag-overrides';
 import { updateFunnel, getFunnel } from '../src/lib/funnels';
+import { copyDbForTest } from './helpers/db';
 
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
 const TMP_DB = join(tmpdir(), `bflo_${Date.now()}_${process.pid}.db`);
-copyFileSync(REAL_DB, TMP_DB);
+copyDbForTest(REAL_DB, TMP_DB);
 const sqlite = new Database(TMP_DB);
 sqlite.pragma('journal_mode = WAL');
 sqlite.pragma('foreign_keys = ON');

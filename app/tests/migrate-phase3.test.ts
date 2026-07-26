@@ -4,6 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
+import { copyDbForTest } from './helpers/db';
 
 const REAL_DB = path.resolve(process.cwd(), '..', 'ksamata_funnels.db');
 let tmp: string;
@@ -11,7 +12,7 @@ let sqlite: Database.Database;
 
 beforeEach(() => {
   tmp = path.join(os.tmpdir(), `ph3-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
-  fs.copyFileSync(REAL_DB, tmp);
+  copyDbForTest(REAL_DB, tmp);
   sqlite = new Database(tmp);
 });
 

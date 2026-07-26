@@ -11,6 +11,7 @@ import path from 'path';
 import { runMigratePhase6 } from '../scripts/migrate-phase6';
 import * as schema from '../src/db/schema';
 import { clearMonitoringState as clearState } from './helpers/monitoring';
+import { copyDbForTest } from './helpers/db';
 import {
   syncMonitorTargets,
   setTargetEnabled,
@@ -24,7 +25,7 @@ let db: ReturnType<typeof drizzle<typeof schema>>;
 
 beforeEach(() => {
   tmp = path.join(os.tmpdir(), `mt-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
-  fs.copyFileSync(REAL_DB, tmp);
+  copyDbForTest(REAL_DB, tmp);
   sqlite = new Database(tmp);
   sqlite.pragma('foreign_keys = ON');
   runMigratePhase6(sqlite);

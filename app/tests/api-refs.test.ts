@@ -6,12 +6,13 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import * as schema from '../src/db/schema';
 import { listRefs, createRef } from '../src/lib/refs';
+import { copyDbForTest } from './helpers/db';
 
 // __dirname = app/tests/ → go up 2 levels to repo root
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
 const TMP_DB  = join(tmpdir(), `ksamata_refs_test_${Date.now()}.db`);
 
-copyFileSync(REAL_DB, TMP_DB);
+copyDbForTest(REAL_DB, TMP_DB);
 
 const sqlite = new Database(TMP_DB);
 sqlite.pragma('journal_mode = WAL');

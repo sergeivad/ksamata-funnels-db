@@ -12,11 +12,12 @@ import { copyFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { NextRequest } from 'next/server';
+import { copyDbForTest } from './helpers/db';
 
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
 const TMP_DB = join(tmpdir(), `ksamata_refs_id_route_test_${Date.now()}.db`);
 
-copyFileSync(REAL_DB, TMP_DB);
+copyDbForTest(REAL_DB, TMP_DB);
 process.env.FUNNELS_DB_PATH = TMP_DB;
 
 // A raw handle onto the SAME temp file, used only to seed fixtures (create a
