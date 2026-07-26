@@ -411,7 +411,12 @@ location), so they run from any working directory.
 
 - **Import** (`tools/data-import/`): `add_av_tags.py`, `add_durations.py`,
   `add_dih_funnel.py`, `add_pereliv_funnels.py`, `add_quiz_funnels.py` — all
-  idempotent. `ksamata_funnels_db.py` is **not**: it rebuilds the whole DB from
+  idempotent. **They no longer write `funnel_tags`**: `guard_tag_write`
+  (`tag_write_guard.py`) stops them with an explanation, because that table is
+  the materialized result of template + overrides and the first resync in the
+  admin wipes anything written by hand — silently. Escape hatch `--force-tags`
+  for a deliberate one-off, mirroring the `--force` idiom below.
+  `ksamata_funnels_db.py` is **not** idempotent: it rebuilds the whole DB from
   Excel and therefore deletes the existing file, wiping everything edited through
   the admin UI. It refuses to run when the DB exists unless given `--force`.
   Tests: `python3 -m pytest tools/data-import/tests`.

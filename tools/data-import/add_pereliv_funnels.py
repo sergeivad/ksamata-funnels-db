@@ -11,6 +11,9 @@ Script is idempotent: skips a funnel if it already exists (by num).
 import sqlite3
 import re
 import os
+import sys
+
+from tag_write_guard import guard_tag_write
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
@@ -47,6 +50,7 @@ def parse_tag_string(raw):
 
 
 def insert_funnel_tags(conn, funnel_id, tag_map, tag_type, raw):
+    guard_tag_write(__file__.split('/')[-1], sys.argv)
     """
     Parse raw comma-separated tag string, skip t=NN tokens,
     insert into funnel_tags using the provided tag_map {name: id}.

@@ -13,6 +13,9 @@ Idempotent: skip insert if funnel with num=32 already exists.
 import sqlite3
 import re
 import os
+import sys
+
+from tag_write_guard import guard_tag_write
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
@@ -39,6 +42,7 @@ def ensure_tags(conn, tag_names):
 
 
 def insert_funnel_tags(conn, funnel_id, tag_map, tag_type, raw):
+    guard_tag_write(__file__.split('/')[-1], sys.argv)
     for pos, tname in enumerate(parse_tag_string(raw)):
         if tname in tag_map:
             conn.execute(

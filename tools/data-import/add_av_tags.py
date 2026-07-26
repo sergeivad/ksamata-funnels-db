@@ -11,6 +11,9 @@
 
 import sqlite3
 import os
+import sys
+
+from tag_write_guard import guard_tag_write
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
@@ -126,6 +129,7 @@ def next_position(conn, funnel_id, tag_type):
 # ============================================================
 
 def add_av_tags_to_funnel(conn, funnel_row, product, channel, direction, contractor):
+    guard_tag_write('add_av_tags.py', sys.argv)
     """
     Для одной воронки проходит по всем трём слотам.
     Обрабатывает только те, у которых raw-строка непустая.
