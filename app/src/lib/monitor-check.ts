@@ -106,10 +106,13 @@ export async function checkUrl(url: string, opts: CheckOptions = {}): Promise<Ch
         continue;
       }
 
-      if (res.status === 200) {
+      // Любой 2xx — страница отдалась. Раньше живым считался ровно 200, и
+      // валидный 204 или 206 попадал в down как «упавший лендинг».
+      // Редиректы сюда не доходят: они разобраны выше.
+      if (res.status >= 200 && res.status < 300) {
         return {
           status: latencyMs > slowMs ? 'slow' : 'up',
-          httpStatus: 200,
+          httpStatus: res.status,
           finalUrl: res.url || current,
           latencyMs,
           error: '',

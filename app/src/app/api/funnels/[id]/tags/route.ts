@@ -3,6 +3,7 @@ import { db } from '@/db/client';
 import { parseRouteId, tagsPatchSchema } from '@/lib/validation';
 import { applyTagOverrides } from '@/lib/funnels';
 import { internalError } from '@/lib/http';
+import { ValidationError } from '@/lib/errors';
 import { SCENARIOS, type OverrideMap } from '@/lib/ab-tags';
 import { listOverrides } from '@/lib/tag-overrides';
 
@@ -42,6 +43,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (!updated) return NextResponse.json({ error: 'Funnel not found' }, { status: 404 });
     return NextResponse.json(updated);
   } catch (err: unknown) {
+    // Противоречивый набор оверрайдов — вина запроса, а не сервера.
+    if (err instanceof ValidationError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
     return internalError('PATCH /api/funnels/[id]/tags', err);
   }
 }

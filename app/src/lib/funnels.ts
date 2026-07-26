@@ -8,6 +8,7 @@
  */
 
 import { eq, sql, and } from 'drizzle-orm';
+import { ConflictError } from './errors';
 import { type AnyDB, type DB } from '../db/client';
 import {
   funnels,
@@ -197,7 +198,7 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
   // Check uniqueness of num before entering transaction
   const existing = db.select({ id: funnels.id }).from(funnels).where(eq(funnels.num, data.num)).get();
   if (existing) {
-    throw new Error(`409: Funnel with num=${data.num} already exists`);
+    throw new ConflictError(`Funnel with num=${data.num} already exists`);
   }
 
   const axes: AbAxes = {
@@ -344,7 +345,7 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
       .where(eq(funnels.num, data.num))
       .get();
     if (clash) {
-      throw new Error(`409: Funnel with num=${data.num} already exists`);
+      throw new ConflictError(`Funnel with num=${data.num} already exists`);
     }
   }
 

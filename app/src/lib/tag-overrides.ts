@@ -2,6 +2,7 @@ import { eq, asc } from 'drizzle-orm';
 import { type AnyDB } from '../db/client';
 import { funnelTagOverrides } from '../db/schema';
 import { SCENARIOS, isAxisTag, type Scenario, type OverrideMap } from './ab-tags';
+import { ValidationError } from './errors';
 
 function emptyOverrideMap(): OverrideMap {
   return {
@@ -39,6 +40,21 @@ export function listOverrides(db: AnyDB, funnelId: number): OverrideMap {
  * Self-contained transaction.
  */
 export function replaceOverrides(db: AnyDB, funnelId: number, overrides: OverrideMap): void {
+  // Уникальный индекс — (funnel_id, tag_type, name), без op, поэтому add и
+  // remove одного имени в одном сценарии физически не помещаются оба. Раньше
+  // второй молча гасился onConflictDoNothing, и запрос «убрать тег» уходил в
+  // никуда. Противоречие лучше назвать вслух, чем разрешить втихую.
+  for (const scenario of SCENARIOS) {
+    const ov = overrides[scenario] ?? { add: [], remove: [] };
+    const inAdd = new Set(ov.add);
+    const clash = ov.remove.filter((name) => inAdd.has(name));
+    if (clash.length > 0) {
+      throw new ValidationError(
+        `Сценарий "${scenario}": ${clash.join(', ')} — тег указан разом в add и remove`
+      );
+    }
+  }
+
   db.transaction((tx) => {
     tx.delete(funnelTagOverrides).where(eq(funnelTagOverrides.funnelId, funnelId)).run();
     for (const scenario of SCENARIOS) {

@@ -70,6 +70,17 @@ describe('checkUrl', () => {
     expect(res.status).toBe('up');
   });
 
+  it('считает живым любой 2xx, а не только ровно 200', async () => {
+    for (const code of [201, 204, 226]) {
+      const res = await checkUrl('https://a.ru/', {
+        fetchImpl: fakeFetch(fakeResponse(code, 'https://a.ru/')),
+      });
+      expect(res.status).toBe('up');
+      expect(res.httpStatus).toBe(code);
+      expect(res.error).toBe('');
+    }
+  });
+
   it('роняет 404 и 500 в down с кодом в тексте ошибки', async () => {
     for (const code of [404, 500]) {
       const res = await checkUrl('https://a.ru/', {
