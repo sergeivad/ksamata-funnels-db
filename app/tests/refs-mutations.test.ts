@@ -17,11 +17,12 @@ import { createFunnel, listFunnels, getFunnel } from '../src/lib/funnels';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
+import { copyDbForTest } from './helpers/db';
 
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
 const TMP_DB = join(tmpdir(), `ksamata_refs_mutations_test_${Date.now()}_${process.pid}.db`);
 
-copyFileSync(REAL_DB, TMP_DB);
+copyDbForTest(REAL_DB, TMP_DB);
 
 const sqlite = new Database(TMP_DB);
 sqlite.pragma('journal_mode = WAL');

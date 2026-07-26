@@ -11,12 +11,13 @@ import { copyFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { NextRequest } from 'next/server';
+import { copyDbForTest } from './helpers/db';
 
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
 const TMP_DB = join(tmpdir(), `ksamata_refs_route_test_${Date.now()}.db`);
 
 // Must happen before any import that reaches @/db/client
-copyFileSync(REAL_DB, TMP_DB);
+copyDbForTest(REAL_DB, TMP_DB);
 process.env.FUNNELS_DB_PATH = TMP_DB;
 
 // Dynamic import so the env var is already set when the module initialises
@@ -145,6 +146,18 @@ describe('POST /api/refs/[kind]', () => {
       body: 'not-json',
     });
     const res = await POST(req, params('channels'));
+    expect(res.status).toBe(400);
+  });
+  it('POST /api/refs/tags запрещён — симметрично PATCH и DELETE', async () => {
+    // Создать тег через справочник было можно, а удалить или переименовать —
+    // нет: тег оставался в базе навсегда. Теги ведёт движок шаблонов и
+    // оверрайдов, ручное создание здесь плодит только сирот.
+    const req = new NextRequest('http://localhost:3000', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'АВ Продукт: Выдумка' }),
+    });
+    const res = await POST(req, params('tags'));
     expect(res.status).toBe(400);
   });
 });

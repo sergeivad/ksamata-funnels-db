@@ -34,7 +34,9 @@ if (require.main === module) {
   const { drizzle } = require('drizzle-orm/better-sqlite3');
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const schema = require('../src/db/schema');
-  const dbPath = process.env.FUNNELS_DB_PATH ?? '../ksamata_funnels.db';
+  // Путь резолвится от расположения скрипта, а не от cwd (см. cli-db-path.ts).
+  const { resolveCliDbPath } = require('./cli-db-path') as typeof import('./cli-db-path');
+  const dbPath = resolveCliDbPath();
   const sqlite = new Database(dbPath);
   sqlite.pragma('foreign_keys = ON');
   const db = drizzle(sqlite, { schema });

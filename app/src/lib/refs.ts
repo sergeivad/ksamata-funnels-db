@@ -31,6 +31,25 @@ export function isValidKind(kind: string): kind is RefKind {
   return VALID_KINDS.includes(kind as RefKind);
 }
 
+/**
+ * Справочники, которые нельзя править через API руками. `tags` смешивает
+ * пользовательские теги с системными «АВ …», из которых выводятся оси воронок;
+ * ими управляет движок шаблонов и оверрайдов, а не человек через справочник.
+ *
+ * Правило одно на все методы: раньше `PATCH`/`DELETE` были закрыты, а `POST`
+ * нет — созданный тег оставался в базе навсегда, потому что удалить его через
+ * API было нечем. Читается как «этот справочник только на чтение».
+ */
+export const IMMUTABLE_KINDS: readonly string[] = ['tags'];
+
+export function isImmutableKind(kind: string): boolean {
+  return IMMUTABLE_KINDS.includes(kind);
+}
+
+/** Один текст отказа на все методы — чтобы формулировки не разъезжались. */
+export const IMMUTABLE_KIND_MESSAGE =
+  'Справочник тегов нельзя изменять: АВ-теги управляются автоматически';
+
 function resolveTable(kind: string) {
   if (!VALID_KINDS.includes(kind as RefKind)) {
     throw new Error(

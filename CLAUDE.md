@@ -109,7 +109,23 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 
 - `funnels.ts` — funnel CRUD + business logic (list/get/create/draft/update/
   delete/duplicate, tag resync, `applyTagOverrides`, `resyncAllFunnels`).
-- `refs.ts` — lookup-table CRUD + usage counting (`TABLE_MAP`, `VALID_KINDS`).
+  A `num` collision always surfaces as `ConflictError` → 409, whether the
+  pre-check catches it or another writer of the same DB file (a Python tool, a
+  second instance) takes the number between that check and the INSERT — the
+  transaction is wrapped in `asNumConflict`. Where `num` is allocated rather
+  than given (`createDraftFunnel`, `duplicateFunnel`), the wrapper is
+  `withNumRetry` instead: recomputing MAX+1 is the right answer there, while a
+  user-specified `num` must fail rather than silently become a different one.
+  `resyncAllFunnels` **skips funnels whose four axes are all empty** — that is a
+  blank draft, and `createDraftFunnel` leaves it without AV tags on purpose.
+  Materializing the template into it would make a draft's contents depend on
+  whether someone edited the global template between its creation and its
+  first save.
+- `refs.ts` — lookup-table CRUD + usage counting (`TABLE_MAP`, `VALID_KINDS`),
+  plus `IMMUTABLE_KINDS` / `isImmutableKind`: `tags` is read-only through the
+  refs API for **every** method. `POST` used to be open while `PATCH`/`DELETE`
+  were blocked, so a tag created by hand could never be removed through the API.
+  Tags are owned by the template/override engine.
 - `funnel-days.ts` — read/replace `funnel_days`.
 - `funnel-blocks.ts` — read/replace blocks and items.
 - `blocks.ts` — static block-kind registry.
@@ -130,7 +146,10 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   `=`, `+`, `-`, `@`, TAB or CR get a leading apostrophe: the route serves a BOM
   and `;` so Excel opens the file, and Excel executes such a cell on open.
   RFC 4180 quoting does not prevent that — it strips the quotes and evaluates.
-- `validation.ts` — Zod schemas + `parseRouteId`.
+- `validation.ts` — Zod schemas + `parseRouteId`. `landingUrl` accepts `''` or
+  an **http(s)** URL up to `URL_MAX` (4096) — `new URL()` alone happily accepts
+  `javascript:` and `data:`. The cap is 4096 rather than the customary 2000
+  because the live DB holds a genuine 2019-character GetCourse segment link.
 - `http.ts` / `errors.ts` — response/error helpers.
 - `clipboard.ts` / `useUnsavedGuard.ts` — client hooks.
 - `monitor-status.ts` — monitoring status values, badge metadata, `formatAgo`.
@@ -183,7 +202,12 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   It is the second Node-only leaf after `db/client.ts`, and `next.config.ts`
   aliases it away for the edge build (see below). Keep it that way: put
   anything checkable-without-network in `monitor-dns.ts` instead.
-- `monitor-run.ts` — check cycle, state persistence, event log.
+- `monitor-run.ts` — check cycle, state persistence, event log. The cycle ends
+  with `pruneEvents`: `monitor_events` older than `EVENT_RETENTION_DAYS` (90)
+  are dropped. Events are written only on a **change** of status, but a flapping
+  target still produces ~190 rows a day and there are ~600 targets, so without a
+  bound the table never stops growing. Pruning rides the cycle because the cycle
+  is the table's only writer — no separate cleanup schedule to forget about.
 - `monitor-view.ts` — dashboard read models. Group counters (`sourceKinds`) count
   **only pages of active funnels**: archiving a funnel is itself the decision that
   its pages leave monitoring, so they drop out of the denominator, as do orphaned
@@ -316,6 +340,15 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
 **Docker runs, in order** (`app/docker-entrypoint.sh`): Phase 2 → 3 (+data) →
 4 → 5 → legacy-tag-override backfill → 6.
 
+**Running a migration by hand** resolves its DB through `scripts/cli-db-path.ts`:
+the default is the repo-root DB **relative to the script**, not to `cwd`, and a
+path that does not exist is a hard error. Before this, running from the repo
+root instead of `app/` pointed at nothing, better-sqlite3 created an empty file
+next to the repo, and phases 5/6 reported success without touching the real
+database — their DDL is all `CREATE TABLE IF NOT EXISTS`, and SQLite only checks
+foreign keys on DML. Docker and tests are unaffected: they always pass the path
+explicitly.
+
 One-off / local-only scripts (NOT in any automated path): `seed-phase1.ts`,
 `apply_phase2b.ts`, `apply_phase2c_boo.ts` (both operate on a scratchpad copy,
 never the real DB), `migrate-messenger-tagtype.ts`, `backfill-messenger-tags.ts`,
@@ -380,7 +413,10 @@ location), so they run from any working directory.
   the admin UI. It refuses to run when the DB exists unless given `--force`.
   Tests: `python3 -m pytest tools/data-import/tests`.
 - **Export** (`tools/data-export/`): `ksamata_funnels_export.py` → summary XLSX
-  in `data/generated/`.
+  in `data/generated/`. Opens the DB **read-only** (`mode=ro`), like
+  `tools/audit`: a plain `connect` would create an empty database where the real
+  one is missing and then fail on the first SELECT.
+  Tests: `python3 -m pytest tools/data-export/tests`.
 - **Audit** (`tools/audit/`): `run_audit.py` builds a tag drift map across
   three sources — the GetCourse offer registry, `deal_export` history, and
   the DB — into an XLSX report with 16 finding classes; it fixes nothing, in
@@ -404,7 +440,12 @@ location), so they run from any working directory.
   the monitoring gotcha above). Its `monitor_*` tables must stay empty.
 - Put process-wide state on `globalThis`, not in a module-level `let` — the
   production bundle duplicates modules (see above).
-- Tests run against a temp **copy** of the DB, never the live file.
+- Tests run against a temp **copy** of the DB, never the live file. Make that
+  copy with `copyDbForTest` ([app/tests/helpers/db.ts](app/tests/helpers/db.ts)),
+  not `copyFileSync`: the plain copy takes only the main file and leaves behind
+  everything sitting in `*.db-wal` — which, with a dev server running, is every
+  recent write. `VACUUM INTO` gives a consistent snapshot regardless of WAL
+  state and is synchronous, which module-level fixtures need.
 - For non-trivial or resumable work, use Basic Memory (see [AGENTS.md](AGENTS.md)).
 
 ## Docs & planning

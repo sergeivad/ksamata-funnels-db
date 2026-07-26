@@ -17,13 +17,14 @@ import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { runBackfillMessengerTags } from '../scripts/backfill-messenger-tags';
+import { copyDbForTest } from './helpers/db';
 
 // __dirname = app/tests/ → go up 2 levels to repo root for the DB
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
 const TMP_DB  = join(tmpdir(), `ksamata_funnels_test_backfill_messenger_${Date.now()}_${process.pid}.db`);
 
 // Copy real DB to temp location — never touch the real file
-copyFileSync(REAL_DB, TMP_DB);
+copyDbForTest(REAL_DB, TMP_DB);
 
 const sqlite = new Database(TMP_DB);
 sqlite.pragma('journal_mode = WAL');

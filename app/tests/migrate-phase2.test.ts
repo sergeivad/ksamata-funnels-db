@@ -13,13 +13,14 @@ import { join } from 'path';
 import * as schema from '../src/db/schema';
 import { channels, directions } from '../src/db/schema';
 import { runMigratePhase2 } from '../scripts/migrate-phase2';
+import { copyDbForTest } from './helpers/db';
 
 // __dirname = app/tests/ → go up 2 levels to repo root for the DB
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
 const TMP_DB  = join(tmpdir(), `ksamata_migrate_phase2_test_${Date.now()}_${process.pid}.db`);
 
 // Copy real DB to temp location — never touch the real file
-copyFileSync(REAL_DB, TMP_DB);
+copyDbForTest(REAL_DB, TMP_DB);
 
 const sqlite = new Database(TMP_DB);
 sqlite.pragma('journal_mode = WAL');

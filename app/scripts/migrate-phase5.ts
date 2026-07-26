@@ -16,7 +16,9 @@ export function runMigratePhase5(sqlite: import('better-sqlite3').Database): voi
 if (require.main === module) {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const Database = require('better-sqlite3');
-  const dbPath = process.env.FUNNELS_DB_PATH ?? '../ksamata_funnels.db';
+  // Путь резолвится от расположения скрипта, а не от cwd (см. cli-db-path.ts).
+  const { resolveCliDbPath } = require('./cli-db-path') as typeof import('./cli-db-path');
+  const dbPath = resolveCliDbPath();
   const sqlite = new Database(dbPath);
   console.log(`Phase-5 schema migration on: ${dbPath}`);
   runMigratePhase5(sqlite);
