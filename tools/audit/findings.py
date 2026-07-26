@@ -353,6 +353,15 @@ def find_contradictory_legacy(groups, expectations, index):
             tag for tag in group.tags
             if any(tag.startswith(p) for p in CONTRADICTORY_LEGACY_PREFIXES)
         )
+        # Общий тег и его собственное уточнение — не противоречие: `ВК NR`
+        # означает «направление не уточнено», `ВК NR IS` — уточнено. Правило
+        # ловило их парой, потому что общий тег сам начинается с префикса из
+        # списка; так набиралась 21 находка из 27. Оставляем только самые
+        # уточнённые теги: противоречие — это два РАЗНЫХ уточнения сразу.
+        legacy = [
+            tag for tag in legacy
+            if not any(other != tag and other.startswith(tag + ' ') for other in legacy)
+        ]
         # Один такой тег — норма. Противоречие начинается со второго.
         if len(legacy) < 2:
             continue

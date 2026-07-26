@@ -221,3 +221,24 @@ def test_classes_5_6_7_are_mutually_exclusive():
 def test_find_unresolved_silent_for_recognised_group():
     raw = AV + '|АВ Этап: Регистрация'
     assert find_unresolved(group_observations([obs(raw, 2)]), INDEX) == []
+
+
+def test_class_4_does_not_report_a_general_tag_next_to_its_own_refinement():
+    """`ВК NR` + `ВК NR IS` — это общий тег и его уточнение, а не противоречие.
+
+    В июльском отчёте так выглядит 21 находка класса 4 из 27: правило ловит
+    любые два тега с одним префиксом, а общий тег сам начинается с этого
+    префикса. Противоречие — это два РАЗНЫХ уточнения одновременно.
+    """
+    raw = AV + '|АВ Этап: Оплата|АВ Время: 19|ВК NR|ВК NR IS'
+    groups = group_observations([obs(raw, 2)])
+    expectations = [exp('time_19', raw)]
+    assert find_contradictory_legacy(groups, expectations, INDEX) == []
+
+
+def test_class_4_still_reports_two_different_refinements_under_one_general_tag():
+    raw = AV + '|АВ Этап: Оплата|АВ Время: 19|ВК NR|ВК NR IS|ВК NR ВК'
+    groups = group_observations([obs(raw, 2)])
+    expectations = [exp('time_19', raw)]
+    found = find_contradictory_legacy(groups, expectations, INDEX)
+    assert [f.cls for f in found] == [4]
