@@ -4,6 +4,7 @@ import { parseRouteId, tagsPatchSchema } from '@/lib/validation';
 import { applyTagOverrides } from '@/lib/funnels';
 import { internalError } from '@/lib/http';
 import { SCENARIOS, type OverrideMap } from '@/lib/ab-tags';
+import { listOverrides } from '@/lib/tag-overrides';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -26,10 +27,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Validation failed', issues: parsed.error.issues }, { status: 400 });
   }
 
-  // Normalize the partial patch into a full OverrideMap (missing scenarios cleared).
+  // Normalize the partial patch into the full OverrideMap replaceOverrides needs.
+  // A scenario the body does not mention keeps whatever is stored — this is a
+  // PATCH, not a PUT. Clearing one is still possible, by naming it with empty
+  // lists (`{ time_15: { add: [], remove: [] } }`).
+  const current = listOverrides(db, funnelId);
   const patch = {} as OverrideMap;
   for (const s of SCENARIOS) {
-    patch[s] = { add: parsed.data[s]?.add ?? [], remove: parsed.data[s]?.remove ?? [] };
+    patch[s] = parsed.data[s] ?? current[s];
   }
 
   try {

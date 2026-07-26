@@ -53,6 +53,40 @@ describe('funnel-days (rooms)', () => {
     expect(t.tariffs).toBe('https://t');
   });
 
+  it('drops rows for days missing from the payload', () => {
+    replaceDays(db, funnelId, [
+      { timeSlot: '15', dayNum: 1, gcRoom: 'g1', webRoom: '', replayUrl: '' },
+      { timeSlot: '15', dayNum: 2, gcRoom: 'g2', webRoom: '', replayUrl: '' },
+      { timeSlot: '15', dayNum: 3, gcRoom: 'g3', webRoom: '', replayUrl: '' },
+    ]);
+
+    // Deleting the middle day shifts day 3 up into day 2 — the editor then
+    // sends only days 1..2. Day 3 must not survive in the DB.
+    replaceDays(db, funnelId, [
+      { timeSlot: '15', dayNum: 1, gcRoom: 'g1', webRoom: '', replayUrl: '' },
+      { timeSlot: '15', dayNum: 2, gcRoom: 'g3', webRoom: '', replayUrl: '' },
+    ]);
+
+    expect(listDays(db, funnelId)).toEqual([
+      { timeSlot: '15', dayNum: 1, gcRoom: 'g1', webRoom: '', replayUrl: '' },
+      { timeSlot: '15', dayNum: 2, gcRoom: 'g3', webRoom: '', replayUrl: '' },
+    ]);
+  });
+
+  it('never touches days of another funnel', () => {
+    const other = (sqlite
+      .prepare('SELECT id FROM funnels WHERE id <> ? LIMIT 1')
+      .get(funnelId) as { id: number }).id;
+    sqlite.prepare('DELETE FROM funnel_days WHERE funnel_id = ?').run(other);
+    replaceDays(db, other, [{ timeSlot: '19', dayNum: 4, gcRoom: 'keep', webRoom: '', replayUrl: '' }]);
+
+    replaceDays(db, funnelId, [{ timeSlot: '15', dayNum: 1, gcRoom: 'g', webRoom: '', replayUrl: '' }]);
+
+    expect(listDays(db, other)).toEqual([
+      { timeSlot: '19', dayNum: 4, gcRoom: 'keep', webRoom: '', replayUrl: '' },
+    ]);
+  });
+
   it('rejects dayNum outside 1..5', () => {
     expect(() => replaceDays(db, funnelId, [{ timeSlot: '15', dayNum: 6, gcRoom: 'g', webRoom: '', replayUrl: '' }])).toThrow();
   });
