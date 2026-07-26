@@ -126,12 +126,20 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 - `status.ts` — funnel status constants/meta (active/draft/archive).
 - `rooms-grid.ts` — build/flatten the rooms grid (slot × day).
 - `funnel-compact.ts` — grouping/visibility for the compact view.
-- `export.ts` — build export rows + CSV serialization.
+- `export.ts` — build export rows + CSV serialization. Fields starting with
+  `=`, `+`, `-`, `@`, TAB or CR get a leading apostrophe: the route serves a BOM
+  and `;` so Excel opens the file, and Excel executes such a cell on open.
+  RFC 4180 quoting does not prevent that — it strips the quotes and evaluates.
 - `validation.ts` — Zod schemas + `parseRouteId`.
 - `http.ts` / `errors.ts` — response/error helpers.
 - `clipboard.ts` / `useUnsavedGuard.ts` — client hooks.
 - `monitor-status.ts` — monitoring status values, badge metadata, `formatAgo`.
-- `monitor-urls.ts` — URL normalization + multi-URL field splitting.
+- `monitor-urls.ts` — URL normalization + multi-URL field splitting. A checkable
+  target is http(s), has a dotted hostname (no IP literals) and a standard port —
+  otherwise the dashboard becomes an SSRF oracle and a port scanner for the
+  container's own network. `resolveRedirectTarget` applies the very same rule to
+  each redirect hop; keep the two in one place, a hop that skips the check
+  reopens the whole hole.
 - `monitor-targets.ts` — sync targets from funnel data, enable/disable, group defaults.
   Only funnels with `status = 'active'` are collected (`MONITORED_FUNNEL_STATUS`);
   drafts and archive are out of scope, and a URL left behind by a funnel leaving
@@ -149,7 +157,11 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   disabled one is grey. `partial` differs from `on` in wording and
   `aria-pressed="mixed"`, not in colour — a partially enabled group must not
   look switched off.
-- `monitor-check.ts` — pure HTTP availability check (`checkUrl`).
+- `monitor-check.ts` — pure HTTP availability check (`checkUrl`). Follows
+  redirects itself (`redirect: 'manual'`, ≤ `MAX_REDIRECTS`), validating every
+  hop through `resolveRedirectTarget`; a refused hop reports a generic error and
+  never echoes the destination back to the dashboard. One `AbortSignal.timeout`
+  covers the whole chain, so N hops cannot stretch into N timeouts.
 - `monitor-run.ts` — check cycle, state persistence, event log.
 - `monitor-view.ts` — dashboard read models. Group counters (`sourceKinds`) count
   **only pages of active funnels**: archiving a funnel is itself the decision that

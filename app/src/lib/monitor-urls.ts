@@ -23,6 +23,12 @@ function isIpLiteralHost(hostname: string): boolean {
   return hostname.startsWith('[') || IPV4_LITERAL.test(hostname);
 }
 
+// Публичная страница живёт на 80/443. Остальные порты в базе воронок означали бы
+// либо опечатку, либо попытку прощупать внутреннюю службу (`:6379`, `:8080`)
+// чужими руками: чекер сходит, а дашборд покажет, отвечает там что-нибудь или
+// нет. URL приводит `:80`/`:443` к пустому порту, поэтому здесь только «пусто».
+const ALLOWED_PORTS = new Set(['']);
+
 /**
  * Канонический вид URL для дедупликации и проверки.
  * Возвращает null, если это не пригодная для проверки http(s)-ссылка.
@@ -35,7 +41,23 @@ export function normalizeUrl(raw: string): string | null {
     // Хост без точки — это localhost или мусор вроде голого "https://".
     if (!parsed.hostname.includes('.')) return null;
     if (isIpLiteralHost(parsed.hostname)) return null;
+    if (!ALLOWED_PORTS.has(parsed.port)) return null;
     return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Тот же допуск, но для адреса, который встретился уже в процессе проверки —
+ * то есть для каждого шага редиректа. Заводя цель, мы отбраковываем IP-литералы
+ * и нестандартные порты; если бы чекер шёл по редиректам сам, вся эта проверка
+ * касалась бы только первого адреса, а `302` на 169.254.169.254 обходил бы её
+ * целиком. Возвращает канонический адрес или null.
+ */
+export function resolveRedirectTarget(location: string, base: string): string | null {
+  try {
+    return normalizeUrl(new URL(location, base).toString());
   } catch {
     return null;
   }

