@@ -10,6 +10,7 @@
  */
 import { type DB } from '../src/db/client';
 import { createFunnel } from '../src/lib/funnels';
+import { ConflictError } from '../src/lib/errors';
 import { type FunnelCreate } from '../src/lib/validation';
 
 // ─── Funnel definitions ───────────────────────────────────────────────────────
@@ -119,8 +120,10 @@ export function runSeed(db: DB): void {
       created++;
       console.log(`  Created num=${funnel.num} "${funnel.productName}"`);
     } catch (err) {
-      const msg = (err as Error).message ?? '';
-      if (msg.startsWith('409:')) {
+      // Идемпотентность сева держится ровно на этом различении: «такая воронка
+      // уже есть» — не ошибка, всё остальное — ошибка. Раньше оно опиралось на
+      // префикс текста «409:», то есть ломалось от переформулировки сообщения.
+      if (err instanceof ConflictError) {
         skipped++;
         console.log(`  Skipped num=${funnel.num} (already exists)`);
       } else {

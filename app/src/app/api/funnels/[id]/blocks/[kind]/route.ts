@@ -65,6 +65,15 @@ export async function PUT(req: NextRequest, { params }: Params) {
     if (check.level === 'error') {
       return NextResponse.json({ error: `items[${i}]: ${check.message}` }, { status: 400 });
     }
+    // Отсутствующий slot и null — это «общий» режим. А вот '17' или 'вечер'
+    // раньше молча становились null: строка теряла привязку ко времени, и
+    // человек узнавал об этом, только увидев ссылку не в той колонке.
+    if (it.slot !== undefined && it.slot !== null && it.slot !== '15' && it.slot !== '19') {
+      return NextResponse.json(
+        { error: `items[${i}]: slot должен быть "15", "19" или null` },
+        { status: 400 }
+      );
+    }
     const slot = it.slot === '15' || it.slot === '19' ? it.slot : null;
     items.push({ slot, label: it.label, url: it.url });
   }

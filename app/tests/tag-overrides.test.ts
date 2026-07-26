@@ -50,6 +50,28 @@ describe('tag-overrides', () => {
     expect(back.reg).toEqual({ add: [], remove: [] });
   });
 
+  it('отвергает одно и то же имя разом в add и remove вместо тихой потери', () => {
+    const ov = empty();
+    ov.reg.add = ['спорный'];
+    ov.reg.remove = ['спорный'];
+
+    // Уникальный индекс — (funnel_id, tag_type, name), без op: обе строки в него
+    // не помещаются, и onConflictDoNothing раньше молча гасил вторую.
+    expect(() => replaceOverrides(db, FID, ov)).toThrow(/спорный/);
+    expect(listOverrides(db, FID).reg.add).not.toContain('спорный');
+  });
+
+  it('одно имя в разных сценариях — это нормально', () => {
+    const ov = empty();
+    ov.reg.add = ['общий'];
+    ov.time_15.remove = ['общий'];
+    replaceOverrides(db, FID, ov);
+
+    const back = listOverrides(db, FID);
+    expect(back.reg.add).toEqual(['общий']);
+    expect(back.time_15.remove).toEqual(['общий']);
+  });
+
   it('drops axis-tag removes defensively', () => {
     const ov = empty();
     ov.reg.remove = ['АВ Продукт: ТКМ', 'автоворонки'];

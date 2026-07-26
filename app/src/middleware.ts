@@ -82,7 +82,10 @@ export function resolveAuthDecision(env: AuthEnv, authHeader: string | null): Au
     return env.NODE_ENV === 'production' ? 'misconfigured' : 'open';
   }
 
-  if (authHeader?.startsWith('Basic ')) {
+  // Имя схемы регистронезависимо (RFC 7235): клиент вправе прислать "basic ".
+  // Сравнение по точному "Basic " отказывало такому клиенту с верным паролем,
+  // и понять причину по 401 было невозможно.
+  if (authHeader && authHeader.slice(0, 6).toLowerCase() === 'basic ') {
     try {
       if (timingSafeEqual(decodeBase64Utf8(authHeader.slice(6)), expected)) {
         return 'ok';

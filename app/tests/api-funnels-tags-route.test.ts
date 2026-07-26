@@ -91,6 +91,14 @@ describe('PATCH /api/funnels/[id]/tags', () => {
     expect(time15).not.toContain('временный');
   });
 
+  it('одно имя разом в add и remove → 400, а не 500', async () => {
+    const res = await PATCH(
+      jsonReq('PATCH', { reg: { add: ['спорный'], remove: ['спорный'] } }),
+      params(existingId)
+    );
+    expect(res.status).toBe(400);
+  });
+
   it('returns 400 for a non-numeric id', async () => {
     const res = await PATCH(jsonReq('PATCH', {}), params('abc'));
     expect(res.status).toBe(400);

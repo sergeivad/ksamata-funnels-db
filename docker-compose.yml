@@ -22,6 +22,13 @@ services:
       CHOKIDAR_USEPOLLING: "true"
       # Leave empty to disable Basic Auth locally (set "user:pass" to enable).
       ADMIN_BASIC_AUTH: ""
+      # Этот стек монтирует РЕАЛЬНУЮ базу репозитория (см. volumes ниже), а
+      # планировщик пишет результаты проверок прямо в неё — таблицы monitor_*
+      # в закоммиченном файле должны оставаться пустыми (см. CLAUDE.md).
+      # Плюс каждый цикл ходит по живым лендингам подрядчиков. Поэтому по
+      # умолчанию выключено; поставьте "true", если правите сам мониторинг —
+      # и тогда восстановите БД перед коммитом.
+      MONITOR_ENABLED: "false"
       # Kill-switch: "true" turns auth OFF everywhere, even in production and
       # even if ADMIN_BASIC_AUTH is set. Uncomment to force-disable auth.
       # ADMIN_AUTH_DISABLED: "true"

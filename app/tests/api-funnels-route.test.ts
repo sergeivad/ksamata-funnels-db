@@ -100,6 +100,26 @@ describe('POST /api/funnels', () => {
     const res = await listPOST(jsonReq('POST', { ...VALID_CREATE, num: numA }));
     expect(res.status).toBe(409);
   });
+
+  it('не выдаёт за конфликт постороннюю ошибку, в тексте которой есть «409»', async () => {
+    vi.resetModules();
+    vi.doMock('@/db/client', () => ({ db: drizzle(sqlite, { schema }) }));
+    vi.doMock('@/lib/funnels', async () => {
+      const actual = await vi.importActual<typeof import('../src/lib/funnels')>('@/lib/funnels');
+      return {
+        ...actual,
+        createFunnel: () => {
+          throw new Error('сбой записи в строке 409 файла журнала');
+        },
+      };
+    });
+    const failingPOST = (await import('../src/app/api/funnels/route')).POST;
+
+    const res = await failingPOST(jsonReq('POST', VALID_CREATE));
+    vi.doUnmock('@/lib/funnels');
+
+    expect(res.status).toBe(500);
+  });
 });
 
 describe('GET /api/funnels', () => {

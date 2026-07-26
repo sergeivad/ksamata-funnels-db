@@ -33,11 +33,32 @@ export function readSchedulerConfig(
   };
 }
 
-let started = false;
+// Тот же случай, что и cycleRunning в monitor-run: модульная переменная не
+// singleton в прод-бандле, потому что webpack кладёт этот модуль в несколько
+// чанков. Два экземпляра `started` означали бы два setInterval — то есть вдвое
+// больше циклов по живым лендингам, причём поймать это тестами нельзя: vitest
+// отдаёт всем импортёрам один инстанс модуля.
+interface SchedulerState {
+  started: boolean;
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __ksamataMonitorScheduler: SchedulerState | undefined;
+}
+
+/** Читаем слот каждый раз, а не кэшируем ссылку — иначе подмена объекта не видна. */
+function schedulerState(): SchedulerState {
+  if (!globalThis.__ksamataMonitorScheduler) {
+    globalThis.__ksamataMonitorScheduler = { started: false };
+  }
+  return globalThis.__ksamataMonitorScheduler;
+}
 
 export function startMonitorScheduler(): void {
-  if (started) return;
-  started = true;
+  const state = schedulerState();
+  if (state.started) return;
+  state.started = true;
 
   const config = readSchedulerConfig(process.env);
   if (!config.enabled) {

@@ -21,6 +21,18 @@ export function sourceKindLabel(sourceKind: string): string {
 }
 
 /**
+ * Виды источников, которые вообще могут появиться у цели.
+ *
+ * Читать неизвестный вид (sourceKindLabel) — нормально, а вот записывать по
+ * нему решение человека нельзя: monitor_source_kind_prefs хранится вечно и
+ * ничем не подчищается, так что опечатка в `sourceKind` оседала бы в базе
+ * навсегда как предпочтение для группы, которой не существует.
+ */
+export function isKnownSourceKind(sourceKind: string): boolean {
+  return BLOCK_TITLES.has(sourceKind) || sourceKind in EXTRA_TITLES;
+}
+
+/**
  * Как читается чип группы на дашборде.
  *
  * `on` и `partial` подсвечиваются одинаково — оранжевым: с одного взгляда важно

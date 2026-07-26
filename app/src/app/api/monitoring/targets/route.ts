@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { setSourceKindEnabled } from '@/lib/monitor-targets';
 import { monitorTargetsBulkPatchSchema } from '@/lib/validation';
+import { isKnownSourceKind } from '@/lib/monitor-kinds';
 import { internalError } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
@@ -17,6 +18,13 @@ export async function PATCH(req: NextRequest) {
   const parsed = monitorTargetsBulkPatchSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: 'Validation failed', issues: parsed.error.issues }, { status: 400 });
+  }
+
+  if (!isKnownSourceKind(parsed.data.sourceKind)) {
+    return NextResponse.json(
+      { error: `Неизвестный вид источника "${parsed.data.sourceKind}"` },
+      { status: 400 }
+    );
   }
 
   try {
