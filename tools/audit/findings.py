@@ -21,6 +21,7 @@ from normalize import (
     av_key,
     classify,
     is_complete_key,
+    is_external_tag,
     key_label,
 )
 
@@ -272,12 +273,17 @@ def find_extra_axes(groups, vocabulary):
     последняя выбрасывает группы с tag_type is None (например, без АВ Этап
     или с непонятым этапом), и такие группы — включая ровно те, что несут
     неизвестные базе оси вроде 'АВ Время: 17' — тихо пропадали бы из отчёта.
+
+    Теги из EXTERNAL_TAG_PREFIXES пропускаются: база их не знает намеренно.
+    Маркеры типа воронки, наоборот, НЕ пропускаются — база их действительно
+    не умеет выражать, и это настоящий пробел модели, а не решённый вопрос.
     """
     result = []
     for group in _latest_by_stage_family(groups):
         unknown = sorted(
             tag for tag in group.tags
             if tag.startswith('АВ ') and tag not in vocabulary
+            and not is_external_tag(tag)
         )
         if not unknown:
             continue
@@ -347,6 +353,15 @@ def find_contradictory_legacy(groups, expectations, index):
             tag for tag in group.tags
             if any(tag.startswith(p) for p in CONTRADICTORY_LEGACY_PREFIXES)
         )
+        # Общий тег и его собственное уточнение — не противоречие: `ВК NR`
+        # означает «направление не уточнено», `ВК NR IS` — уточнено. Правило
+        # ловило их парой, потому что общий тег сам начинается с префикса из
+        # списка; так набиралась 21 находка из 27. Оставляем только самые
+        # уточнённые теги: противоречие — это два РАЗНЫХ уточнения сразу.
+        legacy = [
+            tag for tag in legacy
+            if not any(other != tag and other.startswith(tag + ' ') for other in legacy)
+        ]
         # Один такой тег — норма. Противоречие начинается со второго.
         if len(legacy) < 2:
             continue
@@ -488,11 +503,15 @@ def find_unknown_axes_in_registry(offers, vocabulary):
     Маркеры типа воронки исключены: двоеточия в них нет, поэтому разбор
     «часть до двоеточия» выдавал весь тег за имя новой оси, и «АВ Прямые»,
     «АВ Квиз», «АВ Квиз-Лайт» попадали сюда как три неизвестные оси.
+
+    Теги из EXTERNAL_TAG_PREFIXES тоже исключены: база их не знает намеренно,
+    так что это не расхождение (см. комментарий в normalize).
     """
     counts = defaultdict(set)
     for offer in _offers_with_av(offers):
         for tag in offer.tags:
-            if tag.startswith('АВ ') and tag not in vocabulary and tag not in MARKER_TAGS:
+            if (tag.startswith('АВ ') and tag not in vocabulary
+                    and tag not in MARKER_TAGS and not is_external_tag(tag)):
                 axis = tag.split(':', 1)[0] if ':' in tag else tag
                 counts[axis].add(offer.offer_id)
 
@@ -663,6 +682,14 @@ def find_drift(observations, index, expectations):
         if len(timeline) < 2:
             continue
 
+        # Итог всей истории слота: что реально ушло и что реально пришло.
+        # Тег, которого нет ни в одном из этих множеств, за время наблюдения
+        # вернулся к прежнему состоянию — это переключение кампании
+        # (ОТО ↔ big-course ↔ small-course), а не потеря разметки. Без такого
+        # разделения переключения — половина класса, и настоящие пропажи в них тонут.
+        net_gone = timeline[0][1] - timeline[-1][1]
+        net_new = timeline[-1][1] - timeline[0][1]
+
         for (older_date, older_tags, older_deals), (newer_date, newer_tags, newer_deals) in zip(
             timeline, timeline[1:]
         ):
@@ -675,6 +702,12 @@ def find_drift(observations, index, expectations):
                 parts.append('появился: ' + ', '.join(appeared))
             if disappeared:
                 parts.append('исчез: ' + ', '.join(disappeared))
+
+            net_here = sorted((set(appeared) & net_new) | (set(disappeared) & net_gone))
+            if net_here:
+                parts.append('нетто за весь период: ' + ', '.join(net_here))
+            else:
+                parts.append('переключение — набор вернулся к прежнему виду')
             result.append(
                 Finding(
                     cls=15,

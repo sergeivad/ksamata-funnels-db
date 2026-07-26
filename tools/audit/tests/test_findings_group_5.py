@@ -122,7 +122,9 @@ def test_class_15_orders_multiple_simultaneous_tag_changes_deterministically():
     found = find_drift(observations, INDEX, EXPECTATIONS)
     assert [f.cls for f in found] == [15]
     assert found[0].subject == 'АЛЬФА, БЕТА, ВЕГА, ГАММА, ДЕЛЬТА, ЕЖИК, ЖЕСТ, ЗЕВС, ИЖИЦА, КОРЬ'
-    assert found[0].detail == (
+    # startswith, а не ==: к detail добавляется вывод «нетто/переключение»,
+    # а этот тест — про детерминированный ПОРЯДОК перечисления тегов.
+    assert found[0].detail.startswith(
         'появился: АЛЬФА, БЕТА, ВЕГА, ГАММА, ДЕЛЬТА; '
         'исчез: ЕЖИК, ЖЕСТ, ЗЕВС, ИЖИЦА, КОРЬ'
     )
@@ -155,7 +157,7 @@ def test_class_15_tie_break_prefers_smallest_sorted_tagset_deterministically():
     found = find_drift(observations, INDEX, EXPECTATIONS)
     assert [f.cls for f in found] == [15]
     assert found[0].subject == 'ААА, БББ, ВВВ'
-    assert found[0].detail == 'исчез: ААА, БББ, ВВВ'
+    assert found[0].detail.startswith('исчез: ААА, БББ, ВВВ')
     assert found[0].first_seen == '2026-05-02'
     assert found[0].last_seen == '2026-05-13'
 
@@ -183,7 +185,7 @@ def test_class_15_majority_count_wins_even_when_larger_in_sort_order():
     found = find_drift(observations, INDEX, EXPECTATIONS)
     assert [f.cls for f in found] == [15]
     assert found[0].subject == 'ЭЭЭ, ЮЮЮ, ЯЯЯ'
-    assert found[0].detail == 'исчез: ЭЭЭ, ЮЮЮ, ЯЯЯ'
+    assert found[0].detail.startswith('исчез: ЭЭЭ, ЮЮЮ, ЯЯЯ')
     assert found[0].first_seen == '2026-05-02'
     assert found[0].last_seen == '2026-05-13'
 
@@ -219,3 +221,30 @@ def test_class_16_includes_funnels_with_zero_observations():
     found = find_coverage(funnels, [], {})
     assert found[0].deals == 0
     assert 'нет данных' in found[0].subject
+
+
+def test_class_15_marks_a_returned_change_as_switching_not_loss():
+    """A → B → A: тег вернулся, значит это переключение кампании, а не пропажа.
+
+    Из 103 находок класса 15 в июльском отчёте 50 троек
+    (воронка × сценарий × тег) — именно такие возвраты. Подавать их как
+    «тег исчез» значит топить два десятка настоящих пропаж в шуме.
+    """
+    base = AV + '|АВ Этап: Регистрация'
+    observations = [obs(base, 2, '1'), obs(base + '|ОТО', 8, '2'), obs(base, 13, '3')]
+    found = find_drift(observations, INDEX, EXPECTATIONS)
+
+    assert len(found) == 2, 'оба перехода по-прежнему видны'
+    for item in found:
+        assert 'переключение' in item.detail, item.detail
+
+
+def test_class_15_marks_a_one_way_disappearance_as_net_loss():
+    """A → B без возврата: тег действительно потерян, это и есть находка."""
+    base = AV + '|АВ Этап: Регистрация'
+    observations = [obs(base + '|сосуды', 2, '1'), obs(base, 13, '2')]
+    found = find_drift(observations, INDEX, EXPECTATIONS)
+
+    assert len(found) == 1
+    assert 'переключение' not in found[0].detail
+    assert 'нетто' in found[0].detail, found[0].detail
