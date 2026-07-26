@@ -23,10 +23,17 @@ const nextConfig: NextConfig = {
     // единственная точка входа в Node-only территорию, и алиас на false
     // резолвится webpack'ом в пустой модуль именно для этого файла. Любой
     // другой Node-only импорт в edge-бандле по-прежнему упадёт громко.
+    // Вторая такая же точка — src/lib/monitor-resolver.ts: он импортирует
+    // node:dns/promises, и до него edge-компилятор добирается по той же
+    // цепочке instrumentation → monitor-scheduler → monitor-run →
+    // monitor-check. Резолвер вынесен в отдельный файл именно чтобы алиас
+    // был точечным: чистый классификатор адресов (monitor-dns.ts) остаётся
+    // в графе и собирается везде.
     if (nextRuntime === 'edge') {
       config.resolve.alias = {
         ...config.resolve.alias,
         [path.resolve(dirname, 'src/db/client.ts')]: false,
+        [path.resolve(dirname, 'src/lib/monitor-resolver.ts')]: false,
       };
     }
     return config;
