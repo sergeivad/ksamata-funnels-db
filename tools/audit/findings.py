@@ -673,6 +673,14 @@ def find_drift(observations, index, expectations):
         if len(timeline) < 2:
             continue
 
+        # Итог всей истории слота: что реально ушло и что реально пришло.
+        # Тег, которого нет ни в одном из этих множеств, за время наблюдения
+        # вернулся к прежнему состоянию — это переключение кампании
+        # (ОТО ↔ big-course ↔ small-course), а не потеря разметки. Без такого
+        # разделения переключения — половина класса, и настоящие пропажи в них тонут.
+        net_gone = timeline[0][1] - timeline[-1][1]
+        net_new = timeline[-1][1] - timeline[0][1]
+
         for (older_date, older_tags, older_deals), (newer_date, newer_tags, newer_deals) in zip(
             timeline, timeline[1:]
         ):
@@ -685,6 +693,12 @@ def find_drift(observations, index, expectations):
                 parts.append('появился: ' + ', '.join(appeared))
             if disappeared:
                 parts.append('исчез: ' + ', '.join(disappeared))
+
+            net_here = sorted((set(appeared) & net_new) | (set(disappeared) & net_gone))
+            if net_here:
+                parts.append('нетто за весь период: ' + ', '.join(net_here))
+            else:
+                parts.append('переключение — набор вернулся к прежнему виду')
             result.append(
                 Finding(
                     cls=15,
