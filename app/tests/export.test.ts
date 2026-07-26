@@ -140,4 +140,32 @@ describe('toCsv (unit)', () => {
     // Internal quotes must be doubled, and the whole field quoted (contains \n too)
     expect(lines[1]).toContain('"Ссылка с ""кавычками"" и\nпереносом"');
   });
+
+  it('neutralizes fields Excel would execute as formulas', async () => {
+    const { toCsv } = await import('../src/lib/export');
+
+    const base = {
+      num: 1, frontCode: 'f1', name: 'n', status: 'active', product: 'П',
+      contractor: 'К', channel: 'Ч', direction: 'Н', section: 'Лендинги',
+      time: '', day: '',
+    };
+    const csv = toCsv([
+      { ...base, description: '=HYPERLINK("https://evil/","Открыть")', url: '+79001234567' },
+      { ...base, description: '-2+3', url: '@SUM(A1)' },
+    ]);
+    const lines = csv.split('\r\n');
+
+    // A leading '=', '+', '-' or '@' must not survive as the first character:
+    // Excel would run it, and /api/export deliberately serves a BOM for Excel.
+    for (const line of [lines[1], lines[2]]) {
+      for (const field of line.split(';')) {
+        const firstChar = field.replace(/^"/, '').charAt(0);
+        if (firstChar === '') continue;
+        expect(firstChar).not.toMatch(/[=+\-@]/);
+      }
+    }
+    // Neutralizing must not lose the text itself.
+    expect(csv).toContain('HYPERLINK("https://evil/","Открыть")'.replace(/"/g, '""'));
+    expect(csv).toContain('79001234567');
+  });
 });

@@ -97,6 +97,79 @@ describe('checkUrl', () => {
     expect(res.finalUrl).toBe('https://b.ru/new');
   });
 
+  /** Ответ-редирект с заголовком Location — чекер обязан разбирать его сам. */
+  function redirectTo(location: string, status = 302, from = 'https://a.ru/'): Response {
+    return {
+      status,
+      url: from,
+      body: null,
+      headers: new Headers({ location }),
+    } as unknown as Response;
+  }
+
+  /** fetch, отдающий заготовленные ответы по очереди и запоминающий, куда ходил. */
+  function scriptedFetch(responses: Response[]): { fetchImpl: FetchLike; visited: string[] } {
+    const visited: string[] = [];
+    let i = 0;
+    return {
+      visited,
+      fetchImpl: async (url) => {
+        visited.push(url);
+        return responses[Math.min(i++, responses.length - 1)];
+      },
+    };
+  }
+
+  it('идёт по редиректу на обычный домен и запоминает конечный адрес', async () => {
+    const { fetchImpl, visited } = scriptedFetch([
+      redirectTo('https://b.ru/new'),
+      fakeResponse(200, 'https://b.ru/new'),
+    ]);
+    const res = await checkUrl('https://a.ru/', { fetchImpl });
+
+    expect(res.status).toBe('up');
+    expect(res.finalUrl).toBe('https://b.ru/new');
+    expect(visited).toEqual(['https://a.ru/', 'https://b.ru/new']);
+  });
+
+  it('не идёт по редиректу на внутренний адрес', async () => {
+    const { fetchImpl, visited } = scriptedFetch([
+      redirectTo('http://169.254.169.254/latest/meta-data/'),
+      fakeResponse(200, 'http://169.254.169.254/latest/meta-data/'),
+    ]);
+    const res = await checkUrl('https://a.ru/', { fetchImpl });
+
+    expect(res.status).toBe('down');
+    expect(visited).toEqual(['https://a.ru/']);
+    // Ни адрес, ни код ответа внутреннего сервиса не должны утечь в дашборд.
+    expect(res.finalUrl).not.toContain('169.254.169.254');
+    expect(res.error).not.toContain('169.254.169.254');
+  });
+
+  it('не идёт по редиректу на нестандартный порт', async () => {
+    const { fetchImpl, visited } = scriptedFetch([
+      redirectTo('http://intranet.example.com:6379/'),
+      fakeResponse(200, 'http://intranet.example.com:6379/'),
+    ]);
+    const res = await checkUrl('https://a.ru/', { fetchImpl });
+
+    expect(res.status).toBe('down');
+    expect(visited).toEqual(['https://a.ru/']);
+  });
+
+  it('обрывает бесконечную цепочку редиректов', async () => {
+    let n = 0;
+    const visited: string[] = [];
+    const fetchImpl: FetchLike = async (url) => {
+      visited.push(url);
+      return redirectTo(`https://b.ru/hop${n++}`);
+    };
+    const res = await checkUrl('https://a.ru/', { fetchImpl });
+
+    expect(res.status).toBe('down');
+    expect(visited.length).toBeLessThanOrEqual(6);
+  });
+
   it('превращает таймаут в down с понятным текстом', async () => {
     const timeout = new Error('timed out');
     timeout.name = 'TimeoutError';
@@ -133,7 +206,8 @@ describe('checkUrl', () => {
       return fakeResponse(200, 'https://a.ru/');
     };
     await checkUrl('https://a.ru/', { fetchImpl: spy });
-    expect(seenInit?.redirect).toBe('follow');
+    // Не 'follow': по редиректам чекер идёт сам, проверяя каждый шаг (см. выше).
+    expect(seenInit?.redirect).toBe('manual');
     expect(seenInit?.cache).toBe('no-store');
     expect(String((seenInit?.headers as Record<string, string>)['User-Agent'])).toContain('Ksamata');
   });

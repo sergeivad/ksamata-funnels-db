@@ -3,9 +3,16 @@
  * функцию тестируемой подменой fetch и переиспользуемой из любого места.
  */
 
+import { resolveRedirectTarget } from './monitor-urls';
+
 export const CHECK_TIMEOUT_MS = 10_000;
 export const SLOW_THRESHOLD_MS = 5_000;
 export const MONITOR_USER_AGENT = 'KsamataFunnelsMonitor/1.0';
+
+/** Сколько шагов редиректа проходим, прежде чем считать цепочку сломанной. */
+export const MAX_REDIRECTS = 5;
+
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 export interface CheckResult {
   status: 'up' | 'slow' | 'down';
@@ -51,40 +58,72 @@ export async function checkUrl(url: string, opts: CheckOptions = {}): Promise<Ch
   const now = opts.nowMs ?? (() => Date.now());
 
   const started = now();
+  // Один сигнал на всю цепочку: иначе N редиректов растягивали бы проверку на
+  // N таймаутов, и «десять секунд на цель» превращалось бы в минуту.
+  const signal = AbortSignal.timeout(timeoutMs);
+
   try {
-    const res = await doFetch(url, {
-      method: 'GET',
-      redirect: 'follow',
-      cache: 'no-store',
-      headers: { 'User-Agent': MONITOR_USER_AGENT },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    const latencyMs = now() - started;
+    let current = url;
 
-    // Тело не нужно: рвём поток, чтобы не тянуть мегабайты HTML на каждый цикл.
-    try {
-      await res.body?.cancel();
-    } catch {
-      // поток уже закрыт — не наша забота
-    }
+    for (let hop = 0; ; hop++) {
+      const res = await doFetch(current, {
+        method: 'GET',
+        // Идём по редиректам сами: каждый следующий адрес обязан пройти тот же
+        // допуск, что и цель при заведении. С redirect: 'follow' этот допуск
+        // касался бы только первого адреса.
+        redirect: 'manual',
+        cache: 'no-store',
+        headers: { 'User-Agent': MONITOR_USER_AGENT },
+        signal,
+      });
+      const latencyMs = now() - started;
 
-    if (res.status === 200) {
+      // Тело не нужно: рвём поток, чтобы не тянуть мегабайты HTML на каждый цикл.
+      try {
+        await res.body?.cancel();
+      } catch {
+        // поток уже закрыт — не наша забота
+      }
+
+      const location = REDIRECT_STATUSES.has(res.status)
+        ? res.headers?.get('location') ?? null
+        : null;
+
+      if (location !== null) {
+        if (hop >= MAX_REDIRECTS) {
+          return { status: 'down', httpStatus: res.status, finalUrl: current, latencyMs,
+            error: `Больше ${MAX_REDIRECTS} редиректов` };
+        }
+        const next = resolveRedirectTarget(location, current);
+        if (next === null) {
+          // Адрес назначения намеренно не показываем: страница мониторинга
+          // видна всем, кто видит админку, и не должна работать справочником
+          // по внутренней сети.
+          return { status: 'down', httpStatus: res.status, finalUrl: current, latencyMs,
+            error: 'Редирект на недопустимый адрес' };
+        }
+        current = next;
+        continue;
+      }
+
+      if (res.status === 200) {
+        return {
+          status: latencyMs > slowMs ? 'slow' : 'up',
+          httpStatus: 200,
+          finalUrl: res.url || current,
+          latencyMs,
+          error: '',
+        };
+      }
+
       return {
-        status: latencyMs > slowMs ? 'slow' : 'up',
-        httpStatus: 200,
-        finalUrl: res.url,
+        status: 'down',
+        httpStatus: res.status,
+        finalUrl: res.url || current,
         latencyMs,
-        error: '',
+        error: `HTTP ${res.status}`,
       };
     }
-
-    return {
-      status: 'down',
-      httpStatus: res.status,
-      finalUrl: res.url,
-      latencyMs,
-      error: `HTTP ${res.status}`,
-    };
   } catch (err: unknown) {
     return {
       status: 'down',
