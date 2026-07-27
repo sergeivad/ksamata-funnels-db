@@ -242,3 +242,46 @@ def test_class_4_still_reports_two_different_refinements_under_one_general_tag()
     expectations = [exp('time_19', raw)]
     found = find_contradictory_legacy(groups, expectations, INDEX)
     assert [f.cls for f in found] == [4]
+
+
+# ─── класс 7: два фильтра ────────────────────────────────────────────────────
+
+OTHER_AV = ('АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
+            'АВ Направление: РСЯ|АВ Этап: Регистрация')
+OTHER_KEY = ('ЩЖ', 'НИМБ', 'Яндекс', 'РСЯ')
+
+
+def test_class_7_hides_a_key_that_is_no_longer_in_the_registry():
+    """Разметка одного дня, давно исправленная, — не воронка без записи.
+
+    «Теги предложений» вычисляются в момент выгрузки, поэтому старый файл
+    хранит исчезнувшую четвёрку вечно. На живых данных так выглядели
+    `БОО / НИМБ / Яндекс / Реклама` и `ДБО / НИМБ / Яндекс / Реклама`:
+    один файл от 2026-05-20 и больше нигде.
+    """
+    groups = group_observations([obs(OTHER_AV, 2)])
+    assert find_unresolved(groups, INDEX, registry_keys={('иная', 'ось', 'тут', 'есть')}) == []
+
+
+def test_class_7_reports_a_key_that_is_still_in_the_registry():
+    groups = group_observations([obs(OTHER_AV, 2)])
+    found = find_unresolved(groups, INDEX, registry_keys={OTHER_KEY})
+    assert [f.cls for f in found] == [7]
+    assert 'ЩЖ' in found[0].subject
+
+
+def test_class_7_registry_filter_is_off_when_the_registry_is_empty():
+    """Прогон с --no-api не должен молча прятать половину класса 7."""
+    groups = group_observations([obs(OTHER_AV, 2)])
+    found = find_unresolved(groups, INDEX, registry_keys=frozenset())
+    assert [f.cls for f in found] == [7]
+
+
+def test_class_7_registry_filter_does_not_touch_classes_5_and_6():
+    """Фильтр реестра — только про класс 7. Причины 5 и 6 от него не зависят."""
+    groups = group_observations([
+        obs(AV + '|АВ Этап: Оплата', 2, '1'),
+        obs(AV + '|АВ Этап: Предписок', 2, '2'),
+    ])
+    found = find_unresolved(groups, INDEX, registry_keys={OTHER_KEY})
+    assert sorted(f.cls for f in found) == [5, 6]

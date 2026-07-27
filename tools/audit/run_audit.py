@@ -50,13 +50,17 @@ def collect_findings(expectations, funnels, vocabulary, index, collisions,
     остального и observations отдельно для find_drift.
     """
     result = []
+    # Считаем один раз: нужны и классу 7, и классу 9.
+    order_dates = F.last_order_dates(observations)
+    registry_keys = F.registry_keys_of(offers)
+
     result += F.find_missing_in_getcourse(groups, expectations, index)
     result += F.find_extra_axes(groups, vocabulary)
     result += F.find_unsupported_stage(groups)
     result += F.find_contradictory_legacy(groups, expectations, index)
-    result += F.find_unresolved(groups, index)
+    result += F.find_unresolved(groups, index, registry_keys, order_dates)
     result += F.find_key_collision_findings(collisions, expectations)
-    result += F.find_unknown_av_keys(offers, index, F.observed_keys_of(groups))
+    result += F.find_unknown_av_keys(offers, index, order_dates)
     result += F.find_incomplete_offer_keys(offers)
     result += F.find_unknown_axes_in_registry(offers, vocabulary)
     result += F.find_offers_without_autofunnel(offers)

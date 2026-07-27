@@ -105,6 +105,41 @@ def observed_keys_of(groups):
     return {g.key for g in groups if is_complete_key(g.key)}
 
 
+def registry_keys_of(offers):
+    """Полные АВ-четвёрки, которые есть в реестре GetCourse ПРЯМО СЕЙЧАС.
+
+    Реестр — это настоящее, выгрузки — прошлое. Разница между ними и позволяет
+    отличить воронку без записи в базе от разметки, которая когда-то была и
+    давно исправлена (см. find_unresolved).
+    """
+    result = set()
+    for offer in offers:
+        key = av_key(offer.tags)
+        if is_complete_key(key):
+            result.add(key)
+    return result
+
+
+def last_order_dates(observations):
+    """АВ-четвёрка → дата последнего ЗАКАЗА по ней, ISO-строка.
+
+    Именно дата заказа, а не дата файла выгрузки: отставка снимается тем, что
+    связка снова продала, а не тем, что её застали в свежем срезе. Пустые и
+    неразбираемые даты не отбрасываются — они доезжают до `is_retired`, который
+    трактует их как «заказ был позже» и снимает отставку (fail-open).
+    """
+    result = {}
+    for obs in observations:
+        key = av_key(obs.tags)
+        if not is_complete_key(key):
+            continue
+        created = (obs.deal_created or '').strip()
+        current = result.get(key)
+        if current is None or created > current:
+            result[key] = created
+    return result
+
+
 def _funnel_label(index, expectations_by_id, key):
     """Метка воронки по АВ-ключу; при коллизии и промахе — прочерк."""
     fids = index.get(key, set())
@@ -387,11 +422,37 @@ def find_contradictory_legacy(groups, expectations, index):
     return result
 
 
-def find_unresolved(groups, index):
+def find_unresolved(groups, index, registry_keys=frozenset(), order_dates=None):
     """Классы 5, 6, 7 — взаимоисключающие причины неопознания.
 
     Каждая неопознанная группа попадает ровно в один класс.
+
+    Класс 7 отсеивает две категории находок, по которым делать нечего.
+
+    Первая — отставленные связки (`retired.RETIRED_KEYS`). Класс 7 задаёт тот
+    же вопрос, что и класс 9 («воронки под эту четвёрку нет»), но по другому
+    источнику: 9 читает реестр GetCourse, 7 — историю выгрузок. Без общего
+    фильтра отставленная связка просто переезжает из одного класса в другой,
+    и шум не убывает. Правило по дате то же: продала после решения — вернётся.
+
+    Вторая — четвёрки, которых НЕТ в текущем реестре (`registry_keys`).
+    «Теги предложений» вычисляются в момент выгрузки, поэтому файл хранит
+    разметку такой, какой она была в тот день. Если тег в тот же день починили,
+    старый файл несёт исчезнувшую четвёрку вечно — на живых данных так выглядели
+    `БОО / НИМБ / Яндекс / Реклама` и `ДБО / НИМБ / Яндекс / Реклама`: один файл
+    от 2026-05-20, 6 и 9 наблюдений, и больше нигде. Это слепок одного дня у
+    воронок f6/f7, а не воронки без записи. Находка «заведите воронку» тут
+    бессмысленна: заводить не подо что, и починить прошлое нельзя.
+
+    Осознанный побочный эффект второго фильтра: если предложение УДАЛИЛИ из
+    GetCourse, а заказы по нему шли, находка тоже исчезнет. Это верно по сути —
+    под удалённое предложение воронку не заводят.
+
+    `registry_keys` по умолчанию пуст, и тогда второй фильтр не работает вовсе
+    (ни одна четвёрка не будет сочтена исторической) — прогон без обращения к
+    API (`--no-api`) не должен молча прятать половину класса 7.
     """
+    order_dates = order_dates or {}
     result = []
     for group in _latest_by_stage_family(groups):
         if group.reason == 'no_time':
@@ -401,6 +462,10 @@ def find_unresolved(groups, index):
         elif group.reason == 'no_stage':
             cls, subject = 5, 'Нет АВ Этап — тип не выводится'
         elif is_complete_key(group.key) and group.key not in index:
+            if is_retired(group.key, order_dates.get(group.key)):
+                continue
+            if registry_keys and group.key not in registry_keys:
+                continue
             cls, subject = 7, f'Нет воронки для {key_label(group.key)}'
         else:
             continue
@@ -452,18 +517,22 @@ def find_key_collision_findings(collisions, expectations):
     return result
 
 
-def find_unknown_av_keys(offers, index, observed_keys):
+def find_unknown_av_keys(offers, index, order_dates):
     """Класс 9: четвёрка живёт в GetCourse, а воронки под неё в базе нет.
 
     Отставленные четвёрки (`retired.RETIRED_KEYS`) пропускаются — но только пока
-    по ним нет заказов. `observed_keys` — четвёрки, встреченные в выгрузках;
-    заказ по отставленной связке возвращает её в отчёт.
+    после даты решения по ним не было заказов. `order_dates` — результат
+    `last_order_dates(observations)`; заказ позже даты отставки возвращает
+    связку в отчёт.
     """
     counts = defaultdict(list)
     for offer in _offers_with_av(offers):
         key = av_key(offer.tags)
-        if is_complete_key(key) and key not in index and not is_retired(key, observed_keys):
-            counts[key].append(offer)
+        if not is_complete_key(key) or key in index:
+            continue
+        if is_retired(key, order_dates.get(key)):
+            continue
+        counts[key].append(offer)
 
     result = []
     for key, group in sorted(counts.items()):
@@ -622,7 +691,8 @@ def find_unused_offers(offers, groups):
         key = av_key(offer.tags)
         if not is_complete_key(key) or key in observed_keys:
             continue
-        if is_retired(key, observed_keys):
+        # Дату не передаём: сюда доходят только четвёрки с нулём заказов.
+        if is_retired(key):
             continue
         result.append(
             Finding(
