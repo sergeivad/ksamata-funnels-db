@@ -59,15 +59,15 @@ const params = (id: string | number) => ({ params: Promise.resolve({ id: String(
 describe('PATCH /api/funnels/[id]/tags', () => {
   it('adds a custom tag and removes a default, reflected in tagSets', async () => {
     const res = await PATCH(
-      jsonReq('PATCH', { reg: { add: ['промо-тест'], remove: ['автоворонки'] } }),
+      jsonReq('PATCH', { reg: { add: ['промо-тест'], remove: ['АВ Автоворонка'] } }),
       params(existingId)
     );
     expect(res.status).toBe(200);
     const body = await res.json();
     const names = body.tagSets.reg.tags.map((t: { name: string }) => t.name);
     expect(names).toContain('промо-тест');
-    expect(names).not.toContain('автоворонки');
-    expect(body.tagSets.reg.suppressed).toContain('автоворонки');
+    expect(names).not.toContain('АВ Автоворонка');
+    expect(body.tagSets.reg.suppressed).toContain('АВ Автоворонка');
   });
 
   it('keeps overrides of scenarios the patch does not mention', async () => {

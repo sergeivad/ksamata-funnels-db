@@ -22,15 +22,15 @@ afterAll(() => { sqlite.close(); if (existsSync(TMP_DB)) unlinkSync(TMP_DB); });
 describe('tag-templates', () => {
   it('lists the seeded template grouped by scenario in order', () => {
     const t = listTemplate(db);
-    expect(t.reg).toEqual(['автоворонки', 'АВ Автоворонка', 'АВ Этап: Регистрация']);
-    expect(t.messenger).toEqual(['автоворонки', 'АВ Автоворонка', 'АВ Этап: Мессенджер']);
+    expect(t.reg).toEqual(['АВ Автоворонка', 'АВ Этап: Регистрация']);
+    expect(t.messenger).toEqual(['АВ Автоворонка', 'АВ Этап: Мессенджер']);
   });
 
   it('replaceTemplateScenario swaps the whole ordered list for one scenario', () => {
-    replaceTemplateScenario(db, 'reg', ['автоворонки', 'АВ Этап: Регистрация', 'новый-дефолт']);
+    replaceTemplateScenario(db, 'reg', ['АВ Автоворонка', 'АВ Этап: Регистрация', 'новый-дефолт']);
     const t = listTemplate(db);
-    expect(t.reg).toEqual(['автоворонки', 'АВ Этап: Регистрация', 'новый-дефолт']);
-    expect(t.messenger).toEqual(['автоворонки', 'АВ Автоворонка', 'АВ Этап: Мессенджер']); // untouched
+    expect(t.reg).toEqual(['АВ Автоворонка', 'АВ Этап: Регистрация', 'новый-дефолт']);
+    expect(t.messenger).toEqual(['АВ Автоворонка', 'АВ Этап: Мессенджер']); // untouched
   });
 
   it('replace with empty list clears the scenario', () => {

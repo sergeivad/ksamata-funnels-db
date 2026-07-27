@@ -41,7 +41,7 @@ describe('materialize on create', () => {
     const f = makeFunnel('СУСТАВЫ');
     const d = getFunnel(db, f.id)!;
     const names = d.tagSets.reg.tags.map((t) => t.name);
-    expect(names).toContain('автоворонки');
+    expect(names).toContain('АВ Автоворонка');
     expect(names).toContain('АВ Этап: Регистрация');
     expect(names).toContain('АВ Продукт: СУСТАВЫ');
   });
@@ -53,7 +53,7 @@ describe('Variant A — overrides survive an axis change', () => {
 
     // User adds a custom tag and removes a default, then re-materialize.
     const ov: OverrideMap = {
-      reg: { add: ['промо-январь'], remove: ['автоворонки'] },
+      reg: { add: ['промо-январь'], remove: ['АВ Автоворонка'] },
       time_15: { add: [], remove: [] },
       time_19: { add: [], remove: [] },
       messenger: { add: [], remove: [] },
@@ -63,16 +63,16 @@ describe('Variant A — overrides survive an axis change', () => {
 
     let names = getFunnel(db, f.id)!.tagSets.reg.tags.map((t) => t.name);
     expect(names).toContain('промо-январь');
-    expect(names).not.toContain('автоворонки');
+    expect(names).not.toContain('АВ Автоворонка');
     expect(names).toContain('АВ Продукт: СУСТАВЫ');
 
     // Change the product axis — overrides must persist, axis tag must update.
     updateFunnel(db, f.id, { product: 'ЖКТ' } as any);
     names = getFunnel(db, f.id)!.tagSets.reg.tags.map((t) => t.name);
     expect(names).toContain('промо-январь');       // added survives
-    expect(names).not.toContain('автоворонки');     // removed stays removed
+    expect(names).not.toContain('АВ Автоворонка');  // removed stays removed
     expect(names).toContain('АВ Продукт: ЖКТ');      // axis updated
     expect(names).not.toContain('АВ Продукт: СУСТАВЫ');
-    expect(getFunnel(db, f.id)!.tagSets.reg.suppressed).toContain('автоворонки');
+    expect(getFunnel(db, f.id)!.tagSets.reg.suppressed).toContain('АВ Автоворонка');
   });
 });

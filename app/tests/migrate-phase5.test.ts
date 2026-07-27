@@ -27,7 +27,7 @@ describe('migrate-phase5', () => {
     const reg = sqlite.prepare(
       `SELECT name FROM tag_templates WHERE scenario='reg' ORDER BY position`
     ).all() as { name: string }[];
-    expect(reg.map((r) => r.name)).toEqual(['автоворонки', 'АВ Автоворонка', 'АВ Этап: Регистрация']);
+    expect(reg.map((r) => r.name)).toEqual(['АВ Автоворонка', 'АВ Этап: Регистрация']);
 
     const time15 = sqlite.prepare(
       `SELECT name FROM tag_templates WHERE scenario='time_15' ORDER BY position`
@@ -35,6 +35,8 @@ describe('migrate-phase5', () => {
     expect(time15.map((r) => r.name)).toEqual(['автоворонки', 'АВ Автоворонка', 'АВ Этап: Оплата', 'АВ Время: 15']);
 
     const count = sqlite.prepare(`SELECT COUNT(*) AS c FROM tag_templates`).get() as { c: number };
-    expect(count.c).toBe(3 + 4 + 4 + 3); // reg + time_15 + time_19 + messenger, seeded once
+    // Легаси-тег `автоворонки` сидится ТОЛЬКО на оплатах (решение владельца
+    // 2026-07-28), поэтому reg и messenger короче на один.
+    expect(count.c).toBe(2 + 4 + 4 + 2); // reg + time_15 + time_19 + messenger, seeded once
   });
 });

@@ -47,7 +47,7 @@ describe('runBackfillMessengerTags', () => {
     expect(count).toBeGreaterThan(0);
   });
 
-  it('gives at least one existing funnel a messenger tag and a reg "автоворонки" tag', () => {
+  it('gives at least one existing funnel a messenger tag and the reg defaults', () => {
     const list = listFunnels(testDb);
     expect(list.length).toBeGreaterThan(0);
     const target = list[0];
@@ -69,7 +69,10 @@ describe('runBackfillMessengerTags', () => {
       .where(and(eq(schema.funnelTags.funnelId, target.id), eq(schema.funnelTags.tagType, 'reg')))
       .all() as { name: string }[];
 
-    expect(regRows.some((r) => r.name === 'автоворонки')).toBe(true);
+    // «автоворонки» дефолтом сценария reg быть перестал (решение владельца
+    // 2026-07-28 — он живёт только на оплатах), поэтому проверяем тот тег,
+    // который у reg остался.
+    expect(regRows.some((r) => r.name === 'АВ Автоворонка')).toBe(true);
   });
 
   it('is idempotent: running it again does not duplicate messenger tags', () => {

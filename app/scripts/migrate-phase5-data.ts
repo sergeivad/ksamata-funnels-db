@@ -25,11 +25,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS funnel_tag_overrides_unique
 CREATE INDEX IF NOT EXISTS idx_fto_funnel ON funnel_tag_overrides(funnel_id);
 `;
 
-/** Template seed — mirrors the previously hardcoded COMMON_TAGS + stage + time tags. */
+/**
+ * Template seed — mirrors the previously hardcoded COMMON_TAGS + stage + time tags.
+ *
+ * Легаси-тег `автоворонки` стоит ТОЛЬКО на оплатах, и это не упущение.
+ * Решение владельца 2026-07-28: тег живой и нужен именно там — на нём настроены
+ * дашборды внутри GetCourse и с ним исторически работает отдел продаж. Реестр
+ * подтверждает: из 2022 предложений этапа «Оплата» его несут 2005, а из 113
+ * регистраций — 2, из 139 мессенджеров — ни одного (там стоит `АВ Автоворонка`).
+ * Пока сид требовал его во всех четырёх сценариях, класс 1 отчёта аудита давал
+ * крупнейшую строку карты: «база ожидает тег автоворонки на 72 парах».
+ */
 export const PHASE5_TEMPLATE_SEED: { scenario: string; name: string; position: number }[] = [
-  { scenario: 'reg',       name: 'автоворонки',        position: 0 },
-  { scenario: 'reg',       name: 'АВ Автоворонка',     position: 1 },
-  { scenario: 'reg',       name: 'АВ Этап: Регистрация', position: 2 },
+  { scenario: 'reg',       name: 'АВ Автоворонка',     position: 0 },
+  { scenario: 'reg',       name: 'АВ Этап: Регистрация', position: 1 },
 
   { scenario: 'time_15',   name: 'автоворонки',        position: 0 },
   { scenario: 'time_15',   name: 'АВ Автоворонка',     position: 1 },
@@ -41,9 +50,8 @@ export const PHASE5_TEMPLATE_SEED: { scenario: string; name: string; position: n
   { scenario: 'time_19',   name: 'АВ Этап: Оплата',    position: 2 },
   { scenario: 'time_19',   name: 'АВ Время: 19',       position: 3 },
 
-  { scenario: 'messenger', name: 'автоворонки',        position: 0 },
-  { scenario: 'messenger', name: 'АВ Автоворонка',     position: 1 },
-  { scenario: 'messenger', name: 'АВ Этап: Мессенджер', position: 2 },
+  { scenario: 'messenger', name: 'АВ Автоворонка',     position: 0 },
+  { scenario: 'messenger', name: 'АВ Этап: Мессенджер', position: 1 },
 ];
 
 /**
