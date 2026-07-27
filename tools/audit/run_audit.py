@@ -66,7 +66,7 @@ def collect_findings(expectations, funnels, vocabulary, index, collisions,
     result += F.find_offers_without_autofunnel(offers)
     result += F.find_silent_funnels(funnels, groups, index)
     result += F.find_unused_offers(offers, groups)
-    result += F.find_drift(observations, index, expectations)
+    result += F.find_drift(observations, index, expectations, order_dates)
     result += F.find_coverage(funnels, groups, index)
     return result
 

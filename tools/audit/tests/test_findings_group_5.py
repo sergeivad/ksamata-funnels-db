@@ -24,10 +24,10 @@ def obs(raw, day, deal_id='1', file_name=None):
 
 def test_class_15_reports_tag_appearing_between_two_export_dates():
     base = AV + '|АВ Этап: Регистрация'
-    observations = [obs(base, 2, '1'), obs(base + '|СВС', 13, '2')]
+    observations = [obs(base, 2, '1'), obs(base + '|АВ Квиз', 13, '2')]
     found = find_drift(observations, INDEX, EXPECTATIONS)
     assert [f.cls for f in found] == [15]
-    assert 'СВС' in found[0].subject
+    assert 'АВ Квиз' in found[0].subject
     assert 'появился' in found[0].detail
     assert found[0].first_seen == '2026-05-02'
     assert found[0].last_seen == '2026-05-13'
@@ -35,7 +35,7 @@ def test_class_15_reports_tag_appearing_between_two_export_dates():
 
 def test_class_15_reports_tag_disappearing():
     base = AV + '|АВ Этап: Регистрация'
-    observations = [obs(base + '|СВС', 2, '1'), obs(base, 13, '2')]
+    observations = [obs(base + '|АВ Квиз', 2, '1'), obs(base, 13, '2')]
     found = find_drift(observations, INDEX, EXPECTATIONS)
     assert 'исчез' in found[0].detail
 
@@ -53,7 +53,7 @@ def test_class_15_uses_file_date_not_deal_created_date():
                         file_name='deal_export_2026-05-02_00-00-00.csv',
                         file_date=datetime.date(2026, 5, 2),
                         deal_created='2026-03-10 10:00:00')
-    late = Observation(deal_id='1', tags=parse_tagset(base + '|СВС'),
+    late = Observation(deal_id='1', tags=parse_tagset(base + '|АВ Квиз'),
                        file_name='deal_export_2026-05-13_00-00-00.csv',
                        file_date=datetime.date(2026, 5, 13),
                        deal_created='2026-03-10 10:00:00')
@@ -74,7 +74,7 @@ def test_class_15_reports_both_transitions_when_tagset_returns_to_original():
     base = AV + '|АВ Этап: Регистрация'
     observations = [
         obs(base, 2, '1'),
-        obs(base + '|СВС', 8, '2'),
+        obs(base + '|АВ Квиз', 8, '2'),
         obs(base, 13, '3'),
     ]
     found = find_drift(observations, INDEX, EXPECTATIONS)
@@ -82,12 +82,12 @@ def test_class_15_reports_both_transitions_when_tagset_returns_to_original():
 
     appear, disappear = found
     assert 'появился' in appear.detail
-    assert 'СВС' in appear.subject
+    assert 'АВ Квиз' in appear.subject
     assert appear.first_seen == '2026-05-02'
     assert appear.last_seen == '2026-05-08'
 
     assert 'исчез' in disappear.detail
-    assert 'СВС' in disappear.subject
+    assert 'АВ Квиз' in disappear.subject
     assert disappear.first_seen == '2026-05-08'
     assert disappear.last_seen == '2026-05-13'
 
@@ -115,79 +115,153 @@ def test_class_15_orders_multiple_simultaneous_tag_changes_deterministically():
     Теги вставляются в наборы в порядке, обратном алфавитному, а
     ожидаются в утверждении — в алфавитном: так тест ловит именно
     отсутствие сортировки, а не случайное совпадение порядка вставки.
+
+    Меняются лишние значения оси «АВ Направление», а не произвольные слова:
+    после фильтра `is_av_tag` класс 15 видит только словарь АВ-таксономии.
+    Ключ слота при этом не съезжает — av_value берёт минимальное значение
+    оси, а латинское «In Stream» меньше любого кириллического.
     """
-    older = AV + '|АВ Этап: Регистрация|КОРЬ|ИЖИЦА|ЗЕВС|ЖЕСТ|ЕЖИК'
-    newer = AV + '|АВ Этап: Регистрация|ДЕЛЬТА|ГАММА|ВЕГА|БЕТА|АЛЬФА'
+    d = '|АВ Направление: '
+    older = AV + '|АВ Этап: Регистрация' + d + ('КОРЬ' + d + 'ИЖИЦА' + d
+                                                + 'ЗЕВС' + d + 'ЖЕСТ' + d + 'ЕЖИК')
+    newer = AV + '|АВ Этап: Регистрация' + d + ('ДЕЛЬТА' + d + 'ГАММА' + d
+                                                + 'ВЕГА' + d + 'БЕТА' + d + 'АЛЬФА')
     observations = [obs(older, 2, '1'), obs(newer, 13, '2')]
     found = find_drift(observations, INDEX, EXPECTATIONS)
     assert [f.cls for f in found] == [15]
-    assert found[0].subject == 'АЛЬФА, БЕТА, ВЕГА, ГАММА, ДЕЛЬТА, ЕЖИК, ЖЕСТ, ЗЕВС, ИЖИЦА, КОРЬ'
+    expected = ', '.join('АВ Направление: ' + v for v in (
+        'АЛЬФА', 'БЕТА', 'ВЕГА', 'ГАММА', 'ДЕЛЬТА',
+        'ЕЖИК', 'ЖЕСТ', 'ЗЕВС', 'ИЖИЦА', 'КОРЬ'))
+    assert found[0].subject == expected
     # startswith, а не ==: к detail добавляется вывод «нетто/переключение»,
     # а этот тест — про детерминированный ПОРЯДОК перечисления тегов.
     assert found[0].detail.startswith(
-        'появился: АЛЬФА, БЕТА, ВЕГА, ГАММА, ДЕЛЬТА; '
-        'исчез: ЕЖИК, ЖЕСТ, ЗЕВС, ИЖИЦА, КОРЬ'
+        'появился: ' + ', '.join('АВ Направление: ' + v for v in (
+            'АЛЬФА', 'БЕТА', 'ВЕГА', 'ГАММА', 'ДЕЛЬТА'))
+        + '; исчез: ' + ', '.join('АВ Направление: ' + v for v in (
+            'ЕЖИК', 'ЖЕСТ', 'ЗЕВС', 'ИЖИЦА', 'КОРЬ'))
     )
 
 
-def test_class_15_tie_break_prefers_smallest_sorted_tagset_deterministically():
-    """Равное число наблюдений на одну file_date — победитель определяется
-    устойчивым tie-break (наименьший по tuple(sorted(tagset))), а не
-    порядком появления наблюдений во входном списке.
+def test_class_15_ignores_a_tag_that_only_part_of_the_slot_carries():
+    """Смешанный слот — не дрейф. Регрессия по `ЖКТ / NR / ВК / Реклама`.
 
-    Первым в списке идёт набор с БОЛЬШИМИ по sorted-порядку лишними тегами
-    (ЮЮЮ/ЭЭЭ/ЯЯЯ — конец кириллического алфавита), вторым — с МЕНЬШИМИ
-    (ААА/БББ/ВВВ — начало алфавита), у обоих по одному наблюдению.
+    На этой воронке ПОСТОЯННО, на каждой дате, живут две популяции заказов:
+    ~6633 обычных и ~126 квизовых (замер по выгрузкам 03.06 / 08.07 / 26.07).
+    Перетегирования не было ни разу. Но выгрузка 08.07 оказалась узким
+    сегментом, где квизовые составили большинство (126 против 22), и прежнее
+    правило «самый частый набор за день» отчиталось о смене типа воронки.
 
-    Если убрать tie-break и брать наивный max(tagset_counts.items(), key=
-    lambda pair: pair[1]), при равенстве счётчиков max() молча оставляет
-    первый встреченный элемент — то есть выберет набор с большими тегами,
-    просто потому что он попался в списке первым. Устойчивый tie-break
-    обязан выбрать набор с меньшими тегами независимо от этого порядка,
-    поэтому здесь утверждается точная строка результата.
+    Здесь тот же расклад в миниатюре: на обеих датах «АВ Квиз» есть у части
+    наблюдений, и меняется только чьё большинство. Находок быть не должно.
     """
     base = AV + '|АВ Этап: Регистрация'
-    tags_large = base + '|ЮЮЮ|ЭЭЭ|ЯЯЯ'
-    tags_small = base + '|ААА|БББ|ВВВ'
     observations = [
-        obs(tags_large, 2, '1'),
-        obs(tags_small, 2, '2'),
-        obs(base, 13, '3'),
+        # 02.05: большинство БЕЗ маркера
+        obs(base, 2, '1'), obs(base, 2, '2'), obs(base + '|АВ Квиз', 2, '3'),
+        # 13.05: большинство С маркером — но обе популяции на месте
+        obs(base + '|АВ Квиз', 13, '4'), obs(base + '|АВ Квиз', 13, '5'),
+        obs(base, 13, '6'),
+    ]
+    assert find_drift(observations, INDEX, EXPECTATIONS) == []
+
+
+def test_class_15_ignores_a_tag_that_was_only_partial_before_vanishing():
+    """Тег был у ЧАСТИ слота и пропал совсем — всё равно не дрейф.
+
+    Пропажу видно, но неизвестно, что произошло: разметку сняли или в срез
+    просто не попали те заказы, что её несли. Ровно так ведут себя узкие
+    сегментные выгрузки, из-за которых класс и врал. Отличать этот случай
+    от единогласного обязан именно счётчик «у всех»: если считать тег
+    присутствующим на дате по одному наблюдению, находка появится.
+    """
+    base = AV + '|АВ Этап: Регистрация'
+    observations = [
+        obs(base, 2, '1'), obs(base, 2, '2'), obs(base + '|АВ Квиз', 2, '3'),
+        obs(base, 13, '4'), obs(base, 13, '5'),
+    ]
+    assert find_drift(observations, INDEX, EXPECTATIONS) == []
+
+
+def test_class_15_ignores_a_tag_that_was_partial_before_becoming_unanimous():
+    """Зеркальный случай: тег был у части слота и стал у всех — тоже не дрейф.
+
+    Появлением это считать нельзя: на старой дате разметка уже была, просто
+    не у всех. Сравнивать единогласное «сейчас» надо с «было хоть у кого-то»,
+    а не с «было у всех» — иначе каждый смешанный слот, чей срез сузился до
+    одной популяции, отчитается о появлении тега, которого не появлялось.
+    """
+    base = AV + '|АВ Этап: Регистрация'
+    observations = [
+        obs(base, 2, '1'), obs(base, 2, '2'), obs(base + '|АВ Квиз', 2, '3'),
+        obs(base + '|АВ Квиз', 13, '4'), obs(base + '|АВ Квиз', 13, '5'),
+    ]
+    assert find_drift(observations, INDEX, EXPECTATIONS) == []
+
+
+def test_class_15_requires_the_change_to_be_unanimous_on_both_dates():
+    """Тег был у ВСЕХ наблюдений и не остался НИ У ОДНОГО — вот это дрейф.
+
+    Парный к тесту выше: расклад отличается только тем, что на второй дате
+    маркера нет ни у кого. Без него фильтр смешанных слотов нельзя отличить
+    от «класс 15 вообще молчит».
+    """
+    base = AV + '|АВ Этап: Регистрация'
+    observations = [
+        obs(base + '|АВ Квиз', 2, '1'), obs(base + '|АВ Квиз', 2, '2'),
+        obs(base, 13, '3'), obs(base, 13, '4'),
     ]
     found = find_drift(observations, INDEX, EXPECTATIONS)
     assert [f.cls for f in found] == [15]
-    assert found[0].subject == 'ААА, БББ, ВВВ'
-    assert found[0].detail.startswith('исчез: ААА, БББ, ВВВ')
-    assert found[0].first_seen == '2026-05-02'
-    assert found[0].last_seen == '2026-05-13'
+    assert found[0].subject == 'АВ Квиз'
+    assert found[0].detail.startswith('исчез: АВ Квиз')
 
 
-def test_class_15_majority_count_wins_even_when_larger_in_sort_order():
-    """Большинство наблюдений на дату побеждает — даже когда его набор
-    тегов больше по sorted-порядку, чем набор меньшинства.
+def test_class_15_ignores_tags_the_funnels_db_does_not_store():
+    """Маркетинговая разметка GetCourse — не расхождение.
 
-    tags_large встречается дважды, tags_small — один раз на ту же дату.
-    Правильный выбор — tags_large, потому что решает число наблюдений,
-    а tie-break применяется только при равенстве. Мутация «всегда брать
-    наименьший по sorted, игнорируя количество» выбрала бы tags_small
-    (он меньше по sorted) и тем самым сломала бы основную логику выбора
-    по большинству — этот тест должен падать на такой мутации.
+    `ОТО` / `big-course` / `допродажи` говорят, какой апсел крутится в
+    воронке на этой неделе. База воронок их не хранит, расходиться нечему,
+    а на прогоне 2026-07-27 они давали 68 находок из 103.
     """
     base = AV + '|АВ Этап: Регистрация'
-    tags_large = base + '|ЮЮЮ|ЭЭЭ|ЯЯЯ'
-    tags_small = base + '|ААА|БББ|ВВВ'
     observations = [
-        obs(tags_large, 2, '1'),
-        obs(tags_large, 2, '2'),
-        obs(tags_small, 2, '3'),
-        obs(base, 13, '4'),
+        obs(base + '|big-course|допродажи', 2, '1'),
+        obs(base + '|ОТО|Яндекс Реклама новый ленд', 13, '2'),
     ]
-    found = find_drift(observations, INDEX, EXPECTATIONS)
-    assert [f.cls for f in found] == [15]
-    assert found[0].subject == 'ЭЭЭ, ЮЮЮ, ЯЯЯ'
-    assert found[0].detail.startswith('исчез: ЭЭЭ, ЮЮЮ, ЯЯЯ')
-    assert found[0].first_seen == '2026-05-02'
-    assert found[0].last_seen == '2026-05-13'
+    assert find_drift(observations, INDEX, EXPECTATIONS) == []
+
+
+def test_class_15_ignores_the_legacy_messenger_tag():
+    """«АВ / Мессенджер» — легаси, вычищенный из GetCourse в июле 2026.
+
+    Начинается с «АВ », но осью и этапом не является: этап живёт в
+    «АВ Этап: Мессенджер», который чистку пережил. В реестре (7682
+    предложения на 27.07) легаси-тега нет ни у одного предложения, а
+    июльские выгрузки помнят его навсегда — и класс показывал его пропажу
+    24 раза, по разу на воронку.
+    """
+    base = AV + '|АВ Этап: Мессенджер'
+    observations = [
+        obs(base + '|АВ / Мессенджер', 2, '1'),
+        obs(base, 13, '2'),
+    ]
+    assert find_drift(observations, INDEX, EXPECTATIONS) == []
+
+
+def test_class_15_ignores_per_order_messenger_tags():
+    """«АВ Мессенджер: ВК/МАКС/ТГ» — свойство ЗАКАЗА, а не воронки.
+
+    Классы 11 и 2 пропускают их через EXTERNAL_TAG_PREFIXES; класс 15
+    обязан быть с ними согласован, иначе одна и та же разметка объявляется
+    внешней в одном месте отчёта и дрейфом в другом.
+    """
+    base = AV + '|АВ Этап: Мессенджер'
+    observations = [
+        obs(base + '|АВ Мессенджер: ВК', 2, '1'),
+        obs(base + '|АВ Мессенджер: МАКС', 13, '2'),
+    ]
+    assert find_drift(observations, INDEX, EXPECTATIONS) == []
 
 
 def test_class_16_reports_observation_and_file_counts_per_funnel():
@@ -224,14 +298,14 @@ def test_class_16_includes_funnels_with_zero_observations():
 
 
 def test_class_15_marks_a_returned_change_as_switching_not_loss():
-    """A → B → A: тег вернулся, значит это переключение кампании, а не пропажа.
+    """A → B → A: разметка вернулась, значит это переключение, а не пропажа.
 
-    Из 103 находок класса 15 в июльском отчёте 50 троек
-    (воронка × сценарий × тег) — именно такие возвраты. Подавать их как
-    «тег исчез» значит топить два десятка настоящих пропаж в шуме.
+    Подавать возврат как «тег исчез» значит топить настоящие пропажи в шуме.
     """
     base = AV + '|АВ Этап: Регистрация'
-    observations = [obs(base, 2, '1'), obs(base + '|ОТО', 8, '2'), obs(base, 13, '3')]
+    observations = [
+        obs(base, 2, '1'), obs(base + '|АВ Квиз', 8, '2'), obs(base, 13, '3'),
+    ]
     found = find_drift(observations, INDEX, EXPECTATIONS)
 
     assert len(found) == 2, 'оба перехода по-прежнему видны'
@@ -242,7 +316,7 @@ def test_class_15_marks_a_returned_change_as_switching_not_loss():
 def test_class_15_marks_a_one_way_disappearance_as_net_loss():
     """A → B без возврата: тег действительно потерян, это и есть находка."""
     base = AV + '|АВ Этап: Регистрация'
-    observations = [obs(base + '|сосуды', 2, '1'), obs(base, 13, '2')]
+    observations = [obs(base + '|АВ Квиз', 2, '1'), obs(base, 13, '2')]
     found = find_drift(observations, INDEX, EXPECTATIONS)
 
     assert len(found) == 1

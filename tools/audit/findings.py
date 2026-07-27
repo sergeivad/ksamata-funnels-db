@@ -5,7 +5,7 @@
 Ничего не читают с диска и из сети — поэтому тестируются без моков.
 """
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 
 from db_source import label_of
@@ -20,6 +20,7 @@ from normalize import (
     STAGE_REG,
     av_key,
     classify,
+    is_av_tag,
     is_complete_key,
     is_external_tag,
     key_label,
@@ -41,7 +42,7 @@ CLASS_TITLES = {
     12: 'Предложение с АВ Этап, но без АВ Автоворонка',
     13: 'Воронка active, но ни одного наблюдения за период',
     14: 'Предложение с АВ-тегами и нулём заказов — кандидат в архив',
-    15: 'Дрейф: тег появился или исчез',
+    15: 'Дрейф разметки АВ: тег появился у всей четвёрки или исчез у всей',
     16: 'Покрытие наблюдениями',
 }
 
@@ -716,22 +717,8 @@ def find_unused_offers(offers, groups):
 THIN_COVERAGE_THRESHOLD = 2
 
 
-def _dominant_tagset(tagset_counts):
-    """Из наборов тегов одной даты выбирает набор с наибольшим числом
-    наблюдений; при равенстве — устойчиво наименьший по sorted(tagset).
-
-    Не полагается на порядок обхода set/frozenset: сортировка по count
-    (по убыванию) и по кортежу тегов (по возрастанию) детерминирована
-    независимо от PYTHONHASHSEED.
-    """
-    return min(
-        tagset_counts.items(),
-        key=lambda pair: (-pair[1], tuple(sorted(pair[0]))),
-    )
-
-
-def find_drift(observations, index, expectations):
-    """Класс 15: набор тегов у пары (ключ × тип) менялся между выгрузками.
+def find_drift(observations, index, expectations, order_dates=None):
+    """Класс 15: разметка АВ-таксономии у пары (ключ × тип) менялась между выгрузками.
 
     Дата берётся ПО ФАЙЛУ выгрузки, а не по созданию заказа: «Теги
     предложений» вычисляются в момент выгрузки, поэтому старый заказ
@@ -745,42 +732,81 @@ def find_drift(observations, index, expectations):
     молча теряется. Здесь каждое наблюдение учитывается по его
     собственной file_date, поэтому такой возврат даёт две находки, а не
     одну.
+
+    Учитываются ТОЛЬКО теги словаря АВ-таксономии (`is_av_tag`). Маркетинговая
+    разметка GetCourse — `ОТО`, `big-course`, `допродажи`, названия лендов —
+    в базе воронок не хранится, расходиться там нечему, а её переключения
+    давали 68 находок из 103 на прогоне 2026-07-27 и топили остальные.
+    Тем же фильтром уходят `АВ Мессенджер:` (свойство заказа, а не воронки)
+    и легаси-тег «АВ / Мессенджер», вычищенный из GetCourse в июле 2026:
+    его пропажу класс показывал 24 раза, по разу на воронку.
+
+    Дрейфом считается только ЕДИНОГЛАСНАЯ смена: тег был у ВСЕХ наблюдений
+    слота на старой дате и НИ У ОДНОГО на новой (или наоборот). Сосуществование
+    двух разметок на одной дате — не дрейф, а смешанный слот. Прежнее правило
+    брало «самый частый набор за день», и на слоте с двумя постоянными
+    популяциями (у `ЖКТ / NR / ВК / Реклама` это 6633 обычных наблюдения
+    против 126 квизовых, и так на КАЖДОЙ дате) большинство переворачивалось
+    вместе с шириной сегмента выгрузки — скрипт отчитывался о смене типа
+    воронки, которой не было. Порог тут не нужен и вреден: «у всех» и
+    «ни у одного» не зависят от того, насколько полон срез.
+
+    Отставленные четвёрки пропускаются по тому же правилу, что в классах 7,
+    9 и 14 (`is_retired` + дата последнего заказа). Как разметили в мае связку,
+    которую владелец объявил отработавшей, поправить уже нельзя и незачем;
+    без этого фильтра отставка «переезжала» из класса в класс. `order_dates`
+    по умолчанию `None` — тогда отставка считается безусловной, как и в
+    классе 14, где нулевое число заказов установлено отдельно.
     """
+    if order_dates is None:
+        order_dates = {}
     by_id = _by_funnel_id(expectations)
 
-    # (ключ, tag_type) -> file_date -> набор тегов -> число наблюдений
-    slots = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+    # (ключ, tag_type) -> file_date -> список наборов тегов (по наблюдению)
+    slots = defaultdict(lambda: defaultdict(list))
     for o in observations:
         tag_type, _reason = classify(o.tags)
         if tag_type is None:
             continue
-        slots[(av_key(o.tags), tag_type)][o.file_date][o.tags] += 1
+        slots[(av_key(o.tags), tag_type)][o.file_date].append(o.tags)
 
     result = []
     for (key, tag_type), by_date in sorted(
         slots.items(), key=lambda kv: (key_label(kv[0][0]), kv[0][1])
     ):
+        if is_retired(key, order_dates.get(key)):
+            continue
         timeline = []
         for file_date in sorted(by_date.keys()):
-            tags, deals = _dominant_tagset(by_date[file_date])
-            timeline.append((file_date, tags, deals))
+            tagsets = by_date[file_date]
+            counts = Counter(
+                tag for tagset in tagsets for tag in tagset if is_av_tag(tag)
+            )
+            deals = len(tagsets)
+            # everywhere — тег у всех наблюдений даты; anywhere — хотя бы у одного.
+            everywhere = frozenset(t for t, c in counts.items() if c == deals)
+            anywhere = frozenset(counts)
+            timeline.append((file_date, everywhere, anywhere, deals))
 
         if len(timeline) < 2:
             continue
 
         # Итог всей истории слота: что реально ушло и что реально пришло.
         # Тег, которого нет ни в одном из этих множеств, за время наблюдения
-        # вернулся к прежнему состоянию — это переключение кампании
-        # (ОТО ↔ big-course ↔ small-course), а не потеря разметки. Без такого
-        # разделения переключения — половина класса, и настоящие пропажи в них тонут.
-        net_gone = timeline[0][1] - timeline[-1][1]
-        net_new = timeline[-1][1] - timeline[0][1]
+        # вернулся к прежнему состоянию — это переключение разметки туда и
+        # обратно, а не её потеря. Без такого разделения переключения топят
+        # настоящие пропажи.
+        net_gone = timeline[0][1] - timeline[-1][2]
+        net_new = timeline[-1][1] - timeline[0][2]
 
-        for (older_date, older_tags, older_deals), (newer_date, newer_tags, newer_deals) in zip(
-            timeline, timeline[1:]
-        ):
-            appeared = sorted(newer_tags - older_tags)
-            disappeared = sorted(older_tags - newer_tags)
+        for (older_date, older_all, older_any, older_deals), (
+            newer_date,
+            newer_all,
+            newer_any,
+            newer_deals,
+        ) in zip(timeline, timeline[1:]):
+            appeared = sorted(newer_all - older_any)
+            disappeared = sorted(older_all - newer_any)
             if not appeared and not disappeared:
                 continue
             parts = []

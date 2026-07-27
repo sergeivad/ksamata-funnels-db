@@ -10,6 +10,7 @@ import datetime
 from api_source import Offer
 from export_source import Observation
 from findings import (
+    find_drift,
     find_unknown_av_keys,
     find_unresolved,
     find_unused_offers,
@@ -172,6 +173,47 @@ def test_class_7_reports_a_retired_key_that_sold_again_afterwards():
     found = find_unresolved(groups, {}, {RETIRED_KEY}, {RETIRED_KEY: AFTER})
     assert [f.cls for f in found] == [7]
     assert 'Рома' in found[0].subject
+
+
+# ─── класс 15 подчиняется тому же правилу отставки ───────────────────────────
+
+def _drift_obs(raw, day, created, deal_id='1'):
+    """Наблюдение с управляемой ДАТОЙ ФАЙЛА: класс 15 меряет дрейф по ней."""
+    return Observation(deal_id=deal_id, tags=parse_tagset(raw),
+                       file_name=f'deal_export_2026-05-{day:02d}_00-00-00.csv',
+                       file_date=datetime.date(2026, 5, day),
+                       deal_created=f'{created} 10:00:00')
+
+
+def _drift_pair(av, created):
+    """Единогласная пропажа маркера между двумя выгрузками — заведомая находка."""
+    base = av + '|АВ Этап: Регистрация'
+    return [_drift_obs(base + '|АВ Квиз', 2, created, '1'),
+            _drift_obs(base, 13, created, '2')]
+
+
+def test_class_15_skips_a_retired_key_that_only_sold_before_the_decision():
+    """Разметку мая у связки, объявленной отработавшей, чинить уже незачем.
+
+    Без этого фильтра отставка «переезжает» из класса в класс: на прогоне
+    2026-07-27 последней находкой класса 15 осталась ровно отставленная
+    `ЗП / НИМБ / Яндекс / РСЯ`.
+    """
+    found = find_drift(_drift_pair(RETIRED_AV, BEFORE), {}, [],
+                       {RETIRED_KEY: BEFORE})
+    assert found == []
+
+
+def test_class_15_reports_a_retired_key_that_sold_again_afterwards():
+    found = find_drift(_drift_pair(RETIRED_AV, AFTER), {}, [],
+                       {RETIRED_KEY: AFTER})
+    assert [f.cls for f in found] == [15]
+
+
+def test_class_15_still_reports_a_live_key():
+    """Парный: фильтр отставки не должен гасить класс целиком."""
+    found = find_drift(_drift_pair(LIVE_AV, BEFORE), {}, [], {LIVE_KEY: BEFORE})
+    assert [f.cls for f in found] == [15]
 
 
 def test_registry_keys_of_collects_only_complete_quadruples():
