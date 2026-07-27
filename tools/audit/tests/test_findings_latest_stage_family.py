@@ -168,13 +168,13 @@ def test_class_2_reports_unknown_axis_even_when_tag_type_is_undecidable():
     """find_extra_axes ходил по _latest_groups, которая выбрасывает группы
     без выводимого tag_type (нужного классам 1 и 4, но не классу 2 — он
     ищет неизвестные базе АВ-теги независимо от этапа). Из-за этого
-    неизвестные оси на группах без 'АВ Этап' (например 'АВ Время: 17')
+    неизвестные оси на группах без 'АВ Этап' (например 'АВ Время: 20')
     молча не попадали в отчёт ни разу."""
-    raw = AV + '|АВ Время: 17'  # нет АВ Этап -> tag_type не выводится (no_stage)
+    raw = AV + '|АВ Время: 20'  # нет АВ Этап -> tag_type не выводится (no_stage)
     groups = group_observations([obs(raw, 2)])
     vocabulary = frozenset({
         'АВ Продукт: ДБО', 'АВ Подрядчик: NR', 'АВ Канал: ВК',
         'АВ Направление: In Stream',
     })
     found = find_extra_axes(groups, vocabulary)
-    assert any('АВ Время: 17' in f.subject for f in found)
+    assert any('АВ Время: 20' in f.subject for f in found)

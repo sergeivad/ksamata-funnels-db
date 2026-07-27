@@ -117,11 +117,11 @@ VOCABULARY_2 = frozenset({'АВ Продукт: ДБО', 'АВ Подрядчи�
 
 
 def test_class_2_reports_axis_present_in_getcourse_but_absent_from_db_vocabulary():
-    raw = AV + '|АВ Этап: Мессенджер|АВ Время: 17'
+    raw = AV + '|АВ Этап: Мессенджер|АВ Время: 20'
     groups = group_observations([obs(raw, 2)])
     found = find_extra_axes(groups, VOCABULARY_2)
     assert [f.cls for f in found] == [2]
-    assert 'АВ Время: 17' in found[0].subject
+    assert 'АВ Время: 20' in found[0].subject
 
 
 def test_class_2_ignores_tags_that_live_only_in_getcourse():
@@ -168,16 +168,16 @@ def test_class_2_ignores_a_tag_the_registry_no_longer_carries():
 
 def test_class_2_reports_a_tag_the_registry_still_carries():
     """Парный к предыдущему: фильтр реестра не должен гасить класс целиком."""
-    raw = AV + '|АВ Этап: Мессенджер|АВ Время: 17'
+    raw = AV + '|АВ Этап: Мессенджер|АВ Время: 20'
     groups = group_observations([obs(raw, 2)])
-    found = find_extra_axes(groups, VOCABULARY_2, {}, {'АВ Время: 17'})
+    found = find_extra_axes(groups, VOCABULARY_2, {}, {'АВ Время: 20'})
     assert [f.cls for f in found] == [2]
-    assert 'АВ Время: 17' in found[0].subject
+    assert 'АВ Время: 20' in found[0].subject
 
 
 def test_class_2_registry_filter_is_off_when_the_registry_is_empty():
     """Прогон с --no-api не должен молча прятать половину класса."""
-    raw = AV + '|АВ Этап: Мессенджер|АВ Время: 17'
+    raw = AV + '|АВ Этап: Мессенджер|АВ Время: 20'
     groups = group_observations([obs(raw, 2)])
     found = find_extra_axes(groups, VOCABULARY_2, {}, frozenset())
     assert [f.cls for f in found] == [2]

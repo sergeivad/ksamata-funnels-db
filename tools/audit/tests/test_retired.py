@@ -221,11 +221,11 @@ def test_class_15_still_reports_a_live_key():
 # ─── классы 2 и 11 подчиняются тому же правилу отставки ─────────────────────
 
 # Словарь знает обе четвёрки и этап целиком, поэтому единственный неизвестный
-# базе тег в тестах ниже — «АВ Время: 17». Иначе находка возникала бы и без
+# базе тег в тестах ниже — «АВ Время: 20». Иначе находка возникала бы и без
 # него, и тест проходил бы по случайной причине.
 VOCAB = (parse_tagset(RETIRED_AV) | parse_tagset(LIVE_AV)
          | {'АВ Этап: Регистрация'})
-UNKNOWN = '|АВ Этап: Регистрация|АВ Время: 17'
+UNKNOWN = '|АВ Этап: Регистрация|АВ Время: 20'
 
 
 def test_class_2_skips_a_retired_key_that_only_sold_before_the_decision():
@@ -243,7 +243,7 @@ def test_class_2_reports_a_retired_key_that_sold_again_afterwards():
     groups = group_observations([obs(RETIRED_AV + UNKNOWN, AFTER)])
     found = find_extra_axes(groups, VOCAB, {RETIRED_KEY: AFTER})
     assert [f.cls for f in found] == [2]
-    assert 'АВ Время: 17' in found[0].subject
+    assert 'АВ Время: 20' in found[0].subject
 
 
 def test_class_2_still_reports_a_live_key():

@@ -125,8 +125,8 @@ def test_class_11_leaves_stages_to_classes_3_and_6():
 def test_registry_av_tags_collects_only_av_tags():
     """Фильтр класса 2 по реестру строится на этом наборе."""
     offers = [offer(1, 'АВ Продукт: ДБО|ОТО|big-course'),
-              offer(2, 'АВ Время: 17|допродажи')]
-    assert registry_av_tags(offers) == {'АВ Продукт: ДБО', 'АВ Время: 17'}
+              offer(2, 'АВ Время: 20|допродажи')]
+    assert registry_av_tags(offers) == {'АВ Продукт: ДБО', 'АВ Время: 20'}
 
 
 def test_class_12_reports_stage_without_autofunnel_tag():

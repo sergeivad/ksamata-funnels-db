@@ -12,6 +12,7 @@ from normalize import (
     classify,
     fold,
     is_complete_key,
+    is_external_tag,
     key_label,
     normalize_tag,
     parse_tagset,
@@ -97,6 +98,36 @@ def test_classify_returns_reason_when_type_undecidable(raw, expected_reason):
     tag_type, reason = classify(parse_tagset(raw))
     assert tag_type is None
     assert reason == expected_reason
+
+
+def test_external_tags_cover_whole_axes_and_single_values():
+    """Два списка: префиксом — вся ось, точным значением — одно из значений."""
+    assert is_external_tag('АВ Мессенджер: МАКС')
+    assert is_external_tag('АВ Линейка: ЖИВО')
+    assert is_external_tag('АВ Время: 17')
+
+
+def test_only_the_seventeen_is_external_among_the_times():
+    """Выключить ось `АВ Время` целиком нельзя — 15 и 19 держат модель базы.
+
+    А `АВ Время: 20` не исключён сознательно: решения по нему не было, все
+    11 предложений с ним — на отставленной связке, их гасит другой фильтр.
+    """
+    assert not is_external_tag('АВ Время: 15')
+    assert not is_external_tag('АВ Время: 19')
+    assert not is_external_tag('АВ Время: 20')
+
+
+def test_seventeen_alone_still_leaves_the_payment_stage_without_a_time():
+    """Граница фильтра: он про «база этого не знает», а не про вывод типа.
+
+    Владелец оставил `АВ Время: 17` ради дашбордов GetCourse, добавив рядом
+    `АВ Время: 15`. Но там, где 15 добавить забыли (2026-07-27 — четыре
+    предложения у f37), находка обязана остаться: у оплаты нет времени.
+    """
+    assert classify(parse_tagset('АВ Этап: Оплата|АВ Время: 17')) == (None, 'no_time')
+    assert classify(parse_tagset('АВ Этап: Оплата|АВ Время: 17|АВ Время: 15')) \
+        == ('time_15', None)
 
 
 def test_predpisok_spelling_is_exact_and_legacy_variant_is_distinct():
