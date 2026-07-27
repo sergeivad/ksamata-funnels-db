@@ -177,6 +177,44 @@ def test_class_7_reports_a_retired_key_that_sold_again_afterwards():
     assert 'Рома' in found[0].subject
 
 
+# ─── классы 5 и 6 тоже: проверка стоит в начале find_unresolved ─────────────
+
+def test_class_5_skips_a_retired_key_with_payment_and_no_time():
+    """На прогоне 2026-07-27 таких находок в классе 5 было 11 из 37.
+
+    Разметку связки, объявленной отработавшей, чинить незачем — каким бы
+    именно способом она ни была сломана.
+    """
+    groups = group_observations([obs(RETIRED_AV + '|АВ Этап: Оплата', BEFORE)])
+    assert find_unresolved(groups, {}, frozenset(), {RETIRED_KEY: BEFORE}) == []
+
+
+def test_class_5_reports_a_retired_key_that_sold_again_afterwards():
+    groups = group_observations([obs(RETIRED_AV + '|АВ Этап: Оплата', AFTER)])
+    found = find_unresolved(groups, {}, frozenset(), {RETIRED_KEY: AFTER})
+    assert [f.cls for f in found] == [5]
+    assert 'без АВ Время' in found[0].subject
+
+
+def test_class_5_still_reports_a_live_key():
+    """Парный: фильтр отставки не должен гасить класс целиком."""
+    groups = group_observations([obs(LIVE_AV + '|АВ Этап: Оплата', BEFORE)])
+    found = find_unresolved(groups, {}, frozenset(), {LIVE_KEY: BEFORE})
+    assert [f.cls for f in found] == [5]
+
+
+def test_class_6_skips_a_retired_key():
+    """Класс 6 идёт из той же функции и подчиняется той же проверке."""
+    groups = group_observations([obs(RETIRED_AV + '|АВ Этап: Предписок', BEFORE)])
+    assert find_unresolved(groups, {}, frozenset(), {RETIRED_KEY: BEFORE}) == []
+
+
+def test_class_6_still_reports_a_live_key():
+    groups = group_observations([obs(LIVE_AV + '|АВ Этап: Предписок', BEFORE)])
+    found = find_unresolved(groups, {}, frozenset(), {LIVE_KEY: BEFORE})
+    assert [f.cls for f in found] == [6]
+
+
 # ─── класс 15 подчиняется тому же правилу отставки ───────────────────────────
 
 def _drift_obs(raw, day, created, deal_id='1'):

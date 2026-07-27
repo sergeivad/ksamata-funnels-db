@@ -465,15 +465,19 @@ def find_unresolved(groups, index, registry_keys=frozenset(), order_dates=None):
 
     Каждая неопознанная группа попадает ровно в один класс.
 
-    Класс 7 отсеивает две категории находок, по которым делать нечего.
+    **Отставленные связки (`retired.RETIRED_KEYS`) не попадают ни в один.**
+    Проверка стоит в начале цикла и потому накрывает все три класса разом:
+    разметку связки, объявленной отработавшей, чинить незачем, каким бы
+    именно способом она ни была сломана. Класс 7 задаёт тот же вопрос, что и
+    класс 9 («воронки под эту четвёрку нет»), но по другому источнику: 9
+    читает реестр GetCourse, 7 — историю выгрузок; без общего фильтра
+    отставленная связка просто переезжает из класса в класс. Правило по дате
+    то же: продала после решения — вернётся. На прогоне 2026-07-27 в классе 5
+    так висели 11 находок из 37 — шестое место с тем же предикатом после
+    классов 2, 7, 9, 11, 14 и 15.
 
-    Первая — отставленные связки (`retired.RETIRED_KEYS`). Класс 7 задаёт тот
-    же вопрос, что и класс 9 («воронки под эту четвёрку нет»), но по другому
-    источнику: 9 читает реестр GetCourse, 7 — историю выгрузок. Без общего
-    фильтра отставленная связка просто переезжает из одного класса в другой,
-    и шум не убывает. Правило по дате то же: продала после решения — вернётся.
-
-    Вторая — четвёрки, которых НЕТ в текущем реестре (`registry_keys`).
+    Класс 7 отсеивает вдобавок четвёрки, которых НЕТ в текущем реестре
+    (`registry_keys`).
     «Теги предложений» вычисляются в момент выгрузки, поэтому файл хранит
     разметку такой, какой она была в тот день. Если тег в тот же день починили,
     старый файл несёт исчезнувшую четвёрку вечно — на живых данных так выглядели
@@ -493,6 +497,9 @@ def find_unresolved(groups, index, registry_keys=frozenset(), order_dates=None):
     order_dates = order_dates or {}
     result = []
     for group in _latest_by_stage_family(groups):
+        if is_retired(group.key, order_dates.get(group.key)):
+            continue
+
         if group.reason == 'no_time':
             cls, subject = 5, 'Оплата без АВ Время'
         elif group.reason == 'predpisok':
@@ -500,8 +507,6 @@ def find_unresolved(groups, index, registry_keys=frozenset(), order_dates=None):
         elif group.reason == 'no_stage':
             cls, subject = 5, 'Нет АВ Этап — тип не выводится'
         elif is_complete_key(group.key) and group.key not in index:
-            if is_retired(group.key, order_dates.get(group.key)):
-                continue
             if registry_keys and group.key not in registry_keys:
                 continue
             cls, subject = 7, f'Нет воронки для {key_label(group.key)}'
