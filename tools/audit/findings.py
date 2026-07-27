@@ -121,6 +121,20 @@ def registry_keys_of(offers):
     return result
 
 
+def registry_av_tags(offers):
+    """АВ-теги, которые встречаются в реестре GetCourse ПРЯМО СЕЙЧАС.
+
+    То же разделение времён, что и у registry_keys_of, но на уровне тега.
+    Нужно классу 2: он читает выгрузки, а «Теги предложений» вычисляются в
+    момент выгрузки, поэтому файл вечно хранит разметку того дня. На прогоне
+    2026-07-27 так висели три уже исправленных тега: `АВ Направление: Перелив
+    с СВС` (в реестре теперь `С СВС`), `АВ продукт: ЖКТ-4вр` со строчной «п»
+    (теперь `АВ Продукт:`) и легаси `АВ / Мессенджер` (вычищен целиком).
+    Чинить нечего — в GetCourse этих тегов больше нет.
+    """
+    return {tag for offer in offers for tag in offer.tags if tag.startswith('АВ ')}
+
+
 def last_order_dates(observations):
     """АВ-четвёрка → дата последнего ЗАКАЗА по ней, ISO-строка.
 
@@ -306,7 +320,7 @@ def find_missing_in_getcourse(groups, expectations, index):
     return result
 
 
-def find_extra_axes(groups, vocabulary):
+def find_extra_axes(groups, vocabulary, order_dates=None, registry_tags=frozenset()):
     """Класс 2: в наблюдении есть АВ-тег, которого база не знает.
 
     В отличие от классов 1 и 4, этому классу тип (tag_type) не нужен вообще
@@ -319,13 +333,36 @@ def find_extra_axes(groups, vocabulary):
     Теги из EXTERNAL_TAG_PREFIXES пропускаются: база их не знает намеренно.
     Маркеры типа воронки, наоборот, НЕ пропускаются — база их действительно
     не умеет выражать, и это настоящий пробел модели, а не решённый вопрос.
+
+    Ещё три фильтра, каждый повторяет решение, уже принятое в другом классе.
+    Вместе они убирали 43 находки из 46 на прогоне 2026-07-27.
+
+    Отставленные связки (`retired.RETIRED_KEYS`) — как в классах 7, 9, 14, 15.
+    Тридцать находок были ровно ими: `АВ Подрядчик: Илья`, `АВ Направление:
+    Реклама Мир`, `АВ Канал: ТГ`, `АВ Продукт: ЗП`. Словарь базы их не знает
+    именно потому, что воронок под них нет — они отработали. Без общего фильтра
+    отставка просто переезжает из класса в класс.
+
+    Этапы (`АВ Этап:`) — ими владеют классы 3 (сводка) и 6 (детально по
+    связкам). Девять находок были `АВ Этап: Предписок`, то есть третьим
+    показом одного и того же на третьем листе отчёта.
+
+    Теги, которых нет в текущем реестре (`registry_tags`) — как `registry_keys`
+    в find_unresolved, и по той же причине: см. registry_av_tags. Пустой
+    `registry_tags` отключает фильтр целиком, чтобы прогон с `--no-api` не
+    прятал молча половину класса.
     """
+    order_dates = order_dates or {}
     result = []
     for group in _latest_by_stage_family(groups):
+        if is_retired(group.key, order_dates.get(group.key)):
+            continue
         unknown = sorted(
             tag for tag in group.tags
             if tag.startswith('АВ ') and tag not in vocabulary
             and not is_external_tag(tag)
+            and not tag.startswith(STAGE_PREFIX + ':')
+            and (not registry_tags or tag in registry_tags)
         )
         if not unknown:
             continue
@@ -578,7 +615,7 @@ def find_incomplete_offer_keys(offers):
     return result
 
 
-def find_unknown_axes_in_registry(offers, vocabulary):
+def find_unknown_axes_in_registry(offers, vocabulary, order_dates=None):
     """Класс 11: ось есть в реестре, но её нет в словаре базы целиком.
 
     Маркеры типа воронки исключены: двоеточия в них нет, поэтому разбор
@@ -587,12 +624,26 @@ def find_unknown_axes_in_registry(offers, vocabulary):
 
     Теги из EXTERNAL_TAG_PREFIXES тоже исключены: база их не знает намеренно,
     так что это не расхождение (см. комментарий в normalize).
+
+    Этапы исключены — ими владеют классы 3 и 6, как и в классе 2.
+
+    Отставленные связки пропускаются, как в классах 2, 7, 9, 14, 15. Замер
+    2026-07-27: из 24 неизвестных базе значений 20 не встречались НИ НА ОДНОМ
+    предложении живой связки — только на отставленных. Самые громкие
+    (`АВ Подрядчик: Илья` на 313 предложениях, `АВ Направление: Реклама Мир`
+    на 241) целиком оттуда, и без фильтра они держали класс на четырёх сотнях
+    предложений, топя четыре живых значения.
     """
+    order_dates = order_dates or {}
     counts = defaultdict(set)
     for offer in _offers_with_av(offers):
+        key = av_key(offer.tags)
+        if is_retired(key, order_dates.get(key)):
+            continue
         for tag in offer.tags:
             if (tag.startswith('АВ ') and tag not in vocabulary
-                    and tag not in MARKER_TAGS and not is_external_tag(tag)):
+                    and tag not in MARKER_TAGS and not is_external_tag(tag)
+                    and not tag.startswith(STAGE_PREFIX + ':')):
                 axis = tag.split(':', 1)[0] if ':' in tag else tag
                 counts[axis].add(offer.offer_id)
 

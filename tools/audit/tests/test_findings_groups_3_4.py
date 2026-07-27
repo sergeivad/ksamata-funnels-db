@@ -12,6 +12,7 @@ from findings import (
     find_unknown_axes_in_registry,
     find_unused_offers,
     group_observations,
+    registry_av_tags,
 )
 from normalize import MARKER_TAGS, parse_tagset
 
@@ -112,6 +113,20 @@ def test_class_11_ignores_tags_that_live_only_in_getcourse():
     offers = [offer(1, 'АВ Продукт: ДБО|АВ Этап: Регистрация|'
                        'АВ Мессенджер: МАКС|АВ Линейка: ЖИВО')]
     assert find_unknown_axes_in_registry(offers, vocabulary) == []
+
+
+def test_class_11_leaves_stages_to_classes_3_and_6():
+    """Как и класс 2: этапом владеют классы 3 и 6, здесь он лишний."""
+    vocabulary = frozenset({'АВ Продукт: ДБО'})
+    offers = [offer(1, 'АВ Продукт: ДБО|АВ Этап: Предписок')]
+    assert find_unknown_axes_in_registry(offers, vocabulary) == []
+
+
+def test_registry_av_tags_collects_only_av_tags():
+    """Фильтр класса 2 по реестру строится на этом наборе."""
+    offers = [offer(1, 'АВ Продукт: ДБО|ОТО|big-course'),
+              offer(2, 'АВ Время: 17|допродажи')]
+    assert registry_av_tags(offers) == {'АВ Продукт: ДБО', 'АВ Время: 17'}
 
 
 def test_class_12_reports_stage_without_autofunnel_tag():

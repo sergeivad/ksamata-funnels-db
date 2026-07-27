@@ -11,7 +11,9 @@ from api_source import Offer
 from export_source import Observation
 from findings import (
     find_drift,
+    find_extra_axes,
     find_unknown_av_keys,
+    find_unknown_axes_in_registry,
     find_unresolved,
     find_unused_offers,
     group_observations,
@@ -214,6 +216,61 @@ def test_class_15_still_reports_a_live_key():
     """Парный: фильтр отставки не должен гасить класс целиком."""
     found = find_drift(_drift_pair(LIVE_AV, BEFORE), {}, [], {LIVE_KEY: BEFORE})
     assert [f.cls for f in found] == [15]
+
+
+# ─── классы 2 и 11 подчиняются тому же правилу отставки ─────────────────────
+
+# Словарь знает обе четвёрки и этап целиком, поэтому единственный неизвестный
+# базе тег в тестах ниже — «АВ Время: 17». Иначе находка возникала бы и без
+# него, и тест проходил бы по случайной причине.
+VOCAB = (parse_tagset(RETIRED_AV) | parse_tagset(LIVE_AV)
+         | {'АВ Этап: Регистрация'})
+UNKNOWN = '|АВ Этап: Регистрация|АВ Время: 17'
+
+
+def test_class_2_skips_a_retired_key_that_only_sold_before_the_decision():
+    """Иначе отставка переезжает из класса 7 в класс 2 и шум не убывает.
+
+    На прогоне 2026-07-27 так выглядели 30 находок класса 2 из 46: словарь
+    базы не знает `АВ Подрядчик: Илья` именно потому, что воронки под эту
+    связку нет — она отработала.
+    """
+    groups = group_observations([obs(RETIRED_AV + UNKNOWN, BEFORE)])
+    assert find_extra_axes(groups, VOCAB, {RETIRED_KEY: BEFORE}) == []
+
+
+def test_class_2_reports_a_retired_key_that_sold_again_afterwards():
+    groups = group_observations([obs(RETIRED_AV + UNKNOWN, AFTER)])
+    found = find_extra_axes(groups, VOCAB, {RETIRED_KEY: AFTER})
+    assert [f.cls for f in found] == [2]
+    assert 'АВ Время: 17' in found[0].subject
+
+
+def test_class_2_still_reports_a_live_key():
+    """Парный: фильтр отставки не должен гасить класс целиком."""
+    groups = group_observations([obs(LIVE_AV + UNKNOWN, BEFORE)])
+    found = find_extra_axes(groups, VOCAB, {LIVE_KEY: BEFORE})
+    assert [f.cls for f in found] == [2]
+
+
+def test_class_11_skips_a_retired_key_that_only_sold_before_the_decision():
+    """Замер 2026-07-27: 20 из 24 неизвестных базе значений — только отставка."""
+    offers = [offer(1, RETIRED_AV + UNKNOWN)]
+    assert find_unknown_axes_in_registry(offers, VOCAB,
+                                         {RETIRED_KEY: BEFORE}) == []
+
+
+def test_class_11_reports_a_retired_key_that_sold_again_afterwards():
+    offers = [offer(1, RETIRED_AV + UNKNOWN)]
+    found = find_unknown_axes_in_registry(offers, VOCAB, {RETIRED_KEY: AFTER})
+    assert [f.cls for f in found] == [11]
+    assert found[0].subject == 'АВ Время'
+
+
+def test_class_11_still_reports_a_live_key():
+    offers = [offer(1, LIVE_AV + UNKNOWN)]
+    found = find_unknown_axes_in_registry(offers, VOCAB, {LIVE_KEY: BEFORE})
+    assert [f.cls for f in found] == [11]
 
 
 def test_registry_keys_of_collects_only_complete_quadruples():

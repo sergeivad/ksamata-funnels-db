@@ -144,6 +144,45 @@ def test_class_2_still_reports_funnel_type_markers():
     assert 'АВ Квиз' in found[0].subject
 
 
+def test_class_2_leaves_stages_to_classes_3_and_6():
+    """`АВ Этап: Предписок` уже занимает два листа отчёта — третий лишний.
+
+    Класс 3 даёт по нему сводку, класс 6 — список по связкам. На прогоне
+    2026-07-27 те же девять связок висели в классе 2 под третьим заголовком.
+    """
+    groups = group_observations([obs(AV + '|АВ Этап: Предписок', 2)])
+    assert find_extra_axes(groups, VOCABULARY_2) == []
+
+
+def test_class_2_ignores_a_tag_the_registry_no_longer_carries():
+    """Выгрузка вечно хранит разметку своего дня; исправленное чинить нечего.
+
+    Живой случай: в GetCourse писали `АВ продукт: ЖКТ-4вр` со строчной «п»,
+    к 2026-07-27 исправили на `АВ Продукт:`, а файлы мая всё ещё несут старое.
+    """
+    raw = AV + '|АВ Этап: Мессенджер|АВ продукт: ЖКТ-4вр'
+    groups = group_observations([obs(raw, 2)])
+    assert find_extra_axes(groups, VOCABULARY_2, {},
+                           {'АВ Продукт: ЖКТ-4вр'}) == []
+
+
+def test_class_2_reports_a_tag_the_registry_still_carries():
+    """Парный к предыдущему: фильтр реестра не должен гасить класс целиком."""
+    raw = AV + '|АВ Этап: Мессенджер|АВ Время: 17'
+    groups = group_observations([obs(raw, 2)])
+    found = find_extra_axes(groups, VOCABULARY_2, {}, {'АВ Время: 17'})
+    assert [f.cls for f in found] == [2]
+    assert 'АВ Время: 17' in found[0].subject
+
+
+def test_class_2_registry_filter_is_off_when_the_registry_is_empty():
+    """Прогон с --no-api не должен молча прятать половину класса."""
+    raw = AV + '|АВ Этап: Мессенджер|АВ Время: 17'
+    groups = group_observations([obs(raw, 2)])
+    found = find_extra_axes(groups, VOCABULARY_2, {}, frozenset())
+    assert [f.cls for f in found] == [2]
+
+
 def test_class_3_reports_predpisok_stage():
     groups = group_observations([obs(AV + '|АВ Этап: Предписок', 2)])
     found = find_unsupported_stage(groups)
