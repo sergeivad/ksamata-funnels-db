@@ -32,7 +32,7 @@ import {
   computeTagSet,
   tagNamesToAxes,
 } from './ab-tags';
-import { listTemplate } from './tag-templates';
+import { listTemplate, assertNotFunnelTypeMarker } from './tag-templates';
 import { listOverrides, replaceOverrides } from './tag-overrides';
 import { createRef, listRefs, getRefByName } from './refs';
 import { FUNNEL_TYPE_KIND } from './funnel-type';
@@ -555,6 +555,14 @@ export function applyTagOverrides(db: DB, id: number, patch: OverrideMap): Funne
   const existing = db.select({ id: funnels.id }).from(funnels).where(eq(funnels.id, id)).get();
   if (!existing) return null;
   db.transaction((tx) => {
+    // Только add: имя маркера в remove безвредно и гасится движком
+    // (identity-тег неудаляем, см. computeTagSet) — незачем лениво отвергать
+    // то, что и так ничего не делает. add — другое дело: без этой проверки
+    // запрос молча ложится строкой в funnel_tag_overrides и никогда ни на что
+    // не влияет (см. assertNotFunnelTypeMarker в tag-templates.ts).
+    for (const scenario of SCENARIOS) {
+      assertNotFunnelTypeMarker(tx, patch[scenario]?.add ?? []);
+    }
     const axes = getAxesForFunnel(tx, id);
     replaceOverrides(tx, id, patch);
     materializeFunnelTags(tx, id, axes);

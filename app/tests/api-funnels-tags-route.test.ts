@@ -126,4 +126,24 @@ describe('PATCH /api/funnels/[id]/tags', () => {
     const res = await PATCH(jsonReq('PATCH', {}), params(99999999));
     expect(res.status).toBe(404);
   });
+
+  it('маркер типа воронки нельзя добавить через add-оверрайд', async () => {
+    // 'АВ Квиз' — имя из справочника funnel_types (SEED_FUNNEL_TYPES),
+    // засеянного runMigratePhase7 выше. Без запрета запрос отвечал бы 200 и
+    // клал строку в funnel_tag_overrides, которая никогда ни на что не влияет
+    // (identity-слой computeTagSet её гасит) — молчаливый холостой ход, а не
+    // порча данных, но пользователь никогда не узнал бы, что тег не применился.
+    const res = await PATCH(
+      jsonReq('PATCH', { reg: { add: ['АВ Квиз'], remove: [] } }),
+      params(existingId),
+    );
+    expect(res.status).toBe(400);
+
+    const rows = sqlite
+      .prepare(
+        `SELECT 1 FROM funnel_tag_overrides WHERE funnel_id = ? AND tag_type = 'reg' AND name = 'АВ Квиз'`,
+      )
+      .all(existingId);
+    expect(rows).toEqual([]);
+  });
 });

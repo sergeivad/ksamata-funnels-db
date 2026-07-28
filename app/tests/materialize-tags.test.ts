@@ -125,4 +125,31 @@ describe('тип воронки участвует в материализаци
     const rows = db.select().from(funnelTypes).all() as { name: string }[];
     expect(rows.map((r) => r.name)).not.toContain('АВ Опечатка');
   });
+
+  it('маркер, попавший в add-оверрайд в обход applyTagOverrides, не материализуется в тег', () => {
+    // Рецензия задачи 6 (Important) проверила руками: applyTagOverrides
+    // теперь отвергает маркер в add ДО записи (assertNotFunnelTypeMarker), но
+    // если бы имя маркера всё же оказалось в funnel_tag_overrides — легаси-
+    // данные, прямой SQL, будущая правка, убравшая проверку выше по стеку —
+    // движок обязан погасить его сам на материализации, а не полагаться
+    // только на входной барьер. Пишем оверрайд НАПРЯМУЮ через replaceOverrides
+    // (минуя applyTagOverrides) — ровно то бездействие, о которое рецензент
+    // проверял: строка в funnel_tag_overrides есть, а тега — нет.
+    const created = createFunnel(db, {
+      num: 9004, frontCode: 'ftest4', status: 'draft', productName: '', variant: '',
+      landingUrl: '', startDate: '', product: 'ЖИВО', contractor: 'НИМБ',
+      channel: 'Яндекс', direction: 'РСЯ',
+    } as any); // funnelType не задан — identity-слой этой воронки 'АВ Квиз' не содержит
+
+    replaceOverrides(db, created.id, {
+      reg: { add: ['АВ Квиз'], remove: [] },
+      time_15: { add: [], remove: [] },
+      time_19: { add: [], remove: [] },
+      messenger: { add: [], remove: [] },
+    });
+    updateFunnel(db, created.id, { product: 'ЖИВО' } as any); // ре-материализация, оси не менялись
+
+    const names = listFunnelTagNames(db, created.id, 'reg');
+    expect(names).not.toContain('АВ Квиз');
+  });
 });
