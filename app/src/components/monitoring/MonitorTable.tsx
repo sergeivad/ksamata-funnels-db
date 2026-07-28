@@ -6,6 +6,7 @@ import Switch from '@/components/Switch';
 import MonitorStatusPill from './MonitorStatusPill';
 import { formatAgo } from '@/lib/monitor-status';
 import { sourceKindLabel } from '@/lib/monitor-kinds';
+import { funnelRefLabel } from '@/lib/front-code';
 import { STATUS_META, type FunnelStatus } from '@/lib/status';
 
 /**
@@ -98,9 +99,10 @@ export default function MonitorTable({ targets, onToggle }: Props) {
                       <Link
                         key={f.id}
                         href={`/funnels/${f.id}`}
+                        title={f.frontCode === '' ? 'Код воронки ещё не заведён' : undefined}
                         className="rounded-[5px] bg-[var(--chip)] px-1.5 py-0.5 text-[11px] text-[var(--muted)] hover:text-[var(--ink)]"
                       >
-                        №{f.num}
+                        {funnelRefLabel(f)}
                       </Link>
                     ))}
                     {/* Пустая колонка у погашенной цели ничего не объясняла: теперь
@@ -113,7 +115,7 @@ export default function MonitorTable({ targets, onToggle }: Props) {
                           title={`Страница не проверяется: ${INACTIVE_HINT[f.status]}. Вернут воронку в активные — проверка возобновится сама`}
                           className="rounded-[5px] bg-[var(--chip)] px-1.5 py-0.5 text-[11px] text-[var(--faint)] hover:text-[var(--ink)]"
                         >
-                          №{f.num} · {STATUS_META[f.status].label.toLowerCase()}
+                          {funnelRefLabel(f)} · {STATUS_META[f.status].label.toLowerCase()}
                         </Link>
                       ))}
                     {t.usage === 'orphan' && (

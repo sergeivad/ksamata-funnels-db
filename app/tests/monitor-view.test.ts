@@ -49,10 +49,13 @@ function linkToFunnel(targetId: number, funnelId: number) {
  * Делает воронку неактивной и вешает на неё URL через landing_url — так проще,
  * чем через блок: у воронок фикстуры блок `landings` уже занят.
  */
-function holdUrlByFunnel(status: 'draft' | 'archive', url: string): { id: number; num: number } {
+function holdUrlByFunnel(
+  status: 'draft' | 'archive',
+  url: string,
+): { id: number; num: number; frontCode: string } {
   const f = sqlite
-    .prepare(`SELECT id, num FROM funnels ORDER BY id DESC LIMIT 1 OFFSET ?`)
-    .get(status === 'draft' ? 0 : 1) as { id: number; num: number };
+    .prepare(`SELECT id, num, front_code AS frontCode FROM funnels ORDER BY id DESC LIMIT 1 OFFSET ?`)
+    .get(status === 'draft' ? 0 : 1) as { id: number; num: number; frontCode: string };
   sqlite.prepare(`UPDATE funnels SET status = ?, landing_url = ? WHERE id = ?`).run(status, url, f.id);
   return f;
 }
@@ -99,7 +102,9 @@ describe('getMonitorDashboard · кто держит цель', () => {
     const { targets, sourceKinds } = getMonitorDashboard(db);
     const row = targets.find((t) => t.url === url)!;
     expect(row.usage).toBe('inactive');
-    expect(row.inactiveFunnels).toEqual([{ id: f.id, num: f.num, status: 'archive' }]);
+    expect(row.inactiveFunnels).toEqual([
+      { id: f.id, num: f.num, frontCode: f.frontCode, status: 'archive' },
+    ]);
     expect(sourceKinds.find((s) => s.sourceKind === 'landings')).toBeUndefined();
   });
 
@@ -110,7 +115,7 @@ describe('getMonitorDashboard · кто держит цель', () => {
 
     const { targets, sourceKinds } = getMonitorDashboard(db);
     expect(targets.find((t) => t.url === url)!.inactiveFunnels).toEqual([
-      { id: f.id, num: f.num, status: 'draft' },
+      { id: f.id, num: f.num, frontCode: f.frontCode, status: 'draft' },
     ]);
     expect(sourceKinds.find((s) => s.sourceKind === 'landings')).toBeUndefined();
   });
@@ -181,17 +186,16 @@ describe('getMonitorDashboard', () => {
 
   it('прикладывает номера воронок к цели', () => {
     const targetId = makeTarget('https://a.ru/', 1, 'up', '2026-07-24 10:00:00');
-    const funnel = sqlite.prepare(`SELECT id, num FROM funnels ORDER BY num LIMIT 1`).get() as {
-      id: number;
-      num: number;
-    };
+    const funnel = sqlite
+      .prepare(`SELECT id, num, front_code AS frontCode FROM funnels ORDER BY num LIMIT 1`)
+      .get() as { id: number; num: number; frontCode: string };
     sqlite
       .prepare(`INSERT INTO monitor_target_funnels (target_id, funnel_id) VALUES (?, ?)`)
       .run(targetId, funnel.id);
 
     const { targets } = getMonitorDashboard(db);
     const row = targets.find((t) => t.url === 'https://a.ru/')!;
-    expect(row.funnels).toEqual([{ id: funnel.id, num: funnel.num }]);
+    expect(row.funnels).toEqual([{ id: funnel.id, num: funnel.num, frontCode: funnel.frontCode }]);
   });
 
   it('считает цели по видам источников', () => {
@@ -273,10 +277,9 @@ describe('funnelsByTarget', () => {
     const idA = makeTarget('https://a.ru/', 1, 'up', null);
     const idB = makeTarget('https://b.ru/', 1, 'up', null);
 
-    const funnelRows = sqlite.prepare(`SELECT id, num FROM funnels ORDER BY num LIMIT 2`).all() as {
-      id: number;
-      num: number;
-    }[];
+    const funnelRows = sqlite
+      .prepare(`SELECT id, num, front_code AS frontCode FROM funnels ORDER BY num LIMIT 2`)
+      .all() as { id: number; num: number; frontCode: string }[];
     const [funnelA, funnelB] = funnelRows;
 
     sqlite
@@ -295,8 +298,8 @@ describe('funnelsByTarget', () => {
     const map = funnelsByTarget(db);
 
     expect(map.size).toBe(2);
-    expect(map.get(idA)).toEqual([{ id: funnelA.id, num: funnelA.num }]);
-    expect(map.get(idB)).toEqual([{ id: funnelB.id, num: funnelB.num }]);
+    expect(map.get(idA)).toEqual([{ id: funnelA.id, num: funnelA.num, frontCode: funnelA.frontCode }]);
+    expect(map.get(idB)).toEqual([{ id: funnelB.id, num: funnelB.num, frontCode: funnelB.frontCode }]);
   });
 
   it('с targetIds отдаёт связи только по переданным целям', () => {
@@ -306,7 +309,7 @@ describe('funnelsByTarget', () => {
 
     expect(map.size).toBe(1);
     expect([...map.keys()]).toEqual([idA]);
-    expect(map.get(idA)).toEqual([{ id: funnelA.id, num: funnelA.num }]);
+    expect(map.get(idA)).toEqual([{ id: funnelA.id, num: funnelA.num, frontCode: funnelA.frontCode }]);
     expect(map.has(idB)).toBe(false);
   });
 

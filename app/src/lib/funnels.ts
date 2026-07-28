@@ -33,6 +33,7 @@ import {
 import { listTemplate } from './tag-templates';
 import { listOverrides, replaceOverrides } from './tag-overrides';
 import { createRef, listRefs } from './refs';
+import { nextFrontCode, normalizeFrontCode } from './front-code';
 import { type FunnelCreate, type FunnelUpdate } from './validation';
 
 // ─── Public return shapes ─────────────────────────────────────────────────────
@@ -135,17 +136,64 @@ function asNumConflict<T>(num: number, fn: () => T): T {
   }
 }
 
-function withNumRetry<T>(fn: () => T, attempts = 5): T {
+/**
+ * Тот же расклад для F-кода: уникальный индекс на `front_code` появился
+ * в Phase-7, до него дубликат кода проходил молча.
+ */
+function isFrontCodeConflict(err: unknown): boolean {
+  return err instanceof Error
+    && err.message.includes('UNIQUE constraint failed: funnels.front_code');
+}
+
+function asFrontCodeConflict<T>(code: string, fn: () => T): T {
+  try {
+    return fn();
+  } catch (err) {
+    if (isFrontCodeConflict(err)) throw new ConflictError(`Код ${code} уже занят другой воронкой`);
+    throw err;
+  }
+}
+
+/**
+ * Ретраим и на num, и на F-код: черновик подбирает оба номера сам (MAX+1), и
+ * оба одинаково уязвимы к гонке между чтением максимума и вставкой, если тот же
+ * файл БД пишет второй инстанс. Проигравшему нужно пересчитать максимум, а не
+ * упасть — конкретный номер здесь никто не заказывал.
+ */
+function withAllocRetry<T>(fn: () => T, attempts = 5): T {
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
     try {
       return fn();
     } catch (err) {
-      if (!isNumConflict(err)) throw err;
+      if (!isNumConflict(err) && !isFrontCodeConflict(err)) throw err;
       lastErr = err;
     }
   }
   throw lastErr;
+}
+
+/**
+ * Занят ли код другой воронкой. Пустой код не конфликтует ни с чем: «кода нет»
+ * — законное состояние, и таких воронок в живой базе десяток.
+ */
+function findFrontCodeOwner(db: AnyDB, code: string, excludeId?: number): number | null {
+  if (code === '') return null;
+  const rows = db
+    .select({ id: funnels.id })
+    .from(funnels)
+    .where(eq(funnels.frontCode, code))
+    .all() as { id: number }[];
+  const owner = rows.find((r) => r.id !== excludeId);
+  return owner ? owner.id : null;
+}
+
+/** Следующий свободный F-код — считаем от максимума кодов, не от `num`. */
+function allocateFrontCode(db: AnyDB): string {
+  const rows = db.select({ frontCode: funnels.frontCode }).from(funnels).all() as {
+    frontCode: string | null;
+  }[];
+  return nextFrontCode(rows.map((r) => r.frontCode ?? ''));
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -216,6 +264,14 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
     throw new ConflictError(`Funnel with num=${data.num} already exists`);
   }
 
+  // F-код — то, чем воронка называется во внешних материалах, поэтому дубль
+  // здесь хуже дубля num: две «f70» неразличимы для человека.
+  const frontCode = normalizeFrontCode(data.frontCode);
+  const codeOwner = findFrontCodeOwner(db, frontCode);
+  if (codeOwner !== null) {
+    throw new ConflictError(`Код ${frontCode} уже занят воронкой #${codeOwner}`);
+  }
+
   const axes: AbAxes = {
     product: data.product,
     contractor: data.contractor,
@@ -225,7 +281,7 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
 
   let createdFunnel: FunnelListItem;
 
-  asNumConflict(data.num, () => db.transaction((tx) => {
+  asNumConflict(data.num, () => asFrontCodeConflict(frontCode, () => db.transaction((tx) => {
     // Get-or-create foreign key refs
     const productRow    = createRef(tx, 'products',    data.product);
     const contractorRow = createRef(tx, 'contractors', data.contractor);
@@ -237,7 +293,7 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
       .insert(funnels)
       .values({
         num:                data.num,
-        frontCode:          data.frontCode,
+        frontCode,
         status:             data.status,
         productName:        data.productName,
         variant:            data.variant,
@@ -268,7 +324,7 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
       name:        funnelName(axes),
       axes,
     };
-  }));
+  })));
 
   return createdFunnel!;
 }
@@ -277,6 +333,11 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
  * POST /api/funnels/draft — create a blank draft funnel and return it.
  *
  * The draft gets the next free `num`, status='draft', and EMPTY axes.
+ *
+ * F-код подставляется как подсказка — следующий свободный по КОДАМ (см.
+ * front-code.ts), а не `f${num}`. Это две разные последовательности: раньше
+ * черновик при max(num)=75 и max(F)=79 получил бы f76, а следующий за ним —
+ * уже занятый f77.
  *
  * Axes shown on the card come from AV reg-tags (see getAxesForFunnel), so a
  * draft is created with NO AV tags → all four axes read back empty and the
@@ -297,7 +358,7 @@ export function createDraftFunnel(db: DB): FunnelListItem {
     throw new Error('Cannot create draft: reference tables (products/contractors/sources) are empty');
   }
 
-  const inserted = withNumRetry(() => {
+  const inserted = withAllocRetry(() => {
     const maxRow = db
       .select({ maxNum: sql<number>`COALESCE(MAX(${funnels.num}), 0)` })
       .from(funnels)
@@ -308,7 +369,7 @@ export function createDraftFunnel(db: DB): FunnelListItem {
       .insert(funnels)
       .values({
         num,
-        frontCode:    `f${num}`,
+        frontCode:    allocateFrontCode(db),
         status:       'draft',
         productName:  '',
         variant:      '',
@@ -364,14 +425,26 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
     }
   }
 
+  // То же для F-кода: правка в поле «Код» — единственный способ поставить
+  // воронке настоящий код ЛИК, и промахнуться в чужой номер тут проще всего.
+  // Собственный код воронки не считается конфликтом (excludeId), иначе
+  // повторное сохранение той же формы падало бы в 409.
+  const frontCode = data.frontCode === undefined ? undefined : normalizeFrontCode(data.frontCode);
+  if (frontCode !== undefined && frontCode !== existing.frontCode) {
+    const codeOwner = findFrontCodeOwner(db, frontCode, id);
+    if (codeOwner !== null) {
+      throw new ConflictError(`Код ${frontCode} уже занят воронкой #${codeOwner}`);
+    }
+  }
+
   let result: FunnelListItem | null = null;
 
-  asNumConflict(data.num ?? existing.num, () => db.transaction((tx) => {
+  asNumConflict(data.num ?? existing.num, () => asFrontCodeConflict(frontCode ?? existing.frontCode ?? '', () => db.transaction((tx) => {
     // Build scalar update payload (exclude axes fields)
     const scalarUpdate: Partial<typeof funnels.$inferInsert> = {};
 
     if (data.num          !== undefined) scalarUpdate.num          = data.num;
-    if (data.frontCode    !== undefined) scalarUpdate.frontCode    = data.frontCode;
+    if (frontCode         !== undefined) scalarUpdate.frontCode    = frontCode;
     if (data.status       !== undefined) scalarUpdate.status       = data.status;
     if (data.productName  !== undefined) scalarUpdate.productName  = data.productName;
     if (data.variant      !== undefined) scalarUpdate.variant      = data.variant;
@@ -447,7 +520,7 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
       name:        funnelName(finalAxes),
       axes:        finalAxes,
     };
-  }));
+  })));
 
   return result;
 }
@@ -591,7 +664,7 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
 
   const sourceAxes = getAxesForFunnel(db, id);
 
-  const duplicated = withNumRetry(() => db.transaction((tx) => {
+  const duplicated = withAllocRetry(() => db.transaction((tx) => {
     // Get max num
     const maxResult = tx
       .select({ maxNum: sql<number>`MAX(${funnels.num})` })
