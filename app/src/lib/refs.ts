@@ -189,9 +189,13 @@ export type RefUsage = { count: number; funnelIds: number[] };
 
 /**
  * Number of DISTINCT funnels that reference this ref row — via a direct FK
- * column (products/contractors/sources), via funnel_tags directly (tags),
- * and/or via the mirrored "АВ <Axis>: <value>" tag (products/contractors/
- * channels/directions). Union of every source, deduplicated by funnel id.
+ * column (products/contractors/sources/funnel_types), via funnel_tags
+ * directly (tags), and/or via the mirrored tag (products/contractors/
+ * channels/directions → "АВ <Axis>: <value>"; funnel_types → само значение,
+ * см. refTagNameFor). funnel_types так считается вдвойне — и через
+ * funnels.funnel_type_id, и через одноимённый тег, если он когда-нибудь
+ * появится (сегодня миграция фазы 7 такой тег не создаёт, но код к этому
+ * готов). Union of every source, deduplicated by funnel id.
  */
 export function getRefUsage(db: AnyDB, kind: RefKind, row: RefRow): RefUsage {
   const ids = new Set<number>();
@@ -268,6 +272,15 @@ export type RenameRefResult =
  * picks up the new text immediately. Funnel names are derived live from
  * these tags (see funnelName/getAxesForFunnel in lib/funnels.ts), so no
  * further per-funnel update is needed.
+ *
+ * Для funnel_types зеркальный тег равен самому значению — у маркера типа нет
+ * двоеточия, поэтому переименование через AXIS_PREFIXES не годится (см.
+ * refTagNameFor). ⚠️ До задачи 6 этим же именем владеет ещё и tag_templates:
+ * «АВ Автоворонка» стоит в шаблоне как обычный AV-тег, поэтому переименование
+ * ЭТОГО конкретного маркера через funnel_types заденет и шаблонный тег на
+ * всех воронках, что его несут (см. task-2-report.md, раздел про Critical).
+ * Задача 6 убирает маркер из шаблона и снимает это двоевластие — до неё
+ * переименовывать «АВ Автоворонка» здесь не стоит.
  */
 export function renameRef(db: AnyDB, kind: RefKind, id: number, newName: string): RenameRefResult {
   const table = resolveTable(kind);

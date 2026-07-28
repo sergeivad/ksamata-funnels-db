@@ -13,6 +13,7 @@ import {
   refTagNameFor,
   getRefByName,
   deleteRef,
+  renameRef,
 } from '../src/lib/refs';
 import { runMigratePhase7 } from '../scripts/migrate-phase7';
 import { copyDbForTest } from './helpers/db';
@@ -154,5 +155,48 @@ describe('справочник типов воронки', () => {
     const created = createRef(testDb, 'funnel_types', 'АВ Тест-Маркер');
     const res = deleteRef(testDb, 'funnel_types', created.id);
     expect(res.ok).toBe(true);
+  });
+
+  it('переименование типа переносит зеркальный тег вместе со значением', () => {
+    // Собственные имена, не «АВ Автоворонка» — переименование этого маркера
+    // задело бы шаблонный тег (см. отчёт задачи 2) и отравило бы соседние
+    // тесты файла, которые делят одну и ту же тестовую БД.
+    const oldTypeName = 'АВ Тест-Маркер-Ренейм';
+    const newTypeName = 'АВ Тест-Маркер-Ренейм-2';
+
+    const typeRow = createRef(testDb, 'funnel_types', oldTypeName);
+
+    // Сегодня никакой движок не заводит зеркальный тег для funnel_types сам
+    // (в отличие от четырёх осей, где это на сохранении воронки делает
+    // computeTagSet) — кладём его вручную, чтобы проверить именно проводку
+    // refTagNameFor → renameOrMergeTag внутри renameRef, не дожидаясь
+    // механики, которой ещё нет.
+    const tagRow = testDb
+      .insert(schema.tags)
+      .values({ name: oldTypeName })
+      .returning({ id: schema.tags.id, name: schema.tags.name })
+      .get();
+
+    const anyFunnel = testDb
+      .select({ id: schema.funnels.id })
+      .from(schema.funnels)
+      .limit(1)
+      .get() as { id: number };
+
+    testDb
+      .insert(schema.funnelTags)
+      .values({ funnelId: anyFunnel.id, tagId: tagRow.id, tagType: 'reg', position: 0 })
+      .run();
+
+    const res = renameRef(testDb, 'funnel_types', typeRow.id, newTypeName);
+    expect(res.ok).toBe(true);
+
+    // Старое имя тега исчезло, новое — на месте того же id (тег
+    // переименован in-place: renameOrMergeTag мержит только когда строка
+    // с новым именем уже существует).
+    expect(getRefByName(testDb, 'tags', oldTypeName)).toBeUndefined();
+    const renamedTag = getRefByName(testDb, 'tags', newTypeName);
+    expect(renamedTag).toBeDefined();
+    expect(renamedTag!.id).toBe(tagRow.id);
   });
 });
