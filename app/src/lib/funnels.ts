@@ -560,8 +560,26 @@ export function applyTagOverrides(db: DB, id: number, patch: OverrideMap): Funne
     // то, что и так ничего не делает. add — другое дело: без этой проверки
     // запрос молча ложится строкой в funnel_tag_overrides и никогда ни на что
     // не влияет (см. assertNotFunnelTypeMarker в tag-templates.ts).
+    //
+    // Проверяем не сам patch, а РАЗНИЦУ с уже сохранённым (`current`).
+    // Маршрут мёржит патч со старыми данными для сценариев, которых нет в
+    // теле запроса (см. route.ts: `patch[s] = parsed.data[s] ?? current[s]`),
+    // так что patch здесь — это ПОЛНАЯ карта всех четырёх сценариев, а не
+    // только присланные. Если проверять её целиком, воронка со старой строкой
+    // маркера в add (эндпоинт до этого барьера отвечал 200 и клал такую
+    // строку; либо duplicateFunnel → copyFunnelChildren пишет
+    // funnel_tag_overrides напрямую, минуя оба барьера) начнёт получать 400
+    // на любой частичный PATCH, который эту строку даже не трогает — вызывающий
+    // прислал совсем другой сценарий и не может понять, за что отказ. Сравнение
+    // с `current` устраняет это естественно: для сценария, которого нет в
+    // теле запроса, patch[s].add совпадает с current[s].add ровно потому, что
+    // он был взят оттуда же — новых имён ноль, отказа не будет никогда, вне
+    // зависимости от того, что уже лежит в базе.
+    const current = listOverrides(tx, id);
     for (const scenario of SCENARIOS) {
-      assertNotFunnelTypeMarker(tx, patch[scenario]?.add ?? []);
+      const alreadyStored = new Set(current[scenario]?.add ?? []);
+      const newNames = (patch[scenario]?.add ?? []).filter((name) => !alreadyStored.has(name));
+      assertNotFunnelTypeMarker(tx, newNames);
     }
     const axes = getAxesForFunnel(tx, id);
     replaceOverrides(tx, id, patch);

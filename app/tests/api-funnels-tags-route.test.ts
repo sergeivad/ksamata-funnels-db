@@ -15,12 +15,14 @@ import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { runMigratePhase7 } from '../scripts/migrate-phase7';
 import * as schema from '../src/db/schema';
+import { replaceOverrides } from '../src/lib/tag-overrides';
 import { copyDbForTest } from './helpers/db';
 
 const REAL_DB = path.resolve(process.cwd(), '..', 'ksamata_funnels.db');
 let tmp: string;
 let sqlite: Database.Database;
 let existingId: number;
+let db: ReturnType<typeof drizzle<typeof schema>>;
 
 /* eslint-disable @typescript-eslint/consistent-type-imports */
 let PATCH: typeof import('../src/app/api/funnels/[id]/tags/route').PATCH;
@@ -37,7 +39,7 @@ beforeEach(async () => {
   runMigratePhase7(sqlite);
   const rows = sqlite.prepare('SELECT id FROM funnels ORDER BY num LIMIT 1').all() as { id: number }[];
   existingId = rows[0].id;
-  const db = drizzle(sqlite, { schema });
+  db = drizzle(sqlite, { schema });
   vi.doMock('@/db/client', () => ({ db }));
 
   const route = await import('../src/app/api/funnels/[id]/tags/route');
@@ -145,5 +147,36 @@ describe('PATCH /api/funnels/[id]/tags', () => {
       )
       .all(existingId);
     expect(rows).toEqual([]);
+  });
+
+  it('старая строка с маркером в непереданном сценарии не должна ронять посторонний PATCH', async () => {
+    // Находка рецензии (round 2): маршрут мёржит патч со старыми данными для
+    // сценариев, которых нет в теле запроса (см. route.ts:36-39,
+    // `patch[s] = parsed.data[s] ?? current[s]`). Значит applyTagOverrides
+    // видит ПОЛНУЮ карту всех четырёх сценариев, включая нетронутый. Если бы
+    // проверка маркера смотрела на неё целиком (а не на разницу с уже
+    // сохранённым), воронка со старой строкой маркера в add — эндпоинт до
+    // барьера отвечал 200 и клал такую строку, либо duplicateFunnel →
+    // copyFunnelChildren пишет funnel_tag_overrides напрямую, минуя оба
+    // барьера — начала бы получать 400 на любой PATCH, который эту строку
+    // даже не упоминает. Кладём такую строку НАПРЯМУЮ через replaceOverrides
+    // (в обход барьера, как если бы она осталась от старых данных), затем
+    // шлём PATCH, трогающий только time_15: не должен видеть reg вовсе.
+    replaceOverrides(db, existingId, {
+      reg: { add: ['АВ Квиз'], remove: [] },
+      time_15: { add: [], remove: [] },
+      time_19: { add: [], remove: [] },
+      messenger: { add: [], remove: [] },
+    });
+
+    const res = await PATCH(
+      jsonReq('PATCH', { time_15: { add: ['держим-time15'], remove: [] } }),
+      params(existingId),
+    );
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    const time15 = body.tagSets.time_15.tags.map((t: { name: string }) => t.name);
+    expect(time15).toContain('держим-time15');
   });
 });
