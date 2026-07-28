@@ -110,6 +110,11 @@ const tagNameSchema = z.string().trim().min(1).max(REF_MAX);
 // materialized by the auto axis layer — never typed in manually, or they'd
 // be parsed back out as axis values (see getAxesForFunnel / tagNamesToAxes)
 // and corrupt the funnel's axes. Used for every path that *adds* a tag name.
+//
+// Пятую ось (маркер типа воронки, funnel_types) этот схема НЕ проверяет:
+// набор типов расширяемый и лежит в БД, а не в статичном списке префиксов —
+// у чистой Zod-функции доступа к БД нет. Тот запрет живёт в
+// replaceTemplateScenario (tag-templates.ts), рядом с БД.
 const customTagNameSchema = z
   .string()
   .trim()

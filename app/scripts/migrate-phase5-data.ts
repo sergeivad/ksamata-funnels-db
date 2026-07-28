@@ -1,6 +1,11 @@
 /**
  * Shared DDL + template seed for Phase-5 (flexible AV-tags).
  * Single source of truth for migrate-phase5.ts (tsx/tests) and the Docker runner.
+ *
+ * Маркер типа воронки («АВ Автоворонка» и три альтернативы) в шаблоне НЕ живёт
+ * с фазы 7: он выводится из funnels.funnel_type_id как пятая ось, см.
+ * src/lib/funnel-type.ts. Вернуть его сюда — значит снова поставить один и тот
+ * же маркер каждой воронке и получить второй источник правды.
  */
 
 export const PHASE5_DDL = `
@@ -37,21 +42,17 @@ CREATE INDEX IF NOT EXISTS idx_fto_funnel ON funnel_tag_overrides(funnel_id);
  * крупнейшую строку карты: «база ожидает тег автоворонки на 72 парах».
  */
 export const PHASE5_TEMPLATE_SEED: { scenario: string; name: string; position: number }[] = [
-  { scenario: 'reg',       name: 'АВ Автоворонка',     position: 0 },
-  { scenario: 'reg',       name: 'АВ Этап: Регистрация', position: 1 },
+  { scenario: 'reg',       name: 'АВ Этап: Регистрация', position: 0 },
 
   { scenario: 'time_15',   name: 'автоворонки',        position: 0 },
-  { scenario: 'time_15',   name: 'АВ Автоворонка',     position: 1 },
-  { scenario: 'time_15',   name: 'АВ Этап: Оплата',    position: 2 },
-  { scenario: 'time_15',   name: 'АВ Время: 15',       position: 3 },
+  { scenario: 'time_15',   name: 'АВ Этап: Оплата',    position: 1 },
+  { scenario: 'time_15',   name: 'АВ Время: 15',       position: 2 },
 
   { scenario: 'time_19',   name: 'автоворонки',        position: 0 },
-  { scenario: 'time_19',   name: 'АВ Автоворонка',     position: 1 },
-  { scenario: 'time_19',   name: 'АВ Этап: Оплата',    position: 2 },
-  { scenario: 'time_19',   name: 'АВ Время: 19',       position: 3 },
+  { scenario: 'time_19',   name: 'АВ Этап: Оплата',    position: 1 },
+  { scenario: 'time_19',   name: 'АВ Время: 19',       position: 2 },
 
-  { scenario: 'messenger', name: 'АВ Автоворонка',     position: 0 },
-  { scenario: 'messenger', name: 'АВ Этап: Мессенджер', position: 1 },
+  { scenario: 'messenger', name: 'АВ Этап: Мессенджер', position: 0 },
 ];
 
 /**

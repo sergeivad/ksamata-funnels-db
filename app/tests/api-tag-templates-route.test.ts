@@ -14,6 +14,9 @@ import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { runMigratePhase7 } from '../scripts/migrate-phase7';
+import { PHASE5_DDL, seedTagTemplates } from '../scripts/migrate-phase5-data';
+import { PHASE7_DDL } from '../scripts/migrate-phase7-data';
+import { SEED_FUNNEL_TYPES } from '../src/lib/funnel-type';
 import * as schema from '../src/db/schema';
 import { replaceOverrides } from '../src/lib/tag-overrides';
 import { copyDbForTest } from './helpers/db';
@@ -148,5 +151,59 @@ describe('PUT /api/tag-templates/[scenario]', () => {
     const names = tagRows.map((r) => r.name);
     expect(names).toContain('новый-дефолт');
     expect(names).toContain('кастом');
+  });
+
+  it('маркер типа нельзя положить в шаблон через API', async () => {
+    // 'АВ Квиз' — имя из справочника funnel_types (see SEED_FUNNEL_TYPES),
+    // а не выдуманный тег: именно такое имя раньше проходило через Zod
+    // (customTagNameSchema знает только про четыре статичные оси) и
+    // создавало второй тег с тем же именем при следующем ресинке.
+    const res = await PUT(
+      new Request('http://x/api/tag-templates/reg', {
+        method: 'PUT',
+        body: JSON.stringify({ names: ['АВ Квиз', 'допродажи'] }),
+      }) as never,
+      { params: Promise.resolve({ scenario: 'reg' }) },
+    );
+    expect(res.status).toBe(400);
+
+    // Отказ должен быть по существу (400 от ValidationError), а не 500 —
+    // и шаблон должен остаться нетронутым.
+    const after = await (await GET()).json();
+    expect(after.reg).not.toContain('АВ Квиз');
+  });
+});
+
+describe('семя фазы 5 не хранит маркер типа воронки', () => {
+  it('после чистки шаблона маркером владеет только справочник типов', () => {
+    // ВАЖНО: этот тест намеренно НЕ использует общую фикстуру beforeEach —
+    // та строит sqlite копией ЖИВОЙ базы (`copyDbForTest(REAL_DB, tmp)`), а
+    // `runMigratePhase5` идемпотентна и гейтится маркером в schema_migrations:
+    // на живой базе фаза 5 уже отмечена выполненной, поэтому повторный вызов
+    // seedTagTemplates() в фикстуре — no-op и НЕ подхватит правку сида,
+    // которую проверяет эта задача. Живую базу трогать нельзя (её чистит
+    // отдельная задача 7), поэтому строим шаблон сидом фазы 5 с нуля на
+    // временной пустой базе — так тест реально проверяет исходный код сида,
+    // а не унаследованное состояние живого файла.
+    const freshPath = path.join(os.tmpdir(), `tpl-seed-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
+    const fresh = new Database(freshPath);
+    try {
+      fresh.exec(PHASE5_DDL);
+      seedTagTemplates(fresh);
+      fresh.exec(PHASE7_DDL);
+      const insertType = fresh.prepare('INSERT OR IGNORE INTO funnel_types (name) VALUES (?)');
+      for (const name of SEED_FUNNEL_TYPES) insertType.run(name);
+
+      const known = new Set(
+        (fresh.prepare('SELECT name FROM funnel_types').all() as { name: string }[]).map((r) => r.name),
+      );
+      const inTemplate = (fresh.prepare('SELECT name FROM tag_templates').all() as { name: string }[])
+        .map((r) => r.name)
+        .filter((n) => known.has(n));
+      expect(inTemplate).toEqual([]);
+    } finally {
+      fresh.close();
+      fs.rmSync(freshPath, { force: true });
+    }
   });
 });
