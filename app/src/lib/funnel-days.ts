@@ -8,7 +8,7 @@
  * which is what RoomsEditor does (both slots × days 1..N).
  */
 
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, ne, inArray } from 'drizzle-orm';
 import { type AnyDB } from '../db/client';
 import { funnelDays, funnels } from '../db/schema';
 import { ValidationError } from './errors';
@@ -81,11 +81,15 @@ export function replaceDays(db: AnyDB, funnelId: number, cells: DayCell[]): void
       tx.delete(funnelDays).where(inArray(funnelDays.id, orphans)).run();
     }
 
+    let wroteRoom = false;
+
     for (const cell of cells) {
       const isEmpty =
         cell.gcRoom.trim() === '' &&
         cell.webRoom.trim() === '' &&
         cell.replayUrl.trim() === '';
+
+      if (!isEmpty) wroteRoom = true;
 
       if (isEmpty) {
         tx.delete(funnelDays)
@@ -111,6 +115,26 @@ export function replaceDays(db: AnyDB, funnelId: number, cells: DayCell[]): void
           })
           .run();
       }
+    }
+
+    // Записали хоть одну живую комнату — включаем раздел. `rooms_enabled` не
+    // «есть ли строки», а переключатель показа: выключенным он прячет комнаты
+    // и в карточке, и в ЭКСПОРТЕ (export.ts пропускает дни выключенной
+    // воронки). Ставили его до этого ровно два места — бэкфилл Phase-4 и
+    // RoomsEditor, который после PUT дней отдельным PATCH сохраняет флаг.
+    // Поэтому любая запись мимо админки (питон-скрипты импорта, разовые tsx)
+    // оставляла комнаты невидимыми: так разошлись шесть воронок и 52 комнаты,
+    // десятая часть всех.
+    //
+    // Включаем ТОЛЬКО вверх и только при непустой записи. Очистка сетки —
+    // законная операция, и превращать её в «включить раздел» нельзя; выключение
+    // же остаётся решением человека («вебинаров у воронки нет»), и молча
+    // отменять его запись комнат не должна.
+    if (wroteRoom) {
+      tx.update(funnels)
+        .set({ roomsEnabled: 1 })
+        .where(and(eq(funnels.id, funnelId), ne(funnels.roomsEnabled, 1)))
+        .run();
     }
   });
 }
