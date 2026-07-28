@@ -46,22 +46,40 @@ export function axisTagNames(axes: AbAxes): string[] {
 }
 
 /**
- * Effective tag set per scenario from the three layers:
- *   default = template[scenario] ++ axisTagNames(axes)
+ * Пятая ось. `name` — маркер этой воронки (null = тип не выбран),
+ * `known` — все имена из справочника типов. Второе нужно, чтобы погасить
+ * ЧУЖОЙ маркер: пока он зашит в tag_templates, квизовая воронка иначе
+ * получила бы «АВ Автоворонка» вторым маркером.
+ *
+ * Множество приходит извне, а не зашито здесь, потому что значения типа
+ * правятся через справочник — см. funnel-type.ts.
+ */
+export type FunnelTypeContext = { name: string | null; known: readonly string[] };
+
+/**
+ * Effective tag set per scenario from the four layers:
+ *   default = template[scenario] ++ axisTagNames(axes) ++ маркер типа
  *   effective = (default − removed) ++ added
- * - Axis tags are NEVER suppressed (they carry channel/direction identity).
+ * - Axis tags and the type marker are NEVER suppressed (identity layer).
  * - Dedup by exact name; first occurrence wins (template/axis over add).
  * - `suppressed` lists template defaults currently removed (for the restore UI).
  */
-export function computeTagSet(template: TemplateMap, axes: AbAxes, overrides: OverrideMap): TagSets {
+export function computeTagSet(
+  template: TemplateMap,
+  axes: AbAxes,
+  overrides: OverrideMap,
+  type: FunnelTypeContext = { name: null, known: [] },
+): TagSets {
   const axisTags = axisTagNames(axes);
+  const markerNames = new Set(type.known);
+  const isIdentity = (name: string) => isAxisTag(name) || markerNames.has(name);
   const out = {} as TagSets;
 
   for (const scenario of SCENARIOS) {
     const staticTags = template[scenario] ?? [];
     const ov = overrides[scenario] ?? { add: [], remove: [] };
-    // Only non-axis removes count — axis tags are identity and never suppressed.
-    const removeSet = new Set(ov.remove.filter((n) => !isAxisTag(n)));
+    // Только неидентичные remove считаются — оси и маркер типа неудаляемы.
+    const removeSet = new Set(ov.remove.filter((n) => !isIdentity(n)));
 
     const tags: TagChip[] = [];
     const seen = new Set<string>();
@@ -73,17 +91,18 @@ export function computeTagSet(template: TemplateMap, axes: AbAxes, overrides: Ov
     };
 
     for (const name of staticTags) {
-      if (isAxisTag(name)) continue; // axis tags only ever enter via the axis layer
+      if (isIdentity(name)) continue; // теги идентичности приходят только своим слоем
       if (removeSet.has(name)) continue;
       pushIfNew(name, 'default');
     }
     for (const name of axisTags) pushIfNew(name, 'axis');
+    if (type.name) pushIfNew(type.name, 'axis');
     for (const name of ov.add) {
-      if (isAxisTag(name)) continue; // axis tags only ever enter via the axis layer
+      if (isIdentity(name)) continue;
       pushIfNew(name, 'custom');
     }
 
-    const suppressed = staticTags.filter((n) => !isAxisTag(n) && removeSet.has(n));
+    const suppressed = staticTags.filter((n) => !isIdentity(n) && removeSet.has(n));
     out[scenario] = { tags, suppressed };
   }
 
