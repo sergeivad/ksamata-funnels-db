@@ -10,6 +10,7 @@ import { funnels } from '../src/db/schema';
 import { runBackfill } from '../scripts/backfill-status';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
+import { runMigratePhase7 } from '../scripts/migrate-phase7';
 import { copyDbForTest } from './helpers/db';
 
 // __dirname = app/tests/  →  go up 2 levels to repo root
@@ -24,6 +25,7 @@ sqlite.pragma('journal_mode = WAL');
 sqlite.pragma('foreign_keys = ON');
 runMigratePhase3(sqlite);
 runMigratePhase5(sqlite);
+runMigratePhase7(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => sqlite.close());

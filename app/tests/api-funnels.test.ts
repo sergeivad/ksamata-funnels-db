@@ -25,6 +25,7 @@ import {
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
+import { runMigratePhase7 } from '../scripts/migrate-phase7';
 import { replaceDays, listDays } from '../src/lib/funnel-days';
 import { ConflictError } from '../src/lib/errors';
 import { replaceBlock, getBlock } from '../src/lib/funnel-blocks';
@@ -44,6 +45,7 @@ sqlite.pragma('foreign_keys = ON');
 runMigratePhase3(sqlite);
 runMigrateMessengerTagType(sqlite);
 runMigratePhase5(sqlite);
+runMigratePhase7(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => {

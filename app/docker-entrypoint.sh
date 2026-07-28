@@ -65,4 +65,12 @@ if [ -n "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] Phase-6 migration done."
 fi
 
+# Apply Phase-7 migration (idempotent: CREATE TABLE IF NOT EXISTS + INSERT OR IGNORE).
+# Adds the funnel-type lookup (fifth AV axis) and backfills it with «АВ Автоворонка».
+if [ -n "$FUNNELS_DB_PATH" ]; then
+  echo "[entrypoint] Running Phase-7 migration against $FUNNELS_DB_PATH"
+  node /app/migrate-phase7.cjs
+  echo "[entrypoint] Phase-7 migration done."
+fi
+
 exec node server.js

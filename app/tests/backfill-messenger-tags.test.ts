@@ -16,6 +16,7 @@ import { listFunnels } from '../src/lib/funnels';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
+import { runMigratePhase7 } from '../scripts/migrate-phase7';
 import { runBackfillMessengerTags } from '../scripts/backfill-messenger-tags';
 import { copyDbForTest } from './helpers/db';
 
@@ -32,6 +33,7 @@ sqlite.pragma('foreign_keys = ON');
 runMigratePhase3(sqlite);
 runMigrateMessengerTagType(sqlite);
 runMigratePhase5(sqlite);
+runMigratePhase7(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => {
