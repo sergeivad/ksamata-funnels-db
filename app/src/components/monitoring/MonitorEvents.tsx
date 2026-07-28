@@ -1,6 +1,7 @@
 'use client';
 
 import { MONITOR_STATUS_META, isMonitorStatus, formatAgo } from '@/lib/monitor-status';
+import { funnelRefLabel } from '@/lib/front-code';
 import type { MonitorEventView } from '@/lib/monitor-view';
 
 interface Props {
@@ -24,7 +25,7 @@ export default function MonitorEvents({ events }: Props) {
           {events.map((e) => (
             <li key={e.id} className="text-[12px] text-[var(--muted)]">
               <span className="text-[var(--faint)]">
-                {e.funnels.map((f) => `№${f.num}`).join(', ') || '—'}
+                {e.funnels.map(funnelRefLabel).join(', ') || '—'}
               </span>{' '}
               <span className="text-[var(--ink)]">{e.url}</span>: {label(e.fromStatus)} →{' '}
               {label(e.toStatus)}

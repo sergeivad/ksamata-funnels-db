@@ -47,6 +47,15 @@ describe('funnelCreateSchema', () => {
     ).toBe(false);
   });
 
+  test('frontCode нормализуется до проверки: « F33 » → «f33»', () => {
+    // Код часто прилетает из буфера обмена; пробел или верхний регистр — тот же
+    // код, а не повод отдать 400. Разный регистр к тому же разошёлся бы в две
+    // строки мимо уникального индекса: SQLite сравнивает TEXT побайтно.
+    const parsed = funnelCreateSchema.safeParse({ ...validFunnel, frontCode: ' F33 ' });
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.frontCode).toBe('f33');
+  });
+
   test('status="foo" is rejected', () => {
     expect(
       funnelCreateSchema.safeParse({ ...validFunnel, status: 'foo' }).success
