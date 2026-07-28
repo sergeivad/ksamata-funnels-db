@@ -24,6 +24,23 @@ export function matchesStatusFilter(status: string, filter: StatusFilter): boole
   return status === filter;
 }
 
+/**
+ * Подпись счётчика под списком воронок.
+ *
+ * Решение о форме принимается по ФАКТУ «что-то скрыто», а не по тому, трогал
+ * ли человек фильтры. Раньше условие было `фильтр !== 'all' || есть поиск`, и
+ * оно промахивалось ровно в состоянии по умолчанию: вкладка «Все» намеренно
+ * прячет архив (см. `matchesStatusFilter`), но фильтр при этом равен 'all' и
+ * поиск пуст — счётчик писал «51 всего» при 72 воронках в базе. Владелец на
+ * этом решил, что заведённые воронки не доехали до прода (2026-07-29).
+ *
+ * Сравнение длин покрывает все три способа спрятать строку разом — вкладка,
+ * поиск и скрытый архив, — и не разъедется, если добавится четвёртый.
+ */
+export function countLabel(visible: number, total: number): string {
+  return visible === total ? `${total} всего` : `${visible} из ${total}`;
+}
+
 // Бейдж StatusPill: подпись + tailwind-классы фона/текста.
 export const STATUS_META: Record<FunnelStatus, { label: string; className: string }> = {
   active: { label: 'Активна', className: 'bg-[#DFF3E7] text-[#087443]' },

@@ -14,6 +14,7 @@ import {
   type StatusFilter,
   isStatusFilter,
   matchesStatusFilter,
+  countLabel,
   STATUS_TOAST,
 } from '@/lib/status';
 
@@ -254,7 +255,6 @@ export default function HomePage() {
       .sort(compareByFrontCodeDesc);
   }, [funnels, statusFilter, search]);
 
-  const isFiltered = statusFilter !== 'all' || search.trim() !== '';
 
   function buildTitle(f: FunnelListItem): string {
     const allEmpty =
@@ -386,9 +386,7 @@ export default function HomePage() {
           <GroupToggle value={groupBy} onChange={handleGroupByChange} />
           <div className="flex items-center gap-3">
             <span className="text-[12px] text-[var(--color-text-secondary)]">
-              {isFiltered
-                ? `${visibleFunnels.length} из ${funnels.length}`
-                : `${visibleFunnels.length} всего`}
+              {countLabel(visibleFunnels.length, funnels.length)}
             </span>
             <a
               href="/api/export"
