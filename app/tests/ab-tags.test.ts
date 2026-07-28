@@ -165,9 +165,24 @@ describe('пятая ось: маркер типа воронки', () => {
   });
 
   it('свой маркер неудаляем через remove-оверрайд', () => {
+    // Маркер должен реально лежать в staticTags сценария и быть целью remove —
+    // иначе suppressed вычисляется от пустого массива и проверка ничего не ловит.
+    const tplWithMarker = { ...tpl, reg: ['АВ Квиз'] };
     const ov = { ...empty, reg: { add: [], remove: ['АВ Квиз'] } };
-    const out = computeTagSet(tpl, axes, ov, { name: 'АВ Квиз', known });
+    const out = computeTagSet(tplWithMarker, axes, ov, { name: 'АВ Квиз', known });
     expect(out.reg.tags.map((t) => t.name)).toContain('АВ Квиз');
     expect(out.reg.suppressed).not.toContain('АВ Квиз');
+  });
+
+  it('маркер уже в собственном шаблоне не даёт дубль с source default', () => {
+    // Ровно сегодняшнее состояние базы: «АВ Автоворонка» зашит в шаблон всем
+    // воронкам, и воронка типа «Автоворонка» встречает свой же маркер в
+    // своём же шаблоне. Должен остаться один чип, и его source — 'axis'
+    // (из безусловного пуша маркера), а не 'default' (из статического слоя).
+    const tplWithMarker = { ...tpl, reg: ['АВ Квиз'] };
+    const out = computeTagSet(tplWithMarker, axes, empty, { name: 'АВ Квиз', known });
+    const chips = out.reg.tags.filter((t) => t.name === 'АВ Квиз');
+    expect(chips).toHaveLength(1);
+    expect(chips[0].source).toBe('axis');
   });
 });

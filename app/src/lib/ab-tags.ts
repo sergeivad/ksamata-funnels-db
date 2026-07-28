@@ -98,7 +98,7 @@ export function computeTagSet(
     for (const name of axisTags) pushIfNew(name, 'axis');
     if (type.name) pushIfNew(type.name, 'axis');
     for (const name of ov.add) {
-      if (isIdentity(name)) continue;
+      if (isIdentity(name)) continue; // теги идентичности приходят только своим слоем
       pushIfNew(name, 'custom');
     }
 
