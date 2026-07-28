@@ -10,8 +10,10 @@ import {
   funnels,
   funnelTags,
   productDurations,
+  funnelTypes,
 } from '../db/schema';
 import { AXIS_PREFIXES, type AbAxes } from './ab-tags';
+import { FUNNEL_TYPE_KIND } from './funnel-type';
 
 // Explicit whitelist — never interpolate `kind` into SQL
 const TABLE_MAP = {
@@ -21,6 +23,7 @@ const TABLE_MAP = {
   tags,
   channels,
   directions,
+  funnel_types: funnelTypes,
 } as const;
 
 export type RefKind = keyof typeof TABLE_MAP;
@@ -59,15 +62,23 @@ function resolveTable(kind: string) {
   return TABLE_MAP[kind as RefKind];
 }
 
-// Ref kinds whose value is also embedded as an "АВ <Axis>: <value>" tag
-// (see ab-tags.ts). `sources` and `tags` have no axis counterpart — sources
-// is a plain FK with no AV-tag mirror, and `tags` IS the tags table itself.
+// Виды справочников, значение которых дублируется тегом воронки.
+// У четырёх осей тег — «АВ <Ось>: <значение>»; у типа воронки маркер
+// двоеточия не имеет, и тег равен самому значению (см. funnel-type.ts).
+// `sources` и `tags` зеркала не имеют: первый — обычный FK, второй сам
+// и есть таблица тегов.
 const AXIS_KIND_TO_AXIS: Partial<Record<RefKind, keyof AbAxes>> = {
   products: 'product',
   contractors: 'contractor',
   channels: 'channel',
   directions: 'direction',
 };
+
+export function refTagNameFor(kind: RefKind, value: string): string | null {
+  if (kind === FUNNEL_TYPE_KIND) return value;
+  const axis = AXIS_KIND_TO_AXIS[kind];
+  return axis ? `${AXIS_PREFIXES[axis]}${value}` : null;
+}
 
 export type RefRow = { id: number; name: string };
 
@@ -120,7 +131,7 @@ export function getRefById(db: AnyDB, kind: string, id: number): RefRow | undefi
 }
 
 /** Fetch a single row by exact name, or undefined if it doesn't exist. */
-function getRefByName(db: AnyDB, kind: string, name: string): RefRow | undefined {
+export function getRefByName(db: AnyDB, kind: string, name: string): RefRow | undefined {
   const table = resolveTable(kind);
   return db
     .select({ id: table.id, name: table.name })
@@ -131,14 +142,15 @@ function getRefByName(db: AnyDB, kind: string, name: string): RefRow | undefined
 
 /**
  * Direct FK usage on the `funnels` row itself. Only products/contractors/
- * sources are stored as FK columns — channels/directions/tags have no FK
- * column and are only ever referenced through funnel_tags.
+ * sources/funnel_types are stored as FK columns — channels/directions/tags
+ * have no FK column and are only ever referenced through funnel_tags.
  */
 function directFkFunnelIds(db: AnyDB, kind: RefKind, id: number): number[] {
   const column =
     kind === 'products' ? funnels.productId
     : kind === 'contractors' ? funnels.contractorId
     : kind === 'sources' ? funnels.sourceId
+    : kind === FUNNEL_TYPE_KIND ? funnels.funnelTypeId
     : undefined;
   if (!column) return [];
   return (
@@ -162,15 +174,14 @@ function funnelIdsForTagId(db: AnyDB, tagId: number): number[] {
 }
 
 /**
- * Look up the "АВ <Axis>: <value>" tag row that mirrors a products/
- * contractors/channels/directions ref value, if the axis has ever been
- * synced onto a funnel. Returns undefined for kinds with no axis mapping
- * (sources, tags) or if the tag was never created.
+ * Look up the mirrored tag row for a products/contractors/channels/
+ * directions/funnel_types ref value, if it has ever been synced onto a
+ * funnel. Returns undefined for kinds with no tag mirror (sources, tags)
+ * or if the tag was never created.
  */
 function findAxisTagRow(db: AnyDB, kind: RefKind, value: string): RefRow | undefined {
-  const axis = AXIS_KIND_TO_AXIS[kind];
-  if (!axis) return undefined;
-  const tagName = `${AXIS_PREFIXES[axis]}${value}`;
+  const tagName = refTagNameFor(kind, value);
+  if (!tagName) return undefined;
   return getRefByName(db, 'tags', tagName);
 }
 
@@ -276,10 +287,9 @@ export function renameRef(db: AnyDB, kind: RefKind, id: number, newName: string)
   db.transaction((tx) => {
     tx.update(table).set({ name: newName }).where(eq(table.id, id)).run();
 
-    const axis = AXIS_KIND_TO_AXIS[kind];
-    if (axis) {
-      renameOrMergeTag(tx, `${AXIS_PREFIXES[axis]}${existing.name}`, `${AXIS_PREFIXES[axis]}${newName}`);
-    }
+    const oldTag = refTagNameFor(kind, existing.name);
+    const newTag = refTagNameFor(kind, newName);
+    if (oldTag && newTag) renameOrMergeTag(tx, oldTag, newTag);
 
     result = { id, name: newName };
   });
@@ -325,13 +335,13 @@ export function deleteRef(db: AnyDB, kind: RefKind, id: number): DeleteRefResult
   db.transaction((tx) => {
     tx.delete(table).where(eq(table.id, id)).run();
 
-    const axis = AXIS_KIND_TO_AXIS[kind];
-    if (axis) {
-      const axisTag = findAxisTagRow(tx, kind, existing.name);
-      if (axisTag) {
-        tx.delete(funnelTags).where(eq(funnelTags.tagId, axisTag.id)).run();
-        tx.delete(tags).where(eq(tags.id, axisTag.id)).run();
-      }
+    // findAxisTagRow уже само возвращает undefined для видов без зеркального
+    // тега (sources, tags) — отдельная проверка через AXIS_KIND_TO_AXIS здесь
+    // не нужна и до funnel_types её не доводили бы неверно.
+    const axisTag = findAxisTagRow(tx, kind, existing.name);
+    if (axisTag) {
+      tx.delete(funnelTags).where(eq(funnelTags.tagId, axisTag.id)).run();
+      tx.delete(tags).where(eq(tags.id, axisTag.id)).run();
     }
   });
 

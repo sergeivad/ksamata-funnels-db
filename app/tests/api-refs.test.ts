@@ -5,7 +5,16 @@ import { copyFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import * as schema from '../src/db/schema';
-import { listRefs, createRef } from '../src/lib/refs';
+import {
+  listRefs,
+  createRef,
+  isValidKind,
+  isImmutableKind,
+  refTagNameFor,
+  getRefByName,
+  deleteRef,
+} from '../src/lib/refs';
+import { runMigratePhase7 } from '../scripts/migrate-phase7';
 import { copyDbForTest } from './helpers/db';
 
 // __dirname = app/tests/ → go up 2 levels to repo root
@@ -17,6 +26,7 @@ copyDbForTest(REAL_DB, TMP_DB);
 const sqlite = new Database(TMP_DB);
 sqlite.pragma('journal_mode = WAL');
 sqlite.pragma('foreign_keys = ON');
+runMigratePhase7(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => sqlite.close());
@@ -118,5 +128,31 @@ describe('directions', () => {
       expect(r).toHaveProperty('id');
       expect(r).toHaveProperty('name');
     }
+  });
+});
+
+describe('справочник типов воронки', () => {
+  it('funnel_types — валидный вид и он редактируемый', () => {
+    expect(isValidKind('funnel_types')).toBe(true);
+    expect(isImmutableKind('funnel_types')).toBe(false);
+  });
+
+  it('зеркальный тег типа — само значение, без префикса', () => {
+    expect(refTagNameFor('funnel_types', 'АВ Квиз')).toBe('АВ Квиз');
+    expect(refTagNameFor('directions', 'РСЯ')).toBe('АВ Направление: РСЯ');
+    expect(refTagNameFor('sources', 'Яндекс НИМБ')).toBeNull();
+  });
+
+  it('используемый тип удалить нельзя', () => {
+    const row = getRefByName(testDb, 'funnel_types', 'АВ Автоворонка')!;
+    const res = deleteRef(testDb, 'funnel_types', row.id);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toBe('in_use');
+  });
+
+  it('неиспользуемый тип удалить можно', () => {
+    const created = createRef(testDb, 'funnel_types', 'АВ Тест-Маркер');
+    const res = deleteRef(testDb, 'funnel_types', created.id);
+    expect(res.ok).toBe(true);
   });
 });
