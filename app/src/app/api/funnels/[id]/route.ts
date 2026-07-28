@@ -52,15 +52,23 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json(updated);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error';
-    // updateFunnel throws ConflictError on a duplicate num; SQLite may also
-    // raise the raw UNIQUE constraint under a TOCTOU race. Map both to 409.
+    // updateFunnel throws ConflictError на занятый num ИЛИ на занятый F-код —
+    // сообщение берём из ошибки, иначе конфликт кода приезжал бы на экран
+    // как «Funnel with num=… already exists», то есть про не то поле.
+    if (err instanceof ConflictError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
+    // SQLite may also raise the raw UNIQUE constraint under a TOCTOU race.
     // Текстовое сравнение оставлено только для строки от драйвера.
-    if (
-      err instanceof ConflictError ||
-      message.includes('UNIQUE constraint failed: funnels.num')
-    ) {
+    if (message.includes('UNIQUE constraint failed: funnels.num')) {
       return NextResponse.json(
         { error: `Funnel with num=${parsed.data.num} already exists` },
+        { status: 409 }
+      );
+    }
+    if (message.includes('UNIQUE constraint failed: funnels.front_code')) {
+      return NextResponse.json(
+        { error: `Код ${parsed.data.frontCode} уже занят другой воронкой` },
         { status: 409 }
       );
     }

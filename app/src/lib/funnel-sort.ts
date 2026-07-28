@@ -6,15 +6,11 @@
 // которому их можно поставить в ряд, и подмешивать их в середину значило бы
 // прятать их между осмысленными номерами.
 
+import { frontCodeNum } from './front-code';
+
 export interface FunnelSortable {
   num: number;
   frontCode: string;
-}
-
-/** Номер из кода фронта: 'f70' → 70. Пустой/непонятный код → null. */
-export function frontCodeNum(frontCode: string): number | null {
-  const m = /^f(\d+)$/.exec(frontCode.trim());
-  return m ? Number(m[1]) : null;
 }
 
 /**
@@ -30,4 +26,20 @@ export function compareByFrontCodeDesc(a: FunnelSortable, b: FunnelSortable): nu
   if (fb === null) return -1;
   if (fa !== fb) return fb - fa;
   return b.num - a.num;
+}
+
+/**
+ * То же по возрастанию — для рядов чипов в мониторинге, где номера читаются
+ * слева направо. Бескодовые и здесь в конце: «в конец» — свойство отсутствия
+ * кода, а не направления сортировки, поэтому это не зеркало Desc.
+ */
+export function compareByFrontCodeAsc(a: FunnelSortable, b: FunnelSortable): number {
+  const fa = frontCodeNum(a.frontCode);
+  const fb = frontCodeNum(b.frontCode);
+
+  if (fa === null && fb === null) return a.num - b.num;
+  if (fa === null) return 1;
+  if (fb === null) return -1;
+  if (fa !== fb) return fa - fb;
+  return a.num - b.num;
 }

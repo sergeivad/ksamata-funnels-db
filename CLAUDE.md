@@ -55,6 +55,11 @@ Drizzle SQLite. Core + lookup + content + tags tables:
   (`tag19Raw`/`tag15Raw`/`regTagsRaw`), `roomIdsJson`, `bothelpCondition`,
   `status` (`active`/`draft`/`archive`), `frontCode`, `comment`,
   `timeLabelA`/`timeLabelB`, and room toggles `roomsEnabled` / `roomsReplayEnabled`.
+  **`num` and `frontCode` are two unrelated numberings** — `num` is the internal
+  key (unique, never shown to a human), `frontCode` is the F code the funnel is
+  called by everywhere else and it comes from LeakEngine, not from here. They
+  coincided on 16 funnels out of 72, so anything that derives one from the other
+  is a bug; see `front-code.ts` below.
 - **`funnel_days`** — per-funnel day × time-slot rows (`timeSlot` `19`/`15`,
   `dayNum`) with room fields and legacy content columns.
 - **`funnel_blocks`** / **`funnel_block_items`** — structured content blocks
@@ -112,10 +117,14 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   A `num` collision always surfaces as `ConflictError` → 409, whether the
   pre-check catches it or another writer of the same DB file (a Python tool, a
   second instance) takes the number between that check and the INSERT — the
-  transaction is wrapped in `asNumConflict`. Where `num` is allocated rather
-  than given (`createDraftFunnel`, `duplicateFunnel`), the wrapper is
-  `withNumRetry` instead: recomputing MAX+1 is the right answer there, while a
-  user-specified `num` must fail rather than silently become a different one.
+  transaction is wrapped in `asNumConflict`. A taken `frontCode` behaves the
+  same way (`asFrontCodeConflict` → 409, message naming the owning funnel),
+  except that an **empty** code never conflicts — a funnel without an F code is
+  a legitimate state, and a dozen live rows are in it. Where a number is
+  allocated rather than given (`createDraftFunnel`, `duplicateFunnel`), the
+  wrapper is `withAllocRetry` instead: recomputing MAX+1 is the right answer
+  there, for `num` and for the F code alike, while a user-specified value must
+  fail rather than silently become a different one.
   `resyncAllFunnels` **skips funnels whose four axes are all empty** — that is a
   blank draft, and `createDraftFunnel` leaves it without AV tags on purpose.
   Materializing the template into it would make a draft's contents depend on
@@ -137,6 +146,20 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   tracks a permanently-404 ghost target; **B** — plain text in the URL field
   (`сайты`, `геткурс`) only warns: such notes predate the field and create no
   targets. Never make class B blocking without cleaning the data first.
+- `front-code.ts` — everything about the F code: `normalizeFrontCode` (trim +
+  lowercase — SQLite compares TEXT bytewise, so `F80` and `f80` would otherwise
+  slip past the unique index as two rows), `frontCodeNum`, `nextFrontCode`,
+  `funnelRefLabel`. Pure, no DB — the caller queries. `nextFrontCode` is
+  `max(F) + 1`, **not** the first gap: gaps (`f10`, `f14`, `f17`, `f18`, `f20`,
+  `f44`, `f49`) are numbers LeakEngine can hand out at any moment. It is also
+  not derived from `num`: `createDraftFunnel` used to write `f${num}`, and with
+  `max(num)=75` against `max(F)=79` the next two drafts would have taken `f76`
+  and the **already-occupied** `f77`. A suggested code is editable — the real
+  one comes from LeakEngine (see [docs/leak-engine.md](docs/leak-engine.md)).
+- `funnel-sort.ts` — list order by F (`compareByFrontCodeDesc`) plus
+  `compareByFrontCodeAsc` for the monitoring chip rows. Codeless funnels go
+  **last in both**: that is a property of having no code, not of the direction,
+  so Asc is not a mirror of Desc.
 - `ab-tags.ts` — A/B tag computation engine (axes ↔ names, `computeTagSet`).
 - `tag-templates.ts` / `tag-overrides.ts` — read/replace the two tag layers.
 - `status.ts` — funnel status constants/meta (active/draft/archive).
@@ -339,9 +362,19 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
   as `add` overrides so Phase 5's resync doesn't drop them).
 - **Phase 6** — monitoring tables (`monitor_targets`, `monitor_target_funnels`,
   `monitor_state`, `monitor_events`, `monitor_source_kind_prefs`).
+- **Phase 7** — `funnels.front_code` becomes unique. The index is **partial**
+  (`WHERE front_code IS NOT NULL AND front_code <> ''`): a plain UNIQUE would
+  forbid the second codeless funnel and the migration would fail on the first
+  real database. Before creating it the phase normalizes codes and **resolves
+  any duplicates that already exist** — keeping the code on the lower `id`,
+  blanking the rest and logging them. That branch is not decoration: the phase
+  runs from `docker-entrypoint.sh` under `set -e`, so a failing `CREATE UNIQUE
+  INDEX` would keep the container from starting at all. A duplicate is cleared,
+  not renumbered — an invented code collides with a real LeakEngine one
+  tomorrow, which is exactly how `f64`–`f72` happened.
 
 **Docker runs, in order** (`app/docker-entrypoint.sh`): Phase 2 → 3 (+data) →
-4 → 5 → legacy-tag-override backfill → 6.
+4 → 5 → legacy-tag-override backfill → 6 → 7.
 
 **Running a migration by hand** resolves its DB through `scripts/cli-db-path.ts`:
 the default is the repo-root DB **relative to the script**, not to `cwd`, and a
@@ -444,6 +477,13 @@ location), so they run from any working directory.
   `npx vitest run`, `npm run build`.
 - Mutate funnel data (especially tags) through the app's tsx logic or API, never
   raw SQL against the live DB.
+- **Never show `num` to a human, and never derive an F code from it.** It is the
+  internal key; the F code is what is written on the card, in LeakEngine and in
+  every external material. Search, delete confirmations, the monitoring chips
+  and the CSV all identify a funnel by `frontCode` (falling back to `#id` via
+  `funnelRefLabel`) — `num` survives in the export only as the `ID` column. When
+  the two were mixed, searching `f70` returned both the real f70 and the funnel
+  whose `num` is 70 but whose card reads f74.
 - Never leave `ksamata_funnels.db` modified after a live run — restore it (see
   the monitoring gotcha above). Its `monitor_*` tables must stay empty.
 - Put process-wide state on `globalThis`, not in a module-level `let` — the

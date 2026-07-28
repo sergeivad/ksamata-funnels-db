@@ -1,25 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { frontCodeNum, compareByFrontCodeDesc } from '../src/lib/funnel-sort';
+import { compareByFrontCodeAsc, compareByFrontCodeDesc } from '../src/lib/funnel-sort';
 
 function codes(items: { num: number; frontCode: string }[]): string[] {
   return [...items].sort(compareByFrontCodeDesc).map((f) => f.frontCode || `—${f.num}`);
 }
 
-describe('frontCodeNum', () => {
-  it('извлекает номер из f-кода', () => {
-    expect(frontCodeNum('f7')).toBe(7);
-    expect(frontCodeNum('f70')).toBe(70);
-    expect(frontCodeNum(' f12 ')).toBe(12);
-  });
-
-  it('пустой или неразбираемый код — null', () => {
-    expect(frontCodeNum('')).toBeNull();
-    expect(frontCodeNum('   ')).toBeNull();
-    expect(frontCodeNum('f')).toBeNull();
-    expect(frontCodeNum('сайт')).toBeNull();
-    expect(frontCodeNum('f12b')).toBeNull();
-  });
-});
+// frontCodeNum переехал в lib/front-code.ts — его тесты там же.
 
 describe('compareByFrontCodeDesc', () => {
   it('сортирует по номеру F по убыванию, а не как строки', () => {
@@ -68,5 +54,27 @@ describe('compareByFrontCodeDesc', () => {
     const backward = codes([...items].reverse());
     expect(forward).toEqual(backward);
     expect(forward).toEqual(['f50', 'f37', 'f6', '—10', '—4']);
+  });
+});
+
+describe('compareByFrontCodeAsc', () => {
+  const asc = (items: { num: number; frontCode: string }[]): string[] =>
+    [...items].sort(compareByFrontCodeAsc).map((f) => f.frontCode || `—${f.num}`);
+
+  it('сортирует по номеру F по возрастанию, а не как строки', () => {
+    expect(asc([
+      { num: 1, frontCode: 'f9' },
+      { num: 2, frontCode: 'f70' },
+      { num: 3, frontCode: 'f12' },
+    ])).toEqual(['f9', 'f12', 'f70']);
+  });
+
+  it('бескодовые в конце — это не зеркало Desc', () => {
+    // Наивное `-compareByFrontCodeDesc(a,b)` вынесло бы их вперёд.
+    expect(asc([
+      { num: 10, frontCode: '' },
+      { num: 11, frontCode: 'f11' },
+      { num: 50, frontCode: 'f51' },
+    ])).toEqual(['f11', 'f51', '—10']);
   });
 });

@@ -244,7 +244,9 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
     <div className="rounded-[14px] border border-[var(--line-soft)] bg-[var(--card)] p-4">
       <div className="mb-1 flex flex-wrap items-center gap-2.5">
         <input aria-label="Код" value={frontCode} onChange={(e) => setFrontCode(e.target.value)}
-          className="h-[26px] w-[56px] rounded-[6px] border border-[var(--line)] bg-[var(--chip)] px-1.5 text-center font-mono text-[12px] text-[var(--muted)]" />
+          placeholder="без кода"
+          title="F-код воронки. При заведении подставляется следующий свободный — замените на настоящий код ЛИК, когда он появится."
+          className="h-[26px] w-[60px] rounded-[6px] border border-[var(--line)] bg-[var(--chip)] px-1.5 text-center font-mono text-[12px] text-[var(--muted)]" />
         <span className={`text-[16px] font-medium ${allEmpty ? 'text-[var(--faint)]' : ''}`}>
           {allEmpty ? 'Новая воронка — заполните продукт и подрядчика' : name}
         </span>

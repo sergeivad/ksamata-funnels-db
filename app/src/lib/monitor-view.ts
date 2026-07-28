@@ -11,6 +11,7 @@ import { MONITOR_STATUS_META, isMonitorStatus, type MonitorStatus } from './moni
 import { isCycleRunning } from './monitor-run';
 import { collectFunnelUrls, MONITORED_FUNNEL_STATUS } from './monitor-targets';
 import { FUNNEL_STATUS_VALUES, isFunnelStatus, type FunnelStatus } from './status';
+import { compareByFrontCodeAsc } from './funnel-sort';
 
 /** Статусы воронки, страницы которых не проверяются (черновик, архив). */
 const INACTIVE_FUNNEL_STATUSES: readonly FunnelStatus[] = FUNNEL_STATUS_VALUES.filter(
@@ -30,9 +31,15 @@ const INACTIVE_FUNNEL_STATUSES: readonly FunnelStatus[] = FUNNEL_STATUS_VALUES.f
  */
 export type MonitorTargetUsage = 'active' | 'inactive' | 'orphan';
 
+/**
+ * Ссылка на воронку в дашборде. `num` остаётся для сортировки и как запасной
+ * ярлык, но человеку показывается `frontCode`: на карточке воронки написан
+ * именно он, и «№70» в таблице целей указывало на воронку с кодом f74.
+ */
 export interface MonitorFunnelRef {
   id: number;
   num: number;
+  frontCode: string;
 }
 
 export interface MonitorTargetView {
@@ -116,6 +123,7 @@ export function funnelsByTarget(db: AnyDB, targetIds?: number[]): Map<number, Mo
       targetId: monitorTargetFunnels.targetId,
       funnelId: funnels.id,
       num: funnels.num,
+      frontCode: funnels.frontCode,
     })
     .from(monitorTargetFunnels)
     .innerJoin(funnels, eq(funnels.id, monitorTargetFunnels.funnelId));
@@ -124,28 +132,31 @@ export function funnelsByTarget(db: AnyDB, targetIds?: number[]): Map<number, Mo
     targetIds ? query.where(inArray(monitorTargetFunnels.targetId, targetIds)) : query
   )
     .orderBy(asc(funnels.num))
-    .all() as { targetId: number; funnelId: number; num: number }[];
+    .all() as { targetId: number; funnelId: number; num: number; frontCode: string | null }[];
 
   const map = new Map<number, MonitorFunnelRef[]>();
   for (const row of rows) {
     const list = map.get(row.targetId) ?? [];
-    list.push({ id: row.funnelId, num: row.num });
+    list.push({ id: row.funnelId, num: row.num, frontCode: row.frontCode ?? '' });
     map.set(row.targetId, list);
   }
+  // Порядок — по F, как в списке воронок; бескодовые в конец, чтобы чипы
+  // читались как один ряд номеров, а не как два перемешанных.
+  for (const list of map.values()) list.sort(compareByFrontCodeAsc);
   return map;
 }
 
-/** Номер и статус воронки по id — одним запросом, для пометок «в архиве»/«в черновике». */
+/** Код и статус воронки по id — одним запросом, для пометок «в архиве»/«в черновике». */
 function funnelRefsById(db: AnyDB): Map<number, MonitorInactiveFunnelRef> {
   const rows = db
-    .select({ id: funnels.id, num: funnels.num, status: funnels.status })
+    .select({ id: funnels.id, num: funnels.num, frontCode: funnels.frontCode, status: funnels.status })
     .from(funnels)
-    .all() as { id: number; num: number; status: string }[];
+    .all() as { id: number; num: number; frontCode: string | null; status: string }[];
 
   const map = new Map<number, MonitorInactiveFunnelRef>();
   for (const row of rows) {
     if (!isFunnelStatus(row.status)) continue;
-    map.set(row.id, { id: row.id, num: row.num, status: row.status });
+    map.set(row.id, { id: row.id, num: row.num, frontCode: row.frontCode ?? '', status: row.status });
   }
   return map;
 }
@@ -223,7 +234,7 @@ export function getMonitorDashboard(db: AnyDB): {
       inactiveFunnels: heldBy
         .map((id) => funnelRefs.get(id))
         .filter((f): f is MonitorInactiveFunnelRef => f !== undefined)
-        .sort((a, b) => a.num - b.num),
+        .sort(compareByFrontCodeAsc),
     };
   });
 
