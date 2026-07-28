@@ -3,7 +3,7 @@ import { db } from '@/db/client';
 import { funnelCreateSchema } from '@/lib/validation';
 import { listFunnels, createFunnel } from '@/lib/funnels';
 import { internalError } from '@/lib/http';
-import { ConflictError } from '@/lib/errors';
+import { ConflictError, ValidationError } from '@/lib/errors';
 
 export async function GET() {
   try {
@@ -46,6 +46,9 @@ export async function POST(req: NextRequest) {
         { error: `Funnel with num=${parsed.data.num} already exists` },
         { status: 409 }
       );
+    }
+    if (err instanceof ValidationError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
     }
     return internalError('POST /api/funnels', err);
   }

@@ -273,6 +273,20 @@ describe('duplicateFunnel', () => {
     expect(result).toBeNull();
   });
 
+  it('duplicate carries over the funnel type (пятая ось), включая метку в тегах', () => {
+    // Тип — тот же слой идентичности, что и остальные оси: «faithful copy»
+    // не должна тихо терять маркер (funnels.ts:duplicateFunnel копирует
+    // funnelTypeId наравне с productId/contractorId).
+    const src = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 19902, funnelType: 'АВ Квиз' });
+
+    const dup = duplicateFunnel(testDb, src.id)!;
+    expect(dup.funnelType).toBe('АВ Квиз');
+
+    const dupDetail = getFunnel(testDb, dup.id)!;
+    const names = dupDetail.tagSets.reg.tags.map((t) => t.name);
+    expect(names).toContain('АВ Квиз');
+  });
+
   it('deep-copies Phase-3 scalar fields and all child rows', () => {
     const src = createFunnel(testDb, {
       ...BASE_FUNNEL_DATA,

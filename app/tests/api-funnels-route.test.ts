@@ -104,6 +104,22 @@ describe('POST /api/funnels', () => {
     expect(res.status).toBe(409);
   });
 
+  it('неизвестный тип воронки → 400, а не 500', async () => {
+    // funnelType резолвится строго по справочнику (см. resolveFunnelTypeId в
+    // funnels.ts): опечатка не должна ни завести новый тип, ни уронить роут в 500.
+    const res = await listPOST(jsonReq('POST', { ...VALID_CREATE, num: 9701, funnelType: 'АВ Опечатка' }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain('АВ Опечатка');
+  });
+
+  it('известный тип воронки создаёт funnelType в ответе', async () => {
+    const res = await listPOST(jsonReq('POST', { ...VALID_CREATE, num: 9702, funnelType: 'АВ Квиз' }));
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.funnelType).toBe('АВ Квиз');
+  });
+
   it('не выдаёт за конфликт постороннюю ошибку, в тексте которой есть «409»', async () => {
     vi.resetModules();
     vi.doMock('@/db/client', () => ({ db: drizzle(sqlite, { schema }) }));
@@ -168,6 +184,20 @@ describe('PATCH /api/funnels/[id]', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.status).toBe('draft');
+  });
+
+  it('неизвестный тип воронки → 400, а не 500', async () => {
+    const res = await idPATCH(jsonReq('PATCH', { funnelType: 'АВ Опечатка' }), params(existingId));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain('АВ Опечатка');
+  });
+
+  it('меняет тип воронки и отдаёт его в ответе', async () => {
+    const res = await idPATCH(jsonReq('PATCH', { funnelType: 'АВ Квиз' }), params(existingId));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.funnelType).toBe('АВ Квиз');
   });
 });
 

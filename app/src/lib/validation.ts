@@ -75,6 +75,10 @@ export const funnelCreateSchema = z.object({
   contractor: z.string().trim().min(1).max(REF_MAX),
   channel: z.string().trim().min(1).max(REF_MAX),
   direction: z.string().trim().min(1).max(REF_MAX),
+  // Пятая ось. Пустая строка = «тип не выбран» (маркер не выпускается).
+  // Значение проверяется по справочнику в funnels.ts, а не здесь: набор
+  // расширяемый и Zod о нём знать не может.
+  funnelType: z.string().trim().max(REF_MAX).optional(),
   comment: z.string().max(2000).optional(),
   timeLabelA: z.string().max(20).optional(),
   timeLabelB: z.string().max(20).optional(),

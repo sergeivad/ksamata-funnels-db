@@ -60,16 +60,21 @@ const params = (id: string | number) => ({ params: Promise.resolve({ id: String(
 
 describe('PATCH /api/funnels/[id]/tags', () => {
   it('adds a custom tag and removes a default, reflected in tagSets', async () => {
+    // 'АВ Автоворонка' больше не годится для этой проверки: после фазы 7 у
+    // существующей воронки (existingId) есть настоящий funnel_type_id = «АВ
+    // Автоворонка», и computeTagSet трактует имя типа как identity-тег —
+    // такой remove гасится (см. ab-tags.ts). 'АВ Этап: Регистрация' — обычный
+    // шаблонный дефолт без этого статуса, ровно то, что тест проверяет.
     const res = await PATCH(
-      jsonReq('PATCH', { reg: { add: ['промо-тест'], remove: ['АВ Автоворонка'] } }),
+      jsonReq('PATCH', { reg: { add: ['промо-тест'], remove: ['АВ Этап: Регистрация'] } }),
       params(existingId)
     );
     expect(res.status).toBe(200);
     const body = await res.json();
     const names = body.tagSets.reg.tags.map((t: { name: string }) => t.name);
     expect(names).toContain('промо-тест');
-    expect(names).not.toContain('АВ Автоворонка');
-    expect(body.tagSets.reg.suppressed).toContain('АВ Автоворонка');
+    expect(names).not.toContain('АВ Этап: Регистрация');
+    expect(body.tagSets.reg.suppressed).toContain('АВ Этап: Регистрация');
   });
 
   it('keeps overrides of scenarios the patch does not mention', async () => {
