@@ -8,6 +8,7 @@ import Toast from '@/components/Toast';
 import GroupToggle, { type GroupBy } from '@/components/GroupToggle';
 import Segmented from '@/components/Segmented';
 import { confirmUnsavedNavigation } from '@/lib/useUnsavedGuard';
+import { compareByFrontCodeDesc } from '@/lib/funnel-sort';
 import {
   type FunnelStatus,
   type StatusFilter,
@@ -223,13 +224,8 @@ export default function HomePage() {
 
         showToast('Воронка удалена', 'success');
       } catch {
-        // Rollback
-        setFunnels((prev) => {
-          // Re-insert in sorted position
-          const arr = [...prev, funnel];
-          arr.sort((a, b) => a.num - b.num);
-          return arr;
-        });
+        // Rollback — порядок восстановится сам: список сортируется при рендере.
+        setFunnels((prev) => [...prev, funnel]);
         showToast('Не удалось удалить воронку', 'error');
       }
     },
@@ -237,9 +233,9 @@ export default function HomePage() {
   );
 
   const visibleFunnels = useMemo(() => {
-    return funnels.filter(
-      (f) => matchesStatusFilter(f.status, statusFilter) && matchesSearch(f, search)
-    );
+    return funnels
+      .filter((f) => matchesStatusFilter(f.status, statusFilter) && matchesSearch(f, search))
+      .sort(compareByFrontCodeDesc);
   }, [funnels, statusFilter, search]);
 
   const isFiltered = statusFilter !== 'all' || search.trim() !== '';
@@ -263,12 +259,12 @@ export default function HomePage() {
       bucket.push(f);
       map.set(key, bucket);
     }
-    // Sort groups alphabetically, items within group by num asc
+    // Sort groups alphabetically, items within group by F desc (as in the flat list)
     return Array.from(map.entries())
       .sort(([a], [b]) => a.localeCompare(b, 'ru'))
       .map(([name, gs]) => ({
         name,
-        funnels: [...gs].sort((a, b) => a.num - b.num),
+        funnels: [...gs].sort(compareByFrontCodeDesc),
       }));
   }
 
