@@ -135,7 +135,17 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   refs API for **every** method. `POST` used to be open while `PATCH`/`DELETE`
   were blocked, so a tag created by hand could never be removed through the API.
   Tags are owned by the template/override engine.
-- `funnel-days.ts` — read/replace `funnel_days`.
+- `funnel-days.ts` — read/replace `funnel_days`. `replaceDays` also flips
+  `funnels.rooms_enabled` **on** when it writes at least one non-empty room.
+  That flag is a display switch, not a row count: while it is `0` the funnel
+  card, the compact view **and `buildExportRows`** all skip the rooms. It used
+  to be set by exactly two places — the Phase-4 backfill and `RoomsEditor`
+  (which PATCHes it right after PUTting days) — so every writer that isn't the
+  admin UI (the Python import scripts, one-off tsx) left the rooms invisible.
+  Six funnels and 52 rooms, a tenth of all of them, drifted that way. The flip
+  only ever goes **up** and only on a non-empty write: clearing the grid is a
+  legitimate operation and must not read as "enable", and a human's decision
+  that a funnel holds no webinars must not be undone silently.
 - `funnel-blocks.ts` — read/replace blocks and items.
 - `blocks.ts` — static block-kind registry.
 - `block-fill.ts` — block-editing helpers (parse pasted lines, mirror slots, labels).
