@@ -8,7 +8,7 @@ interface RefRow {
 }
 
 interface RefSelectProps {
-  kind: 'products' | 'contractors' | 'channels' | 'directions';
+  kind: 'products' | 'contractors' | 'channels' | 'directions' | 'funnel_types';
   label: string;
   value: string;
   onChange: (val: string) => void;

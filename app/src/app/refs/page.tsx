@@ -17,6 +17,7 @@ type RefsState = {
   tags: RefRow[];
   channels: RefRow[];
   directions: RefRow[];
+  funnel_types: RefRow[];
 };
 
 const KINDS: Array<{ key: keyof RefsState; label: string }> = [
@@ -26,6 +27,7 @@ const KINDS: Array<{ key: keyof RefsState; label: string }> = [
   { key: 'tags', label: 'Теги' },
   { key: 'channels', label: 'Каналы' },
   { key: 'directions', label: 'Направления' },
+  { key: 'funnel_types', label: 'Типы воронок' },
 ];
 
 async function fetchKind(kind: string): Promise<RefRow[]> {
@@ -46,6 +48,7 @@ export default function RefsPage() {
     tags: [],
     channels: [],
     directions: [],
+    funnel_types: [],
   });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);

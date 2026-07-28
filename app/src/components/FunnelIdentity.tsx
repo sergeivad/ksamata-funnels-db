@@ -8,6 +8,7 @@ import { isAxisTag } from '@/lib/ab-tags';
 import Segmented from './Segmented';
 import RefSelect from './RefSelect';
 import { STATUS_META } from '@/lib/status';
+import { FUNNEL_TYPE_KIND, FUNNEL_TYPE_LABEL } from '@/lib/funnel-type';
 
 type Scenario = 'reg' | 'pay' | 'messenger';
 type TimeSlot = '15' | '19';
@@ -22,6 +23,7 @@ type IdentitySnapshot = {
   comment: string;
   ta: string;
   tb: string;
+  funnelType: string;
 };
 
 interface Props { funnel: FunnelDetail; onDirtyChange?: (dirty: boolean) => void }
@@ -30,6 +32,9 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   const [frontCode, setFrontCode] = useState(funnel.frontCode);
   const [status, setStatus] = useState<string>(funnel.status);
   const [axes, setAxes] = useState(funnel.axes);
+  // Пятая ось — тип воронки. Пустая строка означает «тип не выбран», как и на
+  // сервере (см. FUNNEL_TYPE_LABEL): PATCH принимает '' как сброс.
+  const [funnelType, setFunnelType] = useState<string>(funnel.funnelType ?? '');
   const [comment, setComment] = useState(funnel.comment);
   const [ta, setTa] = useState(funnel.timeLabelA);
   const [tb, setTb] = useState(funnel.timeLabelB);
@@ -48,6 +53,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
     comment: funnel.comment,
     ta: funnel.timeLabelA,
     tb: funnel.timeLabelB,
+    funnelType: funnel.funnelType ?? '',
   });
 
   const dirty =
@@ -59,7 +65,8 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
     axes.direction !== saved.direction ||
     comment !== saved.comment ||
     ta !== saved.ta ||
-    tb !== saved.tb;
+    tb !== saved.tb ||
+    funnelType !== (saved.funnelType ?? '');
 
   const onDirtyChangeRef = useRef(onDirtyChange);
   onDirtyChangeRef.current = onDirtyChange;
@@ -203,7 +210,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
     const submitted: IdentitySnapshot = {
       frontCode, status,
       product: axes.product, contractor: axes.contractor, channel: axes.channel, direction: axes.direction,
-      comment, ta, tb,
+      comment, ta, tb, funnelType,
     };
     setSaving(true);
     setError(null);
@@ -215,6 +222,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
           frontCode: submitted.frontCode, status: submitted.status,
           product: submitted.product, contractor: submitted.contractor, channel: submitted.channel, direction: submitted.direction,
           comment: submitted.comment, timeLabelA: submitted.ta, timeLabelB: submitted.tb,
+          funnelType: submitted.funnelType,
         }),
       });
       const body = await res.json().catch(() => null);
@@ -269,6 +277,12 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
         <RefSelect kind="contractors" label="Подрядчик" value={axes.contractor} onChange={(v) => setAxes({ ...axes, contractor: v })} />
         <RefSelect kind="channels" label="Канал" value={axes.channel} onChange={(v) => setAxes({ ...axes, channel: v })} />
         <RefSelect kind="directions" label="Направление" value={axes.direction} onChange={(v) => setAxes({ ...axes, direction: v })} />
+        <RefSelect
+          kind={FUNNEL_TYPE_KIND}
+          label={FUNNEL_TYPE_LABEL}
+          value={funnelType}
+          onChange={setFunnelType}
+        />
       </div>
 
       <label className="mb-3 flex flex-col gap-1">
