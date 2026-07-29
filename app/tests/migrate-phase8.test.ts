@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { copyDbForTest } from './helpers/db';
-import { runMigratePhase7 } from '../scripts/migrate-phase7';
+import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import { SEED_FUNNEL_TYPES, DEFAULT_FUNNEL_TYPE } from '../src/lib/funnel-type';
 
 let dir: string;
@@ -13,19 +13,19 @@ let sqlite: Database.Database;
 let funnelTagsCountBefore: number;
 
 beforeAll(() => {
-  dir = mkdtempSync(join(tmpdir(), 'phase7-'));
+  dir = mkdtempSync(join(tmpdir(), 'phase8-'));
   dbPath = join(dir, 'test.db');
   copyDbForTest(join(__dirname, '../../ksamata_funnels.db'), dbPath);
   sqlite = new Database(dbPath);
   // Снято ДО миграции: сравнение COUNT(DISTINCT funnel_id) с числом воронок
   // не ловит регрессию — тег «АВ Автоворонка» уже стоит у всех воронок из
-  // шаблона (computeTagSet), так что это совпадение верно и без фазы 7, и
+  // шаблона (computeTagSet), так что это совпадение верно и без фазы 8, и
   // осталось бы верным, даже если бы миграция ошибочно ДОБАВИЛА в funnel_tags
   // ещё одну строку тем же воронкам (DISTINCT её бы не заметил). Единственная
   // проверка, которая ловит и лишнюю запись, и удалённую — сырой COUNT(*)
   // до и после прогона.
   funnelTagsCountBefore = (sqlite.prepare('SELECT COUNT(*) AS n FROM funnel_tags').get() as { n: number }).n;
-  runMigratePhase7(sqlite);
+  runMigratePhase8(sqlite);
 });
 
 afterAll(() => {
@@ -33,7 +33,7 @@ afterAll(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-describe('Phase-7: справочник типов воронки', () => {
+describe('Phase-8: справочник типов воронки', () => {
   it('заводит справочник с четырьмя маркерами', () => {
     const names = (sqlite.prepare('SELECT name FROM funnel_types ORDER BY name').all() as { name: string }[])
       .map((r) => r.name);
@@ -50,7 +50,7 @@ describe('Phase-7: справочник типов воронки', () => {
     // задача 7 применила пятую ось к живой базе (60/11/1 по трём маркерам),
     // это утверждение стало вопросом ДАННЫХ, а не поведения кода, и ломается
     // при каждой легитимной правке типов. Настоящее правило бэкфилла —
-    // `WHERE funnel_type_id IS NULL` в migrate-phase7.ts — проверяем прямой
+    // `WHERE funnel_type_id IS NULL` в migrate-phase8.ts — проверяем прямой
     // мутацией входа, не полагаясь на то, сколько воронок сейчас типизировано
     // в живой ksamata_funnels.db. Транзакция откатывается в конце, чтобы не
     // задеть соседние тесты этого файла.
@@ -65,7 +65,7 @@ describe('Phase-7: справочник типов воронки', () => {
       sqlite.prepare('UPDATE funnels SET funnel_type_id = NULL WHERE id = ?').run(resetId);
       sqlite.prepare('UPDATE funnels SET funnel_type_id = ? WHERE id = ?').run(quizTypeId, keepId);
 
-      runMigratePhase7(sqlite);
+      runMigratePhase8(sqlite);
 
       const rows = sqlite.prepare(`
         SELECT f.id AS id, t.name AS name FROM funnels f
@@ -82,7 +82,7 @@ describe('Phase-7: справочник типов воронки', () => {
   });
 
   it('идемпотентна: повторный прогон ничего не ломает и не двоит', () => {
-    runMigratePhase7(sqlite);
+    runMigratePhase8(sqlite);
     const n = (sqlite.prepare('SELECT COUNT(*) AS n FROM funnel_types').get() as { n: number }).n;
     expect(n).toBe(SEED_FUNNEL_TYPES.length);
   });

@@ -13,7 +13,7 @@ import path from 'path';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
-import { runMigratePhase7 } from '../scripts/migrate-phase7';
+import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import * as schema from '../src/db/schema';
 import { replaceOverrides } from '../src/lib/tag-overrides';
 import { copyDbForTest } from './helpers/db';
@@ -36,7 +36,7 @@ beforeEach(async () => {
   runMigratePhase3(sqlite);
   runMigrateMessengerTagType(sqlite);
   runMigratePhase5(sqlite);
-  runMigratePhase7(sqlite);
+  runMigratePhase8(sqlite);
   const rows = sqlite.prepare('SELECT id FROM funnels ORDER BY num LIMIT 1').all() as { id: number }[];
   existingId = rows[0].id;
   db = drizzle(sqlite, { schema });
@@ -62,7 +62,7 @@ const params = (id: string | number) => ({ params: Promise.resolve({ id: String(
 
 describe('PATCH /api/funnels/[id]/tags', () => {
   it('adds a custom tag and removes a default, reflected in tagSets', async () => {
-    // 'АВ Автоворонка' больше не годится для этой проверки: после фазы 7 у
+    // 'АВ Автоворонка' больше не годится для этой проверки: после фазы 8 у
     // существующей воронки (existingId) есть настоящий funnel_type_id = «АВ
     // Автоворонка», и computeTagSet трактует имя типа как identity-тег —
     // такой remove гасится (см. ab-tags.ts). 'АВ Этап: Регистрация' — обычный
@@ -131,7 +131,7 @@ describe('PATCH /api/funnels/[id]/tags', () => {
 
   it('маркер типа воронки нельзя добавить через add-оверрайд', async () => {
     // 'АВ Квиз' — имя из справочника funnel_types (SEED_FUNNEL_TYPES),
-    // засеянного runMigratePhase7 выше. Без запрета запрос отвечал бы 200 и
+    // засеянного runMigratePhase8 выше. Без запрета запрос отвечал бы 200 и
     // клал строку в funnel_tag_overrides, которая никогда ни на что не влияет
     // (identity-слой computeTagSet её гасит) — молчаливый холостой ход, а не
     // порча данных, но пользователь никогда не узнал бы, что тег не применился.

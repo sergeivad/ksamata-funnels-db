@@ -17,7 +17,7 @@ import {
   isReservedFunnelTypeName,
   FunnelTypeAxisConflictError,
 } from '../src/lib/refs';
-import { runMigratePhase7 } from '../scripts/migrate-phase7';
+import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import { copyDbForTest } from './helpers/db';
 
 // __dirname = app/tests/ → go up 2 levels to repo root
@@ -29,7 +29,7 @@ copyDbForTest(REAL_DB, TMP_DB);
 const sqlite = new Database(TMP_DB);
 sqlite.pragma('journal_mode = WAL');
 sqlite.pragma('foreign_keys = ON');
-runMigratePhase7(sqlite);
+runMigratePhase8(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => sqlite.close());

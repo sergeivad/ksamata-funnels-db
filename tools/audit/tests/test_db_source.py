@@ -59,7 +59,7 @@ def make_db(tmp_path, funnels, tag_links):
 
 
 # Маркер типа воронки включён намеренно: build_av_index требует ПОЛНЫЙ
-# (пятиэлементный) ключ (is_complete_key) — с фазы 7 funnel_tags реальной
+# (пятиэлементный) ключ (is_complete_key) — с фазы 8 funnel_tags реальной
 # базы всегда несёт маркер наравне с осями, и без него build_av_index
 # отбросил бы эти expectations как неполные, а index[(...)] в тестах ниже
 # упал бы с KeyError вместо содержательной проверки.

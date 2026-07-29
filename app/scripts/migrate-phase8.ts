@@ -1,22 +1,22 @@
 /**
- * Phase-7: справочник типов воронки + FK у funnels. Идемпотентно.
+ * Phase-8: справочник типов воронки + FK у funnels. Идемпотентно.
  *
  *   cd app/
- *   FUNNELS_DB_PATH=../ksamata_funnels.db npx tsx scripts/migrate-phase7.ts
+ *   FUNNELS_DB_PATH=../ksamata_funnels.db npx tsx scripts/migrate-phase8.ts
  *
  * Бэкфилл ставит всем воронкам «АВ Автоворонка» — это не решение о типе,
  * а сохранение того, что база утверждает и без пятой оси: маркер стоит
  * у каждой воронки из шаблона tag_templates. funnel_tags при этом
  * не меняется ни на строку, меняется только источник маркера.
  */
-import { PHASE7_DDL, PHASE7_FUNNEL_COLUMN } from './migrate-phase7-data';
+import { PHASE8_DDL, PHASE8_FUNNEL_COLUMN } from './migrate-phase8-data';
 import { addColumnIfMissing } from './migrate-phase3-data';
 import { SEED_FUNNEL_TYPES, DEFAULT_FUNNEL_TYPE } from '../src/lib/funnel-type';
 
-export function runMigratePhase7(sqlite: import('better-sqlite3').Database): void {
+export function runMigratePhase8(sqlite: import('better-sqlite3').Database): void {
   sqlite.pragma('foreign_keys = ON');
-  sqlite.exec(PHASE7_DDL);
-  addColumnIfMissing(sqlite, 'funnels', PHASE7_FUNNEL_COLUMN.name, PHASE7_FUNNEL_COLUMN.ddl);
+  sqlite.exec(PHASE8_DDL);
+  addColumnIfMissing(sqlite, 'funnels', PHASE8_FUNNEL_COLUMN.name, PHASE8_FUNNEL_COLUMN.ddl);
 
   const insert = sqlite.prepare('INSERT OR IGNORE INTO funnel_types (name) VALUES (?)');
   for (const name of SEED_FUNNEL_TYPES) insert.run(name);
@@ -36,8 +36,8 @@ if (require.main === module) {
   const { resolveCliDbPath } = require('./cli-db-path') as typeof import('./cli-db-path');
   const dbPath = resolveCliDbPath();
   const sqlite = new Database(dbPath);
-  console.log(`Phase-7 schema migration on: ${dbPath}`);
-  runMigratePhase7(sqlite);
+  console.log(`Phase-8 schema migration on: ${dbPath}`);
+  runMigratePhase8(sqlite);
   sqlite.close();
-  console.log('Phase-7 schema migration done.');
+  console.log('Phase-8 schema migration done.');
 }

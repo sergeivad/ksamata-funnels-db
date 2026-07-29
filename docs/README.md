@@ -44,4 +44,4 @@ All features below are merged. Specs and plans are kept for context.
 | Landing-availability monitoring | [landing-monitoring-design](superpowers/specs/2026-07-24-landing-monitoring-design.md) | [landing-monitoring](superpowers/plans/2026-07-24-landing-monitoring.md) |
 | Funnel-tag drift map (`tools/audit/`) | [funnel-tag-drift-map-design](superpowers/specs/2026-07-24-funnel-tag-drift-map-design.md) | [funnel-tag-drift-map](superpowers/plans/2026-07-24-funnel-tag-drift-map.md) |
 | Monitoring: per-group on/off decisions (`monitor_source_kind_prefs`) | — | [monitoring-source-kind-prefs](plans/2026-07-24-monitoring-source-kind-prefs.md) |
-| Funnel type — fifth axis (`funnel_types`, Phase 7) | [funnel-type-fifth-axis-design](superpowers/specs/2026-07-28-funnel-type-fifth-axis-design.md) | [funnel-type-fifth-axis](superpowers/plans/2026-07-28-funnel-type-fifth-axis.md) |
+| Funnel type — fifth axis (`funnel_types`, Phase 8) | [funnel-type-fifth-axis-design](superpowers/specs/2026-07-28-funnel-type-fifth-axis-design.md) | [funnel-type-fifth-axis](superpowers/plans/2026-07-28-funnel-type-fifth-axis.md) |

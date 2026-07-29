@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import * as schema from '../src/db/schema';
-import { runMigratePhase7 } from '../scripts/migrate-phase7';
+import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import { PHASE5_DDL, PHASE5_TEMPLATE_SEED, seedTagTemplates } from '../scripts/migrate-phase5-data';
 import { listTemplate, replaceTemplateScenario } from '../src/lib/tag-templates';
 
@@ -23,7 +23,7 @@ import { listTemplate, replaceTemplateScenario } from '../src/lib/tag-templates'
  * перетипирована), и тесты, утверждавшие конкретные строки шаблона,
  * рассинхронизировались — не с кодом, а с данными.
  *
- * `runMigratePhase7` требует существующую таблицу `funnels` (ALTER TABLE
+ * `runMigratePhase8` требует существующую таблицу `funnels` (ALTER TABLE
  * ADD COLUMN) — этому файлу сами воронки не нужны, поэтому таблица здесь
  * пустой одноколоночный стаб, а не полная схема фаз 2–4.
  */
@@ -34,7 +34,7 @@ sqlite.pragma('foreign_keys = ON');
 sqlite.exec(PHASE5_DDL);
 seedTagTemplates(sqlite);
 sqlite.exec('CREATE TABLE funnels (id INTEGER PRIMARY KEY)');
-runMigratePhase7(sqlite);
+runMigratePhase8(sqlite);
 const db = drizzle(sqlite, { schema });
 
 afterAll(() => { sqlite.close(); rmSync(dir, { recursive: true, force: true }); });

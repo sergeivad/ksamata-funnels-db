@@ -12,7 +12,7 @@ import { copyFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
-import { runMigratePhase7 } from '../scripts/migrate-phase7';
+import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import { copyDbForTest } from './helpers/db';
 
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
@@ -25,7 +25,7 @@ copyDbForTest(REAL_DB, TMP_DB);
 // computing tagSets, so the route under test needs it present.
 const migrationSqlite = new Database(TMP_DB);
 runMigratePhase5(migrationSqlite);
-runMigratePhase7(migrationSqlite);
+runMigratePhase8(migrationSqlite);
 migrationSqlite.close();
 
 process.env.FUNNELS_DB_PATH = TMP_DB;
@@ -94,8 +94,8 @@ describe('buildExportRows — roomsEnabled gating', () => {
     const tmp = join(tmpdir(), `ksamata_export_gate_${Date.now()}.db`);
     copyDbForTest(REAL_DB, tmp);
     const sqlite = new Database(tmp);
-    const { runMigratePhase7 } = await import('../scripts/migrate-phase7');
-    runMigratePhase7(sqlite);
+    const { runMigratePhase8 } = await import('../scripts/migrate-phase8');
+    runMigratePhase8(sqlite);
     const db = drizzle(sqlite, { schema });
 
     const roomsRowsFor = (num: number) =>

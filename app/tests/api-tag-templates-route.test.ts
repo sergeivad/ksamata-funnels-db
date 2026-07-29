@@ -13,9 +13,9 @@ import path from 'path';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
-import { runMigratePhase7 } from '../scripts/migrate-phase7';
+import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import { PHASE5_DDL, seedTagTemplates } from '../scripts/migrate-phase5-data';
-import { PHASE7_DDL } from '../scripts/migrate-phase7-data';
+import { PHASE8_DDL } from '../scripts/migrate-phase8-data';
 import { SEED_FUNNEL_TYPES } from '../src/lib/funnel-type';
 import * as schema from '../src/db/schema';
 import { replaceOverrides } from '../src/lib/tag-overrides';
@@ -39,7 +39,7 @@ beforeEach(async () => {
   runMigratePhase3(sqlite);
   runMigrateMessengerTagType(sqlite);
   runMigratePhase5(sqlite);
-  runMigratePhase7(sqlite);
+  runMigratePhase8(sqlite);
   db = drizzle(sqlite, { schema });
   vi.doMock('@/db/client', () => ({ db }));
 
@@ -203,7 +203,7 @@ describe('семя фазы 5 не хранит маркер типа ворон
     try {
       fresh.exec(PHASE5_DDL);
       seedTagTemplates(fresh);
-      fresh.exec(PHASE7_DDL);
+      fresh.exec(PHASE8_DDL);
       const insertType = fresh.prepare('INSERT OR IGNORE INTO funnel_types (name) VALUES (?)');
       for (const name of SEED_FUNNEL_TYPES) insertType.run(name);
 

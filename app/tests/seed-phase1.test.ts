@@ -15,7 +15,7 @@ import * as schema from '../src/db/schema';
 import { funnels, products, funnelTags, tags } from '../src/db/schema';
 import { runSeed } from '../scripts/seed-phase1';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
-import { runMigratePhase7 } from '../scripts/migrate-phase7';
+import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import { copyDbForTest } from './helpers/db';
 
 // __dirname = app/tests/ → go up 2 levels to repo root for the DB
@@ -29,7 +29,7 @@ const sqlite = new Database(TMP_DB);
 sqlite.pragma('journal_mode = WAL');
 sqlite.pragma('foreign_keys = ON');
 runMigratePhase3(sqlite);
-runMigratePhase7(sqlite);
+runMigratePhase8(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => {

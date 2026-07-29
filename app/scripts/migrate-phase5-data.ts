@@ -3,7 +3,7 @@
  * Single source of truth for migrate-phase5.ts (tsx/tests) and the Docker runner.
  *
  * Маркер типа воронки («АВ Автоворонка» и три альтернативы) в шаблоне НЕ живёт
- * с фазы 7: он выводится из funnels.funnel_type_id как пятая ось, см.
+ * с фазы 8: он выводится из funnels.funnel_type_id как пятая ось, см.
  * src/lib/funnel-type.ts. Вернуть его сюда — значит снова поставить один и тот
  * же маркер каждой воронке и получить второй источник правды.
  */

@@ -350,7 +350,7 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
   as `add` overrides so Phase 5's resync doesn't drop them).
 - **Phase 6** — monitoring tables (`monitor_targets`, `monitor_target_funnels`,
   `monitor_state`, `monitor_events`, `monitor_source_kind_prefs`).
-- **Phase 7** — `funnel_types` (seeded with the four GetCourse markers) +
+- **Phase 8** — `funnel_types` (seeded with the four GetCourse markers) +
   `funnels.funnel_type_id`, plus a backfill of `АВ Автоворонка` onto every
   existing funnel. The backfill is not a decision about type — it preserves
   what the database already asserted (the marker was already hardcoded into
@@ -358,7 +358,7 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
   single row; only where the marker comes from changes.
 
 **Docker runs, in order** (`app/docker-entrypoint.sh`): Phase 2 → 3 (+data) →
-4 → 5 → legacy-tag-override backfill → 6 → 7.
+4 → 5 → legacy-tag-override backfill → 6 → 8.
 
 **Running a migration by hand** resolves its DB through `scripts/cli-db-path.ts`:
 the default is the repo-root DB **relative to the script**, not to `cwd`, and a

@@ -26,7 +26,7 @@ Python 3 + pytest для `tools/audit`.
   (`app/tests/helpers/db.ts`), никогда с `ksamata_funnels.db` напрямую.
 - Данные воронок и теги меняются только через `createFunnel` / `updateFunnel`
   или API. Raw SQL по живой базе запрещён. **Исключение — миграции**: как все
-  фазы 2-6, фаза 7 делает DDL и бэкфилл колонки напрямую. Границу держать
+  фазы 2-6, фаза 8 делает DDL и бэкфилл колонки напрямую. Границу держать
   строго: миграция пишет `funnels.funnel_type_id`, но **никогда** не трогает
   `funnel_tags` — материализация тегов идёт только через `computeTagSet`.
 - Имя типа хранится дословно: `АВ Автоворонка`, `АВ Прямые`, `АВ Квиз`,
@@ -36,33 +36,33 @@ Python 3 + pytest для `tools/audit`.
 - После любого прогона против живой БД: `sqlite3 ksamata_funnels.db 'PRAGMA
   wal_checkpoint(TRUNCATE);'`, удалить `-wal`/`-shm`, убедиться что
   `SELECT COUNT(*) FROM monitor_targets` = 0 и `git status --porcelain` пуст.
-- Порядок применения к данным (задача 7) обязателен: фаза 7 → сверка →
+- Порядок применения к данным (задача 7) обязателен: фаза 8 → сверка →
   чистка шаблона → двенадцать правок типа.
 
 ---
 
-### Task 1: Справочник `funnel_types` и миграция фазы 7
+### Task 1: Справочник `funnel_types` и миграция фазы 8
 
 **Files:**
 - Create: `app/src/lib/funnel-type.ts`
-- Create: `app/scripts/migrate-phase7-data.ts`
-- Create: `app/scripts/migrate-phase7.ts`
-- Create: `app/scripts/migrate-phase7-runner.ts`
+- Create: `app/scripts/migrate-phase8-data.ts`
+- Create: `app/scripts/migrate-phase8.ts`
+- Create: `app/scripts/migrate-phase8-runner.ts`
 - Modify: `app/src/db/schema.ts` (добавить таблицу `funnelTypes` и колонку `funnelTypeId`)
 - Modify: `app/Dockerfile` (сборка `.cjs` и копирование в образ, по образцу фазы 6)
 - Modify: `app/docker-entrypoint.sh` (запуск после фазы 6)
-- Test: `app/tests/migrate-phase7.test.ts`
+- Test: `app/tests/migrate-phase8.test.ts`
 
 **Interfaces:**
 - Produces: `FUNNEL_TYPE_KIND = 'funnel_types'`, `DEFAULT_FUNNEL_TYPE = 'АВ Автоворонка'`,
   `SEED_FUNNEL_TYPES: readonly string[]`, `FUNNEL_TYPE_LABEL = 'Тип воронки'`
   (все из `app/src/lib/funnel-type.ts`);
-  `runMigratePhase7(sqlite: import('better-sqlite3').Database): void`;
+  `runMigratePhase8(sqlite: import('better-sqlite3').Database): void`;
   Drizzle-таблица `funnelTypes` и колонка `funnels.funnelTypeId`.
 
 - [ ] **Step 1: Написать падающий тест**
 
-Создать `app/tests/migrate-phase7.test.ts`:
+Создать `app/tests/migrate-phase8.test.ts`:
 
 ```ts
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -71,7 +71,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { copyDbForTest } from './helpers/db';
-import { runMigratePhase7 } from '../scripts/migrate-phase7';
+import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import { SEED_FUNNEL_TYPES, DEFAULT_FUNNEL_TYPE } from '../src/lib/funnel-type';
 
 let dir: string;
@@ -79,11 +79,11 @@ let dbPath: string;
 let sqlite: Database.Database;
 
 beforeAll(() => {
-  dir = mkdtempSync(join(tmpdir(), 'phase7-'));
+  dir = mkdtempSync(join(tmpdir(), 'phase8-'));
   dbPath = join(dir, 'test.db');
   copyDbForTest(join(__dirname, '../../ksamata_funnels.db'), dbPath);
   sqlite = new Database(dbPath);
-  runMigratePhase7(sqlite);
+  runMigratePhase8(sqlite);
 });
 
 afterAll(() => {
@@ -91,7 +91,7 @@ afterAll(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-describe('Phase-7: справочник типов воронки', () => {
+describe('Phase-8: справочник типов воронки', () => {
   it('заводит справочник с четырьмя маркерами', () => {
     const names = (sqlite.prepare('SELECT name FROM funnel_types ORDER BY name').all() as { name: string }[])
       .map((r) => r.name);
@@ -114,7 +114,7 @@ describe('Phase-7: справочник типов воронки', () => {
   });
 
   it('идемпотентна: повторный прогон ничего не ломает и не двоит', () => {
-    runMigratePhase7(sqlite);
+    runMigratePhase8(sqlite);
     const n = (sqlite.prepare('SELECT COUNT(*) AS n FROM funnel_types').get() as { n: number }).n;
     expect(n).toBe(SEED_FUNNEL_TYPES.length);
   });
@@ -132,8 +132,8 @@ describe('Phase-7: справочник типов воронки', () => {
 
 - [ ] **Step 2: Прогнать тест и убедиться, что он падает**
 
-Из `app/`: `npx vitest run tests/migrate-phase7.test.ts`
-Ожидание: FAIL — модуль `../scripts/migrate-phase7` не найден.
+Из `app/`: `npx vitest run tests/migrate-phase8.test.ts`
+Ожидание: FAIL — модуль `../scripts/migrate-phase8` не найден.
 
 - [ ] **Step 3: Написать модуль типа**
 
@@ -166,48 +166,48 @@ export const FUNNEL_TYPE_LABEL = 'Тип воронки';
 
 - [ ] **Step 4: Написать DDL и миграцию**
 
-Создать `app/scripts/migrate-phase7-data.ts`:
+Создать `app/scripts/migrate-phase8-data.ts`:
 
 ```ts
 /**
- * DDL Phase-7 (пятая ось: тип воронки).
- * Единый источник правды для migrate-phase7.ts (tsx/тесты) и Docker-раннера.
+ * DDL Phase-8 (пятая ось: тип воронки).
+ * Единый источник правды для migrate-phase8.ts (tsx/тесты) и Docker-раннера.
  */
-export const PHASE7_DDL = `
+export const PHASE8_DDL = `
 CREATE TABLE IF NOT EXISTS funnel_types (
   id   INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT    NOT NULL UNIQUE
 );
 `;
 
-export const PHASE7_FUNNEL_COLUMN = {
+export const PHASE8_FUNNEL_COLUMN = {
   name: 'funnel_type_id',
   ddl: `ALTER TABLE funnels ADD COLUMN funnel_type_id INTEGER REFERENCES funnel_types(id)`,
 };
 ```
 
-Создать `app/scripts/migrate-phase7.ts`:
+Создать `app/scripts/migrate-phase8.ts`:
 
 ```ts
 /**
- * Phase-7: справочник типов воронки + FK у funnels. Идемпотентно.
+ * Phase-8: справочник типов воронки + FK у funnels. Идемпотентно.
  *
  *   cd app/
- *   FUNNELS_DB_PATH=../ksamata_funnels.db npx tsx scripts/migrate-phase7.ts
+ *   FUNNELS_DB_PATH=../ksamata_funnels.db npx tsx scripts/migrate-phase8.ts
  *
  * Бэкфилл ставит всем воронкам «АВ Автоворонка» — это не решение о типе,
  * а сохранение того, что база утверждает и без пятой оси: маркер стоит
  * у каждой воронки из шаблона tag_templates. funnel_tags при этом
  * не меняется ни на строку, меняется только источник маркера.
  */
-import { PHASE7_DDL, PHASE7_FUNNEL_COLUMN } from './migrate-phase7-data';
+import { PHASE8_DDL, PHASE8_FUNNEL_COLUMN } from './migrate-phase8-data';
 import { addColumnIfMissing } from './migrate-phase3-data';
 import { SEED_FUNNEL_TYPES, DEFAULT_FUNNEL_TYPE } from '../src/lib/funnel-type';
 
-export function runMigratePhase7(sqlite: import('better-sqlite3').Database): void {
+export function runMigratePhase8(sqlite: import('better-sqlite3').Database): void {
   sqlite.pragma('foreign_keys = ON');
-  sqlite.exec(PHASE7_DDL);
-  addColumnIfMissing(sqlite, 'funnels', PHASE7_FUNNEL_COLUMN.name, PHASE7_FUNNEL_COLUMN.ddl);
+  sqlite.exec(PHASE8_DDL);
+  addColumnIfMissing(sqlite, 'funnels', PHASE8_FUNNEL_COLUMN.name, PHASE8_FUNNEL_COLUMN.ddl);
 
   const insert = sqlite.prepare('INSERT OR IGNORE INTO funnel_types (name) VALUES (?)');
   for (const name of SEED_FUNNEL_TYPES) insert.run(name);
@@ -227,16 +227,16 @@ if (require.main === module) {
   const { resolveCliDbPath } = require('./cli-db-path') as typeof import('./cli-db-path');
   const dbPath = resolveCliDbPath();
   const sqlite = new Database(dbPath);
-  console.log(`Phase-7 schema migration on: ${dbPath}`);
-  runMigratePhase7(sqlite);
+  console.log(`Phase-8 schema migration on: ${dbPath}`);
+  runMigratePhase8(sqlite);
   sqlite.close();
-  console.log('Phase-7 schema migration done.');
+  console.log('Phase-8 schema migration done.');
 }
 ```
 
 - [ ] **Step 5: Прогнать тест и убедиться, что он проходит**
 
-Из `app/`: `npx vitest run tests/migrate-phase7.test.ts`
+Из `app/`: `npx vitest run tests/migrate-phase8.test.ts`
 Ожидание: PASS, 5 тестов.
 
 - [ ] **Step 6: Описать таблицу и колонку в схеме Drizzle**
@@ -255,35 +255,35 @@ export const funnelTypes = sqliteTable('funnel_types', {
 В таблице `funnels`, рядом с `frontCode`:
 
 ```ts
-    // Phase 7: пятая ось. NULL = тип не выбран, маркер не выпускается.
+    // Phase 8: пятая ось. NULL = тип не выбран, маркер не выпускается.
     funnelTypeId:     integer('funnel_type_id').references(() => funnelTypes.id),
 ```
 
 - [ ] **Step 7: Раннер для Docker**
 
-Создать `app/scripts/migrate-phase7-runner.ts`:
+Создать `app/scripts/migrate-phase8-runner.ts`:
 
 ```ts
 /**
- * Standalone-миграция Phase-7 для Docker-образа.
- * Собирается в migrate-phase7.cjs через esbuild в builder-стадии.
- * Вызывается из docker-entrypoint.sh как: node /app/migrate-phase7.cjs
+ * Standalone-миграция Phase-8 для Docker-образа.
+ * Собирается в migrate-phase8.cjs через esbuild в builder-стадии.
+ * Вызывается из docker-entrypoint.sh как: node /app/migrate-phase8.cjs
  */
 import Database from 'better-sqlite3';
-import { runMigratePhase7 } from './migrate-phase7';
+import { runMigratePhase8 } from './migrate-phase8';
 
 const dbPath = process.env.FUNNELS_DB_PATH;
 if (!dbPath) {
-  console.error('[migrate-phase7] FUNNELS_DB_PATH is not set — skipping.');
+  console.error('[migrate-phase8] FUNNELS_DB_PATH is not set — skipping.');
   process.exit(0);
 }
 
-console.log(`[migrate-phase7] Running Phase-7 migration on: ${dbPath}`);
+console.log(`[migrate-phase8] Running Phase-8 migration on: ${dbPath}`);
 const sqlite = new Database(dbPath);
 sqlite.pragma('journal_mode = WAL');
-runMigratePhase7(sqlite);
+runMigratePhase8(sqlite);
 sqlite.close();
-console.log('[migrate-phase7] Done (funnel types).');
+console.log('[migrate-phase8] Done (funnel types).');
 ```
 
 - [ ] **Step 8: Встроить в образ и в запуск**
@@ -291,28 +291,28 @@ console.log('[migrate-phase7] Done (funnel types).');
 В `app/Dockerfile`, сразу после блока сборки фазы 6 (строки 66-70):
 
 ```dockerfile
-RUN npx esbuild scripts/migrate-phase7-runner.ts \
+RUN npx esbuild scripts/migrate-phase8-runner.ts \
       --bundle \
       --platform=node \
       --external:better-sqlite3 \
-      --outfile=migrate-phase7.cjs
+      --outfile=migrate-phase8.cjs
 ```
 
 И рядом с копированием `migrate-phase6.cjs` (строка 122):
 
 ```dockerfile
-COPY --from=builder /build/migrate-phase7.cjs /app/migrate-phase7.cjs
+COPY --from=builder /build/migrate-phase8.cjs /app/migrate-phase8.cjs
 ```
 
 В `app/docker-entrypoint.sh`, между блоком фазы 6 и `exec node server.js`:
 
 ```sh
-# Apply Phase-7 migration (idempotent: CREATE TABLE IF NOT EXISTS + INSERT OR IGNORE).
+# Apply Phase-8 migration (idempotent: CREATE TABLE IF NOT EXISTS + INSERT OR IGNORE).
 # Adds the funnel-type lookup (fifth AV axis) and backfills it with «АВ Автоворонка».
 if [ -n "$FUNNELS_DB_PATH" ]; then
-  echo "[entrypoint] Running Phase-7 migration against $FUNNELS_DB_PATH"
-  node /app/migrate-phase7.cjs
-  echo "[entrypoint] Phase-7 migration done."
+  echo "[entrypoint] Running Phase-8 migration against $FUNNELS_DB_PATH"
+  node /app/migrate-phase8.cjs
+  echo "[entrypoint] Phase-8 migration done."
 fi
 ```
 
@@ -322,10 +322,10 @@ fi
 Из `app/`: `npx vitest run` — ожидание: все тесты проходят.
 
 ```bash
-git add app/src/lib/funnel-type.ts app/scripts/migrate-phase7*.ts \
+git add app/src/lib/funnel-type.ts app/scripts/migrate-phase8*.ts \
         app/src/db/schema.ts app/Dockerfile app/docker-entrypoint.sh \
-        app/tests/migrate-phase7.test.ts
-git commit -m "feat(schema): фаза 7 — справочник типов воронки и FK у funnels"
+        app/tests/migrate-phase8.test.ts
+git commit -m "feat(schema): фаза 8 — справочник типов воронки и FK у funnels"
 ```
 
 ---
@@ -377,7 +377,7 @@ describe('справочник типов воронки', () => {
 
 Импорты дописать в шапку файла: `isValidKind`, `isImmutableKind`, `refTagNameFor`,
 `getRefByName`, `createRef`, `deleteRef` из `@/lib/refs`. Фикстура файла должна
-применять `runMigratePhase7` — добавить его вызов рядом с уже имеющимися
+применять `runMigratePhase8` — добавить его вызов рядом с уже имеющимися
 `runMigratePhase*`.
 
 - [ ] **Step 2: Прогнать тест и убедиться, что он падает**
@@ -676,7 +676,7 @@ function listFunnelTagNames(dbh: typeof db, funnelId: number, tagType: string): 
 }
 ```
 
-Фикстура файла должна применять `runMigratePhase7`.
+Фикстура файла должна применять `runMigratePhase8`.
 
 - [ ] **Step 2: Прогнать тест и убедиться, что он падает**
 
@@ -822,10 +822,10 @@ function resolveFunnelTypeId(tx: AnyDB, name: string): number {
 
 Импортировать `ValidationError` из `@/lib/errors`.
 
-- [ ] **Step 7: Прогнать весь набор тестов и досыпать фазу 7 в фикстуры**
+- [ ] **Step 7: Прогнать весь набор тестов и досыпать фазу 8 в фикстуры**
 
 `getFunnelTypeContext` читает `funnel_types`, поэтому любой тест, который
-создаёт или правит воронку, но фазу 7 не применил, упадёт на отсутствующей
+создаёт или правит воронку, но фазу 8 не применил, упадёт на отсутствующей
 таблице. Это не баг, а недостающая строка фикстуры — тесты собирают БД
 явными вызовами миграций (`runMigratePhase3`, `runMigratePhase5` и т.д.).
 
@@ -834,14 +834,14 @@ function resolveFunnelTypeId(tx: AnyDB, name: string): number {
 В каждый упавший файл добавить импорт и вызов рядом с уже имеющимися:
 
 ```ts
-import { runMigratePhase7 } from '../scripts/migrate-phase7';
+import { runMigratePhase8 } from '../scripts/migrate-phase8';
 // …в блоке подготовки фикстуры, последним из миграций:
-runMigratePhase7(sqlite);
+runMigratePhase8(sqlite);
 ```
 
 Прогнать снова и убедиться, что падений не осталось. Чинить `getFunnelTypeContext`
 «терпимостью к отсутствующей таблице» **нельзя**: тогда тест на воронке без
-фазы 7 молча проверял бы модель без пятой оси.
+фазы 8 молча проверял бы модель без пятой оси.
 
 - [ ] **Step 8: Полная проверка и коммит**
 
@@ -963,7 +963,7 @@ const KINDS: Array<{ key: keyof RefsState; label: string }> = [
 ```bash
 cd app
 cp ../ksamata_funnels.db /tmp/uicheck.db
-FUNNELS_DB_PATH=/tmp/uicheck.db npx tsx scripts/migrate-phase7.ts
+FUNNELS_DB_PATH=/tmp/uicheck.db npx tsx scripts/migrate-phase8.ts
 MONITOR_ENABLED=false FUNNELS_DB_PATH=/tmp/uicheck.db npm run dev
 ```
 
@@ -1033,7 +1033,7 @@ it('маркер типа нельзя положить в шаблон чере
 
 ```ts
  * Маркер типа воронки («АВ Автоворонка» и три альтернативы) в шаблоне НЕ живёт
- * с фазы 7: он выводится из funnels.funnel_type_id как пятая ось, см.
+ * с фазы 8: он выводится из funnels.funnel_type_id как пятая ось, см.
  * src/lib/funnel-type.ts. Вернуть его сюда — значит снова поставить один и тот
  * же маркер каждой воронке и получить второй источник правды.
 ```
@@ -1156,7 +1156,7 @@ git commit -m "feat(tags): маркер уходит из шаблона и за
 /**
  * Пятая ось: проставить тип двенадцати воронкам и убрать маркер из живого
  * шаблона. Порядок внутри скрипта обязателен — сначала шаблон, потом типы:
- * фаза 7 уже проставила всем «АВ Автоворонка», поэтому чистка шаблона ничего
+ * фаза 8 уже проставила всем «АВ Автоворонка», поэтому чистка шаблона ничего
  * не теряет; в обратном порядке воронки на время остались бы без маркера.
  *
  * Одиннадцать воронок линейки ЖИВО-* → «АВ Прямые»: у их связок в реестре
@@ -1172,7 +1172,7 @@ git commit -m "feat(tags): маркер уходит из шаблона и за
  * должны уже существовать (Фаза 7). На проде это делает docker-entrypoint.sh
  * при старте контейнера, но для ручного прогона — по умолчанию и для копии
  * из Step 2/3 — это отдельный шаг, ничего его не делает за вас:
- *   FUNNELS_DB_PATH=/abs/path/ksamata_funnels.db npx tsx scripts/migrate-phase7.ts
+ *   FUNNELS_DB_PATH=/abs/path/ksamata_funnels.db npx tsx scripts/migrate-phase8.ts
  * Без него скрипт падает в ОБОИХ режимах: assertNotFunnelTypeMarker (внутри
  * replaceTemplateScenario, --apply) и getFunnelTypeContext (внутри
  * axesMismatch → getFunnel, --dry-run тоже, на первой же цели) читают
@@ -1369,7 +1369,7 @@ getFunnel → getFunnelTypeContext`, тот же справочник). Поэт
 
 ```bash
 cd app
-FUNNELS_DB_PATH=$(cd .. && pwd)/ksamata_funnels.db npx tsx scripts/migrate-phase7.ts
+FUNNELS_DB_PATH=$(cd .. && pwd)/ksamata_funnels.db npx tsx scripts/migrate-phase8.ts
 sqlite3 $(cd .. && pwd)/ksamata_funnels.db "SELECT COUNT(*) FROM funnel_types;"
 sqlite3 $(cd .. && pwd)/ksamata_funnels.db "SELECT COUNT(*) FROM funnels WHERE funnel_type_id IS NULL;"
 ```
@@ -1533,13 +1533,13 @@ def key_label(key):
 Импортировать `quad` и `is_complete_quad` из `normalize` (строки 21-26).
 
 В `tools/audit/db_source.py:116-123` менять ничего не нужно: та же `av_key`
-теперь читает маркер из тегов воронки, которые с фазы 7 его содержат.
+теперь читает маркер из тегов воронки, которые с фазы 8 его содержат.
 Добавить пояснение к докстрингу `build_av_index`:
 
 ```python
     """АВ-ключ (пятёрка) -> множество funnel_id. Неполные ключи отбрасываются.
 
-    Обе стороны считаются одной функцией av_key: с фазы 7 база держит маркер
+    Обе стороны считаются одной функцией av_key: с фазы 8 база держит маркер
     типа в funnel_tags наравне с осями, поэтому особого случая тут нет.
     """
 ```
@@ -1613,7 +1613,7 @@ git commit -m "feat(audit): ключ склейки становится пят�
 Значения типа расширяемы через `/refs` — набор маркеров задаёт GetCourse.
 ```
 
-В список миграций добавить: **Phase 7** — `funnel_types` + `funnels.funnel_type_id`
+В список миграций добавить: **Phase 8** — `funnel_types` + `funnels.funnel_type_id`
 + бэкфилл `АВ Автоворонка`. В строку «Docker runs, in order» дописать `→ 7`.
 
 - [ ] **Step 2: `tools/audit/README.md`**

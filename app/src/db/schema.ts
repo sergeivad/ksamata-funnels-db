@@ -70,7 +70,7 @@ export const funnels = sqliteTable(
     // New columns added by migration
     status:           text('status').default('active'),
     frontCode:        text('front_code').default(''),
-    // Phase 7: пятая ось. NULL = тип не выбран, маркер не выпускается.
+    // Phase 8: пятая ось. NULL = тип не выбран, маркер не выпускается.
     funnelTypeId:     integer('funnel_type_id').references(() => funnelTypes.id),
     // Phase 3 columns
     comment:            text('comment').default(''),
