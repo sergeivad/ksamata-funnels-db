@@ -25,6 +25,7 @@ from normalize import (
     is_complete_quad,
     is_external_tag,
     key_label,
+    legacy_stage_of,
     quad,
 )
 from retired import is_retired
@@ -228,6 +229,26 @@ def _stage_family(tags):
     return 'none'
 
 
+def _latest_by_slot(groups, slot_of):
+    """Для каждого слота — только самое свежее наблюдение.
+
+    Победитель при ничьей по last_seen определяется _freshness_key (число
+    наблюдений, затем теги), а не порядком групп во входном списке — см.
+    её докстринг.
+    """
+    newest = {}
+    for group in groups:
+        slot = slot_of(group)
+        current = newest.get(slot)
+        if current is None or _freshness_key(group) > _freshness_key(current):
+            newest[slot] = group
+    return list(newest.values())
+
+
+def _stage_family_slot(group):
+    return group.key, _stage_family(group.tags)
+
+
 def _latest_by_stage_family(groups):
     """Для каждой пары (ключ, семейство этапа) — только свежее наблюдение.
 
@@ -236,18 +257,35 @@ def _latest_by_stage_family(groups):
     tag_type, нужна чтобы свежая исправная группа ('time_19') вытесняла
     старую сломанную ('no_time') на том же АВ-ключе: у обеих семейство
     'payment', а tag_type разный.
-
-    Победитель при ничьей по last_seen определяется _freshness_key (число
-    наблюдений, затем теги), а не порядком групп во входном списке — см.
-    её докстринг.
     """
-    newest = {}
-    for group in groups:
-        slot = (group.key, _stage_family(group.tags))
-        current = newest.get(slot)
-        if current is None or _freshness_key(group) > _freshness_key(current):
-            newest[slot] = group
-    return list(newest.values())
+    return _latest_by_slot(groups, _stage_family_slot)
+
+
+def _unresolved_slot(group):
+    """Слот свёртки классов 5/6/7: как _stage_family_slot, но легаси-этапы
+    не сливаются друг с другом.
+
+    У группы с легаси-этапом и без АВ-этапа ключ пуст ЦЕЛИКОМ, а семейство
+    этапа — 'none'. Значит все такие группы, сколько бы разных воронок за ними
+    ни стояло, попадают в один и тот же слот `((None,)*5, 'none')` и дают одну
+    находку: в отчёте 2026-07-28 это была одна строка «нет АВ Этап» на 20 150
+    заказов, внутри которой лежали 12 разных легаси-наборов, запуски и клуб.
+    Поэтому в слот входит сам набор тегов — единственное, что эти группы
+    различает.
+
+    Свежесть тут ничего не решает и решать не может: набор, которому позже
+    проставили АВ-разметку, меняет и ключ, и семейство, то есть уезжает в
+    другой слот, а не вытесняет себя прежнего. Обратная сторона — набор,
+    исправленный в середине окна, остаётся в отчёте до конца окна; отличить
+    его можно по `last_seen` (то же свойство у классов 2 и 7, см. README).
+
+    Свёртка остальных групп не меняется: сравнивать с базой надо текущее
+    состояние слота, иначе древние наборы уедут в отчёт как ошибки.
+    """
+    slot = _stage_family_slot(group)
+    if group.reason == 'no_stage' and legacy_stage_of(group.tags):
+        return slot + (group.tags,)
+    return slot
 
 
 # Владелец решил свернуть класс 1 так же, как ранее свернули класс 3: тег,
@@ -509,21 +547,47 @@ def find_unresolved(groups, index, registry_keys=frozenset(), order_dates=None):
     `registry_keys` по умолчанию пуст, и тогда второй фильтр не работает вовсе
     (ни одна четвёрка не будет сочтена исторической) — прогон без обращения к
     API (`--no-api`) не должен молча прятать половину класса 7.
+
+    **Класс 5 по причине `no_stage` требует ЛЕГАСИ-этапа** (`normalize.
+    LEGACY_STAGE_TAGS`). Без АВ-этапа и без легаси-этапа наблюдение — вообще
+    не шаг воронки, и находки нет: так из отчёта уходят запуски и клуб
+    (`запуск07_26`, `клуб2.0`, `Баллы`) и остаются автоворонки, прямые, квизы
+    и ЖИВО. Решение владельца 2026-07-30.
+
+    Правило не требует перечислять, «что воронкой не является»: список
+    запусков пришлось бы вести руками и он молча устаревал бы. Легаси-этап —
+    признак положительный, поэтому новая воронка на старой разметке попадёт
+    в отчёт сама, а новый запуск — нет.
+
+    Замер `deal_export_2026-07-18` (99 928 наблюдений, 2026-07-30): из 13 455
+    наблюдений без АВ-этапа легаси-этап несут 1618 в 12 наборах. Отсеиваются
+    11 837, из них ~11 172 — запуски и клуб, остальное неясное (в основном
+    `Яндекс Ретаргет`). До правки все они давали ОДНУ находку с пустым ключом
+    `— / — / — / — / —`; теперь каждый легаси-набор адресуется отдельно
+    (см. `_unresolved_slot`), а `detail` несёт сам набор, потому что ключ у
+    такой группы пуст целиком и не адресует ничего.
     """
     order_dates = order_dates or {}
     result = []
-    for group in _latest_by_stage_family(groups):
+    for group in _latest_by_slot(groups, _unresolved_slot):
         # Отставка — по связке (quad), см. предупреждение в retired.py: полный
         # ключ (с маркером) никогда не совпадёт ни с одной записью RETIRED_KEYS.
         if is_retired(quad(group.key), order_dates.get(quad(group.key))):
             continue
+
+        detail = f'Ключ: {key_label(group.key)}'
 
         if group.reason == 'no_time':
             cls, subject = 5, 'Оплата без АВ Время'
         elif group.reason == 'predpisok':
             cls, subject = 6, 'Этап Предписок'
         elif group.reason == 'no_stage':
-            cls, subject = 5, 'Нет АВ Этап — тип не выводится'
+            legacy = legacy_stage_of(group.tags)
+            if legacy is None:
+                continue
+            cls, subject = 5, f'Шаг воронки на легаси-разметке: «{legacy}»'
+            # Ключ такой группы пуст целиком, так что адресует её сам набор.
+            detail = 'Легаси-набор: ' + '|'.join(sorted(group.tags))
         elif is_complete_key(group.key) and group.key not in index:
             if registry_keys and group.key not in registry_keys:
                 continue
@@ -537,7 +601,7 @@ def find_unresolved(groups, index, registry_keys=frozenset(), order_dates=None):
                 funnel='—',
                 tag_type=group.tag_type or '',
                 subject=subject,
-                detail=f'Ключ: {key_label(group.key)}',
+                detail=detail,
                 evidence='; '.join(group.files[:3]),
                 first_seen=str(group.first_seen),
                 last_seen=str(group.last_seen),
