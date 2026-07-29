@@ -1,21 +1,19 @@
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import Database from 'better-sqlite3';
-import { copyFileSync, unlinkSync, existsSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
-import { copyDbForTest } from './helpers/db';
-
-const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
-const TMP_DB = join(tmpdir(), `p5_${Date.now()}_${process.pid}.db`);
-copyDbForTest(REAL_DB, TMP_DB);
-const sqlite = new Database(TMP_DB);
-sqlite.pragma('foreign_keys = ON');
-
-afterAll(() => { sqlite.close(); if (existsSync(TMP_DB)) unlinkSync(TMP_DB); });
+import { PHASE5_TEMPLATE_SEED } from '../scripts/migrate-phase5-data';
 
 describe('migrate-phase5', () => {
   it('creates both tables and seeds the template idempotently', () => {
+    // Схема с нуля (:memory:), а не копия живой ksamata_funnels.db: этот
+    // тест проверяет сид (PHASE5_TEMPLATE_SEED), а копия живой базы делает
+    // seedTagTemplates() no-op (гейт по schema_migrations уже стоит на живом
+    // файле), так что тест молча проверял бы унаследованные данные, а не
+    // код. Именно так он и упал при задаче 9, когда задача 7 законно убрала
+    // маркер типа воронки из живого tag_templates.
+    const sqlite = new Database(':memory:');
+    sqlite.pragma('foreign_keys = ON');
+
     runMigratePhase5(sqlite);
     runMigratePhase5(sqlite); // idempotent — second run must not throw or double-seed
 
@@ -24,19 +22,22 @@ describe('migrate-phase5', () => {
     ).all() as { name: string }[];
     expect(tables.map((t) => t.name).sort()).toEqual(['funnel_tag_overrides', 'tag_templates']);
 
-    const reg = sqlite.prepare(
-      `SELECT name FROM tag_templates WHERE scenario='reg' ORDER BY position`
-    ).all() as { name: string }[];
-    expect(reg.map((r) => r.name)).toEqual(['АВ Автоворонка', 'АВ Этап: Регистрация']);
-
-    const time15 = sqlite.prepare(
-      `SELECT name FROM tag_templates WHERE scenario='time_15' ORDER BY position`
-    ).all() as { name: string }[];
-    expect(time15.map((r) => r.name)).toEqual(['автоворонки', 'АВ Автоворонка', 'АВ Этап: Оплата', 'АВ Время: 15']);
+    for (const scenario of ['reg', 'time_15', 'time_19', 'messenger'] as const) {
+      const rows = sqlite.prepare(
+        `SELECT name FROM tag_templates WHERE scenario=? ORDER BY position`
+      ).all(scenario) as { name: string }[];
+      const expected = PHASE5_TEMPLATE_SEED
+        .filter((r) => r.scenario === scenario)
+        .sort((a, b) => a.position - b.position)
+        .map((r) => r.name);
+      expect(rows.map((r) => r.name)).toEqual(expected);
+    }
 
     const count = sqlite.prepare(`SELECT COUNT(*) AS c FROM tag_templates`).get() as { c: number };
-    // Легаси-тег `автоворонки` сидится ТОЛЬКО на оплатах (решение владельца
-    // 2026-07-28), поэтому reg и messenger короче на один.
-    expect(count.c).toBe(2 + 4 + 4 + 2); // reg + time_15 + time_19 + messenger, seeded once
+    // Второй прогон не должен удвоить сид — сверяем с длиной константы, а не
+    // с магическим числом, чтобы правка сида не требовала правки этого счёта.
+    expect(count.c).toBe(PHASE5_TEMPLATE_SEED.length);
+
+    sqlite.close();
   });
 });

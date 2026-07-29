@@ -66,8 +66,21 @@ describe('GET /api/tag-templates', () => {
     const res = await GET();
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.reg).toContain('АВ Автоворонка');
-    expect(body.messenger).toContain('АВ Этап: Мессенджер');
+
+    // Поведенческая проверка: GET группирует ровно то, что реально лежит в
+    // tag_templates этой фикстуры, по сценарию и в порядке position — а не
+    // конкретные строки-маркеры. Раньше здесь стояло `toContain('АВ
+    // Автоворонка')`: верно только пока живая ksamata_funnels.db (её копирует
+    // общий beforeEach) несла маркер в шаблоне. Задача 7 законно убрала его
+    // оттуда (пятая ось, funnel_types), и проверка стала утверждением о
+    // данных, а не о коде GET — упала бы при каждой следующей легитимной
+    // правке содержимого шаблона.
+    for (const scenario of ['reg', 'time_15', 'time_19', 'messenger'] as const) {
+      const rows = (sqlite
+        .prepare(`SELECT name FROM tag_templates WHERE scenario = ? ORDER BY position`)
+        .all(scenario) as { name: string }[]).map((r) => r.name);
+      expect(body[scenario]).toEqual(rows);
+    }
   });
 });
 

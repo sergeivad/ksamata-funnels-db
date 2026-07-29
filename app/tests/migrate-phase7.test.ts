@@ -45,14 +45,40 @@ describe('Phase-7: справочник типов воронки', () => {
     expect(cols).toContain('funnel_type_id');
   });
 
-  it('бэкфиллит всем воронкам «АВ Автоворонка»', () => {
-    const row = sqlite.prepare(`
-      SELECT COUNT(*) AS total,
-             SUM(CASE WHEN t.name = ? THEN 1 ELSE 0 END) AS auto
-        FROM funnels f LEFT JOIN funnel_types t ON t.id = f.funnel_type_id
-    `).get(DEFAULT_FUNNEL_TYPE) as { total: number; auto: number };
-    expect(row.total).toBeGreaterThan(0);
-    expect(row.auto).toBe(row.total);
+  it('бэкфиллит только воронки без типа, не трогая уже проставленный', () => {
+    // НЕ утверждаем "всем воронкам стоит АВ Автоворонка" — после того как
+    // задача 7 применила пятую ось к живой базе (60/11/1 по трём маркерам),
+    // это утверждение стало вопросом ДАННЫХ, а не поведения кода, и ломается
+    // при каждой легитимной правке типов. Настоящее правило бэкфилла —
+    // `WHERE funnel_type_id IS NULL` в migrate-phase7.ts — проверяем прямой
+    // мутацией входа, не полагаясь на то, сколько воронок сейчас типизировано
+    // в живой ksamata_funnels.db. Транзакция откатывается в конце, чтобы не
+    // задеть соседние тесты этого файла.
+    sqlite.exec('BEGIN');
+    try {
+      const ids = (sqlite.prepare('SELECT id FROM funnels ORDER BY id LIMIT 2').all() as { id: number }[])
+        .map((r) => r.id);
+      expect(ids.length).toBe(2);
+      const [resetId, keepId] = ids;
+      const quizTypeId = (sqlite.prepare('SELECT id FROM funnel_types WHERE name = ?').get('АВ Квиз') as { id: number }).id;
+
+      sqlite.prepare('UPDATE funnels SET funnel_type_id = NULL WHERE id = ?').run(resetId);
+      sqlite.prepare('UPDATE funnels SET funnel_type_id = ? WHERE id = ?').run(quizTypeId, keepId);
+
+      runMigratePhase7(sqlite);
+
+      const rows = sqlite.prepare(`
+        SELECT f.id AS id, t.name AS name FROM funnels f
+        LEFT JOIN funnel_types t ON t.id = f.funnel_type_id
+        WHERE f.id IN (?, ?)
+      `).all(resetId, keepId) as { id: number; name: string | null }[];
+      const byId = new Map(rows.map((r) => [r.id, r.name]));
+
+      expect(byId.get(resetId)).toBe(DEFAULT_FUNNEL_TYPE); // NULL → бэкфилл дефолтом
+      expect(byId.get(keepId)).toBe('АВ Квиз'); // уже стоял тип — миграция его не трогает
+    } finally {
+      sqlite.exec('ROLLBACK');
+    }
   });
 
   it('идемпотентна: повторный прогон ничего не ломает и не двоит', () => {
@@ -61,24 +87,16 @@ describe('Phase-7: справочник типов воронки', () => {
     expect(n).toBe(SEED_FUNNEL_TYPES.length);
   });
 
-  it('не трогает funnel_tags — маркер там уже стоит из шаблона', () => {
-    // Косвенная проверка того же инварианта: маркер «АВ Автоворонка» уже
-    // стоит у каждой воронки — это заслуга шаблона (computeTagSet), а не
-    // фазы 7. Сама по себе эта проверка не ловит регрессию (см. комментарий
-    // в beforeAll) — решающая проверка ниже, на сыром COUNT(*).
-    const n = (sqlite.prepare(`
-      SELECT COUNT(DISTINCT ft.funnel_id) AS n FROM funnel_tags ft
-      JOIN tags t ON t.id = ft.tag_id WHERE t.name = ?
-    `).get(DEFAULT_FUNNEL_TYPE) as { n: number }).n;
-    const total = (sqlite.prepare('SELECT COUNT(*) AS n FROM funnels').get() as { n: number }).n;
-    expect(n).toBe(total);
-  });
-
   it('не пишет и не удаляет ни одной строки funnel_tags', () => {
-    // Единственная проверка, которая реально ловит регрессию: если бы
-    // миграция ошибочно ДОБАВИЛА (или удалила) строку в funnel_tags, сырой
-    // COUNT(*) до/после разошёлся бы — в отличие от COUNT(DISTINCT funnel_id)
-    // в тесте выше, который не меняется при дублирующей записи тем же воронкам.
+    // Фаза 7 не должна трогать funnel_tags вовсе — маркер материализуется
+    // движком тегов (computeTagSet) из funnel_type_id, а не самой миграцией.
+    // Раньше здесь рядом стоял косвенный тест «маркер уже стоит у каждой
+    // воронки» (COUNT(DISTINCT funnel_id) по тегу «АВ Автоворонка» == общему
+    // числу воронок) — он был снят: после того как задача 7 проставила
+    // реальные типы 12 воронкам, инвариант «у каждой воронки именно этот
+    // тег» стал попросту неверен по данным, а как проверка регрессии он был
+    // избыточен и слабее сырого COUNT(*) ниже — дублирующая запись тем же
+    // воронкам не изменила бы DISTINCT-счётчик, но изменила бы этот.
     const funnelTagsCountAfter = (sqlite.prepare('SELECT COUNT(*) AS n FROM funnel_tags').get() as { n: number }).n;
     expect(funnelTagsCountAfter).toBe(funnelTagsCountBefore);
   });

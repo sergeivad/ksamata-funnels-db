@@ -1,44 +1,66 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { copyFileSync, unlinkSync, existsSync } from 'fs';
+import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import * as schema from '../src/db/schema';
-import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { runMigratePhase7 } from '../scripts/migrate-phase7';
+import { PHASE5_DDL, PHASE5_TEMPLATE_SEED, seedTagTemplates } from '../scripts/migrate-phase5-data';
 import { listTemplate, replaceTemplateScenario } from '../src/lib/tag-templates';
-import { copyDbForTest } from './helpers/db';
 
-const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
-const TMP_DB = join(tmpdir(), `tpl_${Date.now()}_${process.pid}.db`);
-copyDbForTest(REAL_DB, TMP_DB);
-const sqlite = new Database(TMP_DB);
+/**
+ * Фикстура строит схему С НУЛЯ, а не копией живой ksamata_funnels.db.
+ *
+ * Этот файл проверяет сид шаблона (PHASE5_TEMPLATE_SEED) и поведение
+ * listTemplate/replaceTemplateScenario — ни то ни другое не должно зависеть
+ * от того, что сейчас лежит в живой базе. Копия живой БД тут в принципе не
+ * годится: `seedTagTemplates` гейтится маркером в `schema_migrations`,
+ * который в живой базе уже стоит, так что повторный вызов — no-op, и тест
+ * молча проверял бы то, что осталось в файле после последней ручной правки
+ * данных, а не код сида. Именно так эти два теста упали при задаче 9: живую
+ * базу задача 7 законно поправила (маркер убран из шаблона, часть воронок
+ * перетипирована), и тесты, утверждавшие конкретные строки шаблона,
+ * рассинхронизировались — не с кодом, а с данными.
+ *
+ * `runMigratePhase7` требует существующую таблицу `funnels` (ALTER TABLE
+ * ADD COLUMN) — этому файлу сами воронки не нужны, поэтому таблица здесь
+ * пустой одноколоночный стаб, а не полная схема фаз 2–4.
+ */
+const dir = mkdtempSync(join(tmpdir(), 'tpl_'));
+const dbPath = join(dir, 'test.db');
+const sqlite = new Database(dbPath);
 sqlite.pragma('foreign_keys = ON');
-runMigratePhase5(sqlite);
-// Phase-7 (справочник funnel_types) — replaceTemplateScenario теперь читает
-// эту таблицу, чтобы отклонить маркер типа воронки; в проде она всегда есть
-// к моменту, когда обслуживаются запросы (см. docker-entrypoint.sh), поэтому
-// фикстура должна воспроизводить это, а не гадать по отсутствующей таблице.
+sqlite.exec(PHASE5_DDL);
+seedTagTemplates(sqlite);
+sqlite.exec('CREATE TABLE funnels (id INTEGER PRIMARY KEY)');
 runMigratePhase7(sqlite);
 const db = drizzle(sqlite, { schema });
 
-afterAll(() => { sqlite.close(); if (existsSync(TMP_DB)) unlinkSync(TMP_DB); });
+afterAll(() => { sqlite.close(); rmSync(dir, { recursive: true, force: true }); });
+
+/** Ожидаемый список для сценария — из константы сида, а не хардкод строкой. */
+function seedNamesFor(scenario: string): string[] {
+  return PHASE5_TEMPLATE_SEED
+    .filter((r) => r.scenario === scenario)
+    .sort((a, b) => a.position - b.position)
+    .map((r) => r.name);
+}
 
 describe('tag-templates', () => {
   it('lists the seeded template grouped by scenario in order', () => {
     const t = listTemplate(db);
-    expect(t.reg).toEqual(['АВ Автоворонка', 'АВ Этап: Регистрация']);
-    expect(t.messenger).toEqual(['АВ Автоворонка', 'АВ Этап: Мессенджер']);
+    expect(t.reg).toEqual(seedNamesFor('reg'));
+    expect(t.time_15).toEqual(seedNamesFor('time_15'));
+    expect(t.time_19).toEqual(seedNamesFor('time_19'));
+    expect(t.messenger).toEqual(seedNamesFor('messenger'));
   });
 
   it('replaceTemplateScenario swaps the whole ordered list for one scenario', () => {
-    // 'АВ Автоворонка' здесь больше не проходит — это маркер типа воронки
-    // (funnel_types), а не обычный тег шаблона (см. Task 6).
-    replaceTemplateScenario(db, 'reg', ['АВ Этап: Регистрация', 'новый-дефолт']);
+    replaceTemplateScenario(db, 'reg', ['новый-тег-1', 'новый-тег-2']);
     const t = listTemplate(db);
-    expect(t.reg).toEqual(['АВ Этап: Регистрация', 'новый-дефолт']);
-    expect(t.messenger).toEqual(['АВ Автоворонка', 'АВ Этап: Мессенджер']); // untouched
+    expect(t.reg).toEqual(['новый-тег-1', 'новый-тег-2']);
+    expect(t.messenger).toEqual(seedNamesFor('messenger')); // untouched
   });
 
   it('replace with empty list clears the scenario', () => {
