@@ -335,3 +335,69 @@ def test_class_7_registry_filter_does_not_touch_classes_5_and_6():
     ])
     found = find_unresolved(groups, INDEX, registry_keys={OTHER_KEY})
     assert sorted(f.cls for f in found) == [5, 6]
+
+
+# ─── класс 5: «нет АВ Этап» отделяет воронки от запусков и клуба ──────────────
+#
+# Раньше ветка `no_stage` давала ОДНУ находку с ключом `— / — / — / — / —` на
+# всё, у чего нет АВ-этапа: разбор `deal_export_2026-07-18` (99 928 наблюдений)
+# показал внутри 11 172 наблюдения запусков и клуба (`запуск07_26`, `клуб2.0`,
+# `Баллы`), 1618 наблюдений воронок на легаси-разметке (12 наборов) и 665
+# неясного (в основном `Яндекс Ретаргет`). Владелец 2026-07-30: запуски и клуб
+# в этом отчёте не нужны, нужны автоворонки, прямые, квизы и ЖИВО.
+#
+# Правило: находка есть только там, где этап размечен ЛЕГАСИ-тегом, а АВ-этапа
+# нет. Нет ни того, ни другого — это вообще не шаг воронки.
+LEGACY_PERELIV = 'ДБО|Регистрация|перелив'
+LEGACY_SITE = 'Регистрация|Сайт'
+LAUNCH = 'Тарифы|запуск07_26|психосоматика|статистика'
+
+
+def test_class_5_ignores_a_set_without_any_stage_marker():
+    """Запуск: ни АВ-этапа, ни легаси-этапа — не шаг воронки."""
+    groups = group_observations([obs(LAUNCH, 2)])
+    assert find_unresolved(groups, INDEX) == []
+
+
+def test_class_5_reports_a_step_marked_only_with_a_legacy_stage():
+    groups = group_observations([obs(LEGACY_PERELIV, 2)])
+    found = find_unresolved(groups, INDEX)
+    assert [f.cls for f in found] == [5]
+    assert 'Регистрация' in found[0].subject
+    # Ключ у такой группы пустой целиком, поэтому адресует находку сам набор.
+    assert 'перелив' in found[0].detail
+
+
+def test_class_5_reports_each_legacy_set_separately():
+    """Двенадцать легаси-наборов — двенадцать адресных находок, не одна.
+
+    Свёртка `_latest_by_stage_family` собирала их все в один слот
+    (пустой ключ × семейство 'none'), и отчёт показывал одну бесполезную
+    строку на 20 150 заказов.
+    """
+    groups = group_observations([obs(LEGACY_PERELIV, 2, '1'), obs(LEGACY_SITE, 2, '2')])
+    found = find_unresolved(groups, INDEX)
+    assert [f.cls for f in found] == [5, 5]
+    assert {f.detail for f in found} == {
+        'Легаси-набор: ДБО|Регистрация|перелив',
+        'Легаси-набор: Регистрация|Сайт',
+    }
+
+
+def test_class_5_counts_a_legacy_payment_stage_too():
+    """`Оплата` в выгрузках пока не встречается (замер 2026-07-30: 0 против
+    1618 у `Регистрация`), но правило — про словарь легаси-этапов целиком."""
+    groups = group_observations([obs('ДБО|Оплата|перелив', 2)])
+    found = find_unresolved(groups, INDEX)
+    assert [f.cls for f in found] == [5]
+    assert 'Оплата' in found[0].subject
+
+
+def test_class_5_ignores_av_axes_without_any_stage():
+    """Полная четвёрка, но этапа нет ни АВ, ни легаси — тоже не шаг воронки.
+
+    Такая группа по-прежнему видна классу 2 (неизвестные базе оси), см.
+    test_class_2_reports_unknown_axis_even_when_tag_type_is_undecidable.
+    """
+    groups = group_observations([obs(AV + '|АВ Время: 20', 2)])
+    assert find_unresolved(groups, INDEX) == []

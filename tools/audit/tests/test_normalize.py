@@ -15,6 +15,7 @@ from normalize import (
     is_complete_quad,
     is_external_tag,
     key_label,
+    legacy_stage_of,
     normalize_tag,
     parse_tagset,
     quad,
@@ -257,3 +258,40 @@ def test_av_value_is_deterministic_when_axis_has_two_values():
         results.add(proc.stdout.strip())
 
     assert results == {'ДБО'}
+
+
+def test_legacy_stage_of_reads_the_legacy_stage_vocabulary():
+    assert legacy_stage_of(parse_tagset('ДБО|Регистрация|перелив')) == 'Регистрация'
+    assert legacy_stage_of(parse_tagset('ДБО|Оплата|перелив')) == 'Оплата'
+    assert legacy_stage_of(parse_tagset('Тарифы|запуск07_26|статистика')) is None
+
+
+def test_legacy_stage_of_is_deterministic_when_a_set_carries_both_stages():
+    """Тот же контракт и тот же источник недетерминизма, что у av_value
+    (см. test_av_value_is_deterministic_when_axis_has_two_values): пересечение
+    с frozenset и `next(iter(...))` дают результат, зависящий от порядка обхода
+    множества, а он рандомизирован МЕЖДУ процессами (PYTHONHASHSEED).
+
+    Набор с двумя легаси-этапами сразу в выгрузках не встречался (на
+    2026-07-30 `Оплата` не встречалась вовсе), поэтому тест защищает КОНТРАКТ,
+    а не наблюдённые данные: пока функция решает, какой этап показать в
+    находке класса 5, ответ не должен зависеть от запуска.
+    """
+    both = parse_tagset('ДБО|Регистрация|Оплата|перелив')
+    assert legacy_stage_of(both) == 'Оплата'  # лексикографически наименьший
+
+    audit_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    script = (
+        "from normalize import parse_tagset, legacy_stage_of\n"
+        "print(legacy_stage_of(parse_tagset('ДБО|Регистрация|Оплата|перелив')))\n"
+    )
+    results = set()
+    for seed in range(12):
+        env = dict(os.environ, PYTHONHASHSEED=str(seed))
+        proc = subprocess.run(
+            [sys.executable, '-c', script],
+            cwd=audit_dir, env=env, capture_output=True, text=True, check=True,
+        )
+        results.add(proc.stdout.strip())
+
+    assert results == {'Оплата'}
