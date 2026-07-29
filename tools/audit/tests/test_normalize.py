@@ -12,11 +12,18 @@ from normalize import (
     classify,
     fold,
     is_complete_key,
+    is_complete_quad,
     is_external_tag,
     key_label,
     normalize_tag,
     parse_tagset,
+    quad,
 )
+
+AXES_TAGS = {
+    'АВ Продукт: ЖИВО', 'АВ Подрядчик: НИМБ',
+    'АВ Канал: Яндекс', 'АВ Направление: РСЯ',
+}
 
 
 def test_normalize_trims_and_collapses_spaces():
@@ -52,22 +59,81 @@ def test_av_value_extracts_axis():
     assert av_value(tags, 'АВ Подрядчик') is None
 
 
-def test_av_key_returns_four_axes_in_order():
+def test_av_key_returns_four_axes_plus_marker_in_order():
+    """Пятый элемент — маркер типа воронки, добавлен 2026-07-28.
+
+    Ключ склейки — теперь пятёрка: четыре оси в порядке AXES плюс маркер.
+    Только когда маркер тоже присутствует, ключ считается полным целиком —
+    это и отличает «воронку» (полный ключ) от «связки» (см. quad ниже).
+    """
     tags = parse_tagset(
         'АВ Продукт: ДБО|АВ Подрядчик: NR|АВ Канал: ВК|АВ Направление: In Stream'
+        '|АВ Автоворонка'
     )
-    assert av_key(tags) == ('ДБО', 'NR', 'ВК', 'In Stream')
+    assert av_key(tags) == ('ДБО', 'NR', 'ВК', 'In Stream', 'АВ Автоворонка')
     assert is_complete_key(av_key(tags)) is True
 
 
-def test_av_key_marks_incomplete():
+def test_av_key_marks_quad_incomplete_when_an_axis_is_missing():
+    """Неполнота ЧЕТВЁРКИ (не хватает оси) — это отдельный вопрос от маркера.
+
+    quad(key) режет только первые четыре элемента: класс 10 и отставка
+    спрашивают именно про связку, а не про воронку целиком.
+    """
     tags = parse_tagset('АВ Продукт: ДБО|АВ Канал: ВК')
     key = av_key(tags)
-    assert key == ('ДБО', None, 'ВК', None)
-    assert is_complete_key(key) is False
+    assert quad(key) == ('ДБО', None, 'ВК', None)
+    assert not is_complete_quad(key)
+    assert not is_complete_key(key)  # тем более неполон и полный ключ
+
+
+def test_av_key_is_five_parts_with_marker():
+    key = av_key(AXES_TAGS | {'АВ Квиз'})
+    assert key == ('ЖИВО', 'НИМБ', 'Яндекс', 'РСЯ', 'АВ Квиз')
+    assert is_complete_key(key)
+
+
+def test_marker_missing_leaves_key_incomplete_but_quad_whole():
+    """Полная четвёрка осей + отсутствующий маркер: связка цела, воронка — нет.
+
+    Ключевое отличие от старой (четырёхэлементной) модели: раньше такой
+    набор тегов считался ПОЛНЫМ ключом. Теперь — нет, потому что без маркера
+    нельзя сказать, к какому ИМЕННО типу воронки относится наблюдение
+    (обычная автоворонка? квиз? прямые продажи?). Но связка (четвёрка)
+    для целей отставки (retired.RETIRED_KEYS) остаётся целой — quad() это
+    и обеспечивает.
+    """
+    key = av_key(AXES_TAGS)
+    assert key[4] is None
+    assert not is_complete_key(key)
+    assert is_complete_quad(key)
+    assert quad(key) == ('ЖИВО', 'НИМБ', 'Яндекс', 'РСЯ')
+
+
+def test_same_quad_different_marker_are_different_keys():
+    """f33 (автоворонка) и f43 (квиз) на одной четвёрке — РАЗНЫЕ воронки.
+
+    Ровно ради этого пятый элемент и добавлен: без него они были бы
+    неразличимы как один и тот же АВ-ключ (класс 8 «коллизия»), хотя это
+    два разных предложения на разный тип.
+    """
+    a = av_key(AXES_TAGS | {'АВ Автоворонка'})
+    b = av_key(AXES_TAGS | {'АВ Квиз'})
+    assert a != b
+    assert quad(a) == quad(b)
+
+
+def test_key_label_prints_five_parts():
+    assert key_label(av_key(AXES_TAGS | {'АВ Квиз'})) == 'ЖИВО / НИМБ / Яндекс / РСЯ / АВ Квиз'
 
 
 def test_key_label_is_readable_and_marks_gaps():
+    """key_label не заботится о длине ключа — она просто печатает то, что дали.
+
+    Проверяется отдельно от av_key на «сыром» кортеже: функция общего
+    назначения, используется и для полного пятиэлементного ключа (см. тест
+    выше), и — исторически — для голой четвёрки.
+    """
     assert key_label(('ДБО', None, 'ВК', 'РСЯ')) == 'ДБО / — / ВК / РСЯ'
 
 

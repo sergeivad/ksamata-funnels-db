@@ -3,7 +3,7 @@ import { db } from '@/db/client';
 import { funnelUpdateSchema, parseRouteId } from '@/lib/validation';
 import { getFunnel, updateFunnel, deleteFunnel } from '@/lib/funnels';
 import { internalError } from '@/lib/http';
-import { ConflictError } from '@/lib/errors';
+import { ConflictError, ValidationError } from '@/lib/errors';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -71,6 +71,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         { error: `Код ${parsed.data.frontCode} уже занят другой воронкой` },
         { status: 409 }
       );
+    }
+    // Неизвестный тип воронки (resolveFunnelTypeId) — вина запроса, не сервера.
+    if (err instanceof ValidationError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
     }
     return internalError('PATCH /api/funnels/[id]', err);
   }

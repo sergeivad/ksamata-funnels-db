@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { isAxisTag } from '@/lib/ab-tags';
 
@@ -16,6 +16,20 @@ export default function TagTemplateEditor({ label, scenario, initial }: Props) {
   const [input, setInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Имена справочника funnel_types (маркер пятой оси) — набор расширяемый и
+  // живёт в БД, поэтому его нельзя зашить статичным списком, как isAxisTag.
+  const [markerNames, setMarkerNames] = useState<string[]>([]);
+
+  useEffect(() => {
+    // Запрет здесь — только удобство для пользователя: реальный отказ
+    // выдаёт сервер (replaceTemplateScenario), поэтому неудачный запрос за
+    // списком типов не должен ломать редактор — просто не подсветит маркер
+    // до сохранения.
+    fetch('/api/refs/funnel_types')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: { name: string }[]) => setMarkerNames(rows.map((r) => r.name)))
+      .catch(() => setMarkerNames([]));
+  }, []);
 
   const dirty = JSON.stringify(names) !== JSON.stringify(saved);
 
@@ -23,6 +37,10 @@ export default function TagTemplateEditor({ label, scenario, initial }: Props) {
     const n = input.trim();
     if (!n || names.includes(n)) { setInput(''); return; }
     if (isAxisTag(n)) return; // axis tags are auto-managed — never manually added
+    if (markerNames.includes(n)) { // маркер типа — пятая ось, живёт в типе воронки
+      setError(`«${n}» — маркер типа воронки, он выводится из типа и в шаблоне не хранится`);
+      return;
+    }
     setNames([...names, n]);
     setInput('');
   }

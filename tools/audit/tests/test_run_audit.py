@@ -4,10 +4,13 @@ from api_source import Offer
 from db_source import Expectation, FunnelRow
 from export_source import Observation
 from findings import CLASS_TITLES, group_observations
-from normalize import parse_tagset
+from normalize import AUTOFUNNEL_TAG, parse_tagset
 from run_audit import collect_findings
 
-KEY = ('ДБО', 'NR', 'ВК', 'In Stream')
+# Без маркера: этот сценарий нарочно воспроизводит предложение без типа
+# воронки (класс 12 должен сработать), поэтому KEY несёт явный None пятым —
+# он должен совпасть с av_key(...), у которого маркер отсутствует.
+KEY = ('ДБО', 'NR', 'ВК', 'In Stream', None)
 AV = 'АВ Продукт: ДБО|АВ Подрядчик: NR|АВ Канал: ВК|АВ Направление: In Stream'
 
 
@@ -46,14 +49,18 @@ def test_collect_findings_runs_every_class_and_tags_them_correctly():
 
 
 def test_collect_findings_returns_empty_classes_when_everything_matches():
-    tags = AV + '|АВ Этап: Регистрация|АВ Автоворонка'
+    tags = AV + '|АВ Этап: Регистрация|' + AUTOFUNNEL_TAG
     expectations = [
         Expectation(funnel_id=11, num=11, front_code='f11', product_name='X',
                     status='active', tag_type='reg', tags=parse_tagset(tags))
     ]
     funnels = [FunnelRow(funnel_id=11, num=11, front_code='f11',
                          product_name='X', status='active')]
-    index = {KEY: {11}}
+    # Здесь, в отличие от предыдущего теста, маркер ЕСТЬ everywhere (db,
+    # выгрузка, реестр) — значит и индекс должен быть по ПОЛНОМУ ключу,
+    # иначе class 7/9/13/16 не увидят совпадения и вернут лишние находки.
+    key_typed = KEY[:4] + (AUTOFUNNEL_TAG,)
+    index = {key_typed: {11}}
     observations = [
         Observation(deal_id='1', tags=parse_tagset(tags),
                     file_name='deal_export_2026-05-02_00-00-00.csv',

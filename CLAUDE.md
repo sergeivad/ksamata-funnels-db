@@ -49,12 +49,16 @@ which is `app/`).
 
 Drizzle SQLite. Core + lookup + content + tags tables:
 
-- **Lookups:** `sources`, `products`, `contractors`, `tags` (global tag names).
+- **Lookups:** `sources`, `products`, `contractors`, `funnel_types` (funnel-type
+  marker, `{id, name}` — `name` holds the GetCourse marker text verbatim, e.g.
+  `АВ Автоворонка`/`АВ Прямые`/`АВ Квиз`/`АВ Квиз-Лайт`), `tags` (global tag names).
 - **`funnels`** — one row per funnel: identity FKs (source/product/contractor),
-  `variant`, `productName`, landing/dashboard URLs, raw tag strings
-  (`tag19Raw`/`tag15Raw`/`regTagsRaw`), `roomIdsJson`, `bothelpCondition`,
-  `status` (`active`/`draft`/`archive`), `frontCode`, `comment`,
-  `timeLabelA`/`timeLabelB`, and room toggles `roomsEnabled` / `roomsReplayEnabled`.
+  nullable `funnelTypeId` FK into `funnel_types` (`NULL` = type not chosen, no
+  marker emitted at all — same rule as an empty axis), `variant`, `productName`,
+  landing/dashboard URLs, raw tag strings (`tag19Raw`/`tag15Raw`/`regTagsRaw`),
+  `roomIdsJson`, `bothelpCondition`, `status` (`active`/`draft`/`archive`),
+  `frontCode`, `comment`, `timeLabelA`/`timeLabelB`, and room toggles
+  `roomsEnabled` / `roomsReplayEnabled`.
   **`num` and `frontCode` are two unrelated numberings** — `num` is the internal
   key (unique, never shown to a human), `frontCode` is the F code the funnel is
   called by everywhere else and it comes from LeakEngine, not from here. They
@@ -109,6 +113,13 @@ Tags are resolved, not stored once. Understand the layering before editing:
 Raw tag strings on `funnels` (`*Raw`) are import/export artifacts, not the
 source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 (tsx) or the API, never with raw SQL.**
+
+Поверх трёх слоёв лежит **слой идентичности**: четыре осевых тега
+(`АВ Продукт:` и три остальных) и **маркер типа воронки** — пятая ось,
+выводимая из `funnels.funnel_type_id` (справочник `funnel_types`,
+`app/src/lib/funnel-type.ts`). Теги идентичности нельзя ни удалить
+оверрайдом, ни положить в шаблон: `computeTagSet` гасит их в обоих слоях.
+Значения типа расширяемы через `/refs` — набор маркеров задаёт GetCourse.
 
 ## Domain helpers (`app/src/lib/`)
 
@@ -382,9 +393,15 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
   INDEX` would keep the container from starting at all. A duplicate is cleared,
   not renumbered — an invented code collides with a real LeakEngine one
   tomorrow, which is exactly how `f64`–`f72` happened.
+- **Phase 8** — `funnel_types` (seeded with the four GetCourse markers) +
+  `funnels.funnel_type_id`, plus a backfill of `АВ Автоворонка` onto every
+  existing funnel. The backfill is not a decision about type — it preserves
+  what the database already asserted (the marker was already hardcoded into
+  every `tag_templates` scenario), so `funnel_tags` does not change by a
+  single row; only where the marker comes from changes.
 
 **Docker runs, in order** (`app/docker-entrypoint.sh`): Phase 2 → 3 (+data) →
-4 → 5 → legacy-tag-override backfill → 6 → 7.
+4 → 5 → legacy-tag-override backfill → 6 → 7 → 8.
 
 **Running a migration by hand** resolves its DB through `scripts/cli-db-path.ts`:
 the default is the repo-root DB **relative to the script**, not to `cwd`, and a

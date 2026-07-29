@@ -5,6 +5,7 @@ import { tagTemplatePutSchema } from '@/lib/validation';
 import { replaceTemplateScenario } from '@/lib/tag-templates';
 import { resyncAllFunnels } from '@/lib/funnels';
 import { internalError } from '@/lib/http';
+import { ValidationError } from '@/lib/errors';
 
 type Params = { params: Promise<{ scenario: string }> };
 
@@ -40,6 +41,11 @@ export async function PUT(req: NextRequest, { params }: Params) {
     });
     return NextResponse.json({ ok: true, names: parsed.data.names });
   } catch (err: unknown) {
+    // Маркер типа воронки в именах — вина запроса (replaceTemplateScenario),
+    // а не сервера.
+    if (err instanceof ValidationError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
     return internalError('PUT /api/tag-templates/[scenario]', err);
   }
 }

@@ -8,6 +8,7 @@ import {
   VALID_KINDS,
   renameRef,
   deleteRef,
+  FUNNEL_TYPE_AXIS_CONFLICT_MESSAGE,
 } from '@/lib/refs';
 import { REF_MAX, parseRouteId } from '@/lib/validation';
 import { internalError } from '@/lib/http';
@@ -79,6 +80,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (!result.ok) {
       if (result.error === 'not_found') {
         return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      }
+      if (result.error === 'axis_conflict') {
+        return NextResponse.json({ error: FUNNEL_TYPE_AXIS_CONFLICT_MESSAGE }, { status: 400 });
       }
       // duplicate
       return NextResponse.json(

@@ -80,6 +80,10 @@ export const funnelCreateSchema = z.object({
   contractor: z.string().trim().min(1).max(REF_MAX),
   channel: z.string().trim().min(1).max(REF_MAX),
   direction: z.string().trim().min(1).max(REF_MAX),
+  // Пятая ось. Пустая строка = «тип не выбран» (маркер не выпускается).
+  // Значение проверяется по справочнику в funnels.ts, а не здесь: набор
+  // расширяемый и Zod о нём знать не может.
+  funnelType: z.string().trim().max(REF_MAX).optional(),
   comment: z.string().max(2000).optional(),
   timeLabelA: z.string().max(20).optional(),
   timeLabelB: z.string().max(20).optional(),
@@ -111,6 +115,11 @@ const tagNameSchema = z.string().trim().min(1).max(REF_MAX);
 // materialized by the auto axis layer — never typed in manually, or they'd
 // be parsed back out as axis values (see getAxesForFunnel / tagNamesToAxes)
 // and corrupt the funnel's axes. Used for every path that *adds* a tag name.
+//
+// Пятую ось (маркер типа воронки, funnel_types) этот схема НЕ проверяет:
+// набор типов расширяемый и лежит в БД, а не в статичном списке префиксов —
+// у чистой Zod-функции доступа к БД нет. Тот запрет живёт в
+// replaceTemplateScenario (tag-templates.ts), рядом с БД.
 const customTagNameSchema = z
   .string()
   .trim()

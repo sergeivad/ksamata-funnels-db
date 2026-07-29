@@ -8,7 +8,7 @@ interface RefRow {
 }
 
 interface RefSelectProps {
-  kind: 'products' | 'contractors' | 'channels' | 'directions';
+  kind: 'products' | 'contractors' | 'channels' | 'directions' | 'funnel_types';
   label: string;
   value: string;
   onChange: (val: string) => void;
@@ -33,6 +33,13 @@ async function addRef(kind: string, name: string): Promise<RefRow | null> {
 }
 
 export default function RefSelect({ kind, label, value, onChange, required, error }: RefSelectProps) {
+  // Барьер пункта 1 финальной рецензии: значения funnel_types заводятся
+  // только осознанно через /refs (дизайн), а не мимоходом с карточки воронки.
+  // Бэкенд (isReservedFunnelTypeName в refs.ts) уже отвергает имя, похожее на
+  // осевой тег, но убирать саму возможность добавить тип отсюда — это то,
+  // что превращает границу дизайна из пожелания в код, а не только в 400 в ответ.
+  const canAddNew = kind !== 'funnel_types';
+
   const [refs, setRefs] = useState<RefRow[]>([]);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
@@ -133,11 +140,11 @@ export default function RefSelect({ kind, label, value, onChange, required, erro
               {r.name}
             </option>
           ))}
-          <option value="__add__">＋ Добавить новое...</option>
+          {canAddNew && <option value="__add__">＋ Добавить новое...</option>}
         </select>
       )}
 
-      {adding && (
+      {canAddNew && adding && (
         <div className="mt-1 flex gap-2">
           <input
             type="text"

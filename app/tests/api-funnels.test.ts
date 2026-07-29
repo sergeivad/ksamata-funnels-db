@@ -27,6 +27,7 @@ import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { runMigratePhase7 } from '../scripts/migrate-phase7';
+import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import { replaceDays, listDays } from '../src/lib/funnel-days';
 import { ConflictError } from '../src/lib/errors';
 import { replaceBlock, getBlock } from '../src/lib/funnel-blocks';
@@ -49,6 +50,7 @@ runMigratePhase5(sqlite);
 // Уникальный индекс на front_code — чтобы тесты видели ту же защиту, что и
 // прод: без него дубль кода ловила бы только предпроверка в funnels.ts.
 runMigratePhase7(sqlite);
+runMigratePhase8(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => {
@@ -359,6 +361,20 @@ describe('duplicateFunnel', () => {
   it('returns null for non-existent funnel', () => {
     const result = duplicateFunnel(testDb, 999999);
     expect(result).toBeNull();
+  });
+
+  it('duplicate carries over the funnel type (пятая ось), включая метку в тегах', () => {
+    // Тип — тот же слой идентичности, что и остальные оси: «faithful copy»
+    // не должна тихо терять маркер (funnels.ts:duplicateFunnel копирует
+    // funnelTypeId наравне с productId/contractorId).
+    const src = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 19902, funnelType: 'АВ Квиз' });
+
+    const dup = duplicateFunnel(testDb, src.id)!;
+    expect(dup.funnelType).toBe('АВ Квиз');
+
+    const dupDetail = getFunnel(testDb, dup.id)!;
+    const names = dupDetail.tagSets.reg.tags.map((t) => t.name);
+    expect(names).toContain('АВ Квиз');
   });
 
   it('deep-copies Phase-3 scalar fields and all child rows', () => {

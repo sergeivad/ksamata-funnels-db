@@ -114,7 +114,11 @@ def load_tag_vocabulary(db_path):
 
 
 def build_av_index(expectations):
-    """АВ-ключ -> множество funnel_id. Неполные ключи отбрасываются."""
+    """АВ-ключ (пятёрка) -> множество funnel_id. Неполные ключи отбрасываются.
+
+    Обе стороны считаются одной функцией av_key: с фазы 8 база держит маркер
+    типа в funnel_tags наравне с осями, поэтому особого случая тут нет.
+    """
     index = defaultdict(set)
     for exp in expectations:
         key = av_key(exp.tags)

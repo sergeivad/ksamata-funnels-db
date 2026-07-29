@@ -10,8 +10,10 @@ import {
   funnels,
   funnelTags,
   productDurations,
+  funnelTypes,
 } from '../db/schema';
-import { AXIS_PREFIXES, type AbAxes } from './ab-tags';
+import { AXIS_PREFIXES, isAxisTag, type AbAxes } from './ab-tags';
+import { FUNNEL_TYPE_KIND } from './funnel-type';
 
 // Explicit whitelist — never interpolate `kind` into SQL
 const TABLE_MAP = {
@@ -21,6 +23,7 @@ const TABLE_MAP = {
   tags,
   channels,
   directions,
+  funnel_types: funnelTypes,
 } as const;
 
 export type RefKind = keyof typeof TABLE_MAP;
@@ -59,15 +62,57 @@ function resolveTable(kind: string) {
   return TABLE_MAP[kind as RefKind];
 }
 
-// Ref kinds whose value is also embedded as an "АВ <Axis>: <value>" tag
-// (see ab-tags.ts). `sources` and `tags` have no axis counterpart — sources
-// is a plain FK with no AV-tag mirror, and `tags` IS the tags table itself.
+// Виды справочников, значение которых дублируется тегом воронки.
+// У четырёх осей тег — «АВ <Ось>: <значение>»; у типа воронки маркер
+// двоеточия не имеет, и тег равен самому значению (см. funnel-type.ts).
+// `sources` и `tags` зеркала не имеют: первый — обычный FK, второй сам
+// и есть таблица тегов.
 const AXIS_KIND_TO_AXIS: Partial<Record<RefKind, keyof AbAxes>> = {
   products: 'product',
   contractors: 'contractor',
   channels: 'channel',
   directions: 'direction',
 };
+
+export function refTagNameFor(kind: RefKind, value: string): string | null {
+  if (kind === FUNNEL_TYPE_KIND) return value;
+  const axis = AXIS_KIND_TO_AXIS[kind];
+  return axis ? `${AXIS_PREFIXES[axis]}${value}` : null;
+}
+
+/**
+ * Барьер финальной рецензии (пункт 1): значение funnel_types не может выглядеть
+ * как осевой тег ("АВ Продукт: …" и т.п.). `refTagNameFor(FUNNEL_TYPE_KIND, value)`
+ * возвращает value ДОСЛОВНО — без двоеточия и обёртки, в отличие от четырёх осей,
+ * — поэтому такое имя материализуется КАК ОСЕВОЙ тег и при ближайшем
+ * `computeTagSet` перепишет чужую ось (`getAxesForFunnel` читает оси из тегов)
+ * у каждой воронки этого типа. Опечатка вида «АВ Продукт: ПОДДЕЛКА», заведённая
+ * через `/refs`, воспроизводимо превращала `ЖИВО / НИМБ / Яндекс / РСЯ` в
+ * `ПОДДЕЛКА / НИМБ / Яндекс / РСЯ`.
+ *
+ * Экспортирована (а не спрятана внутри createRef/renameRef), чтобы её можно
+ * было проверить юнит-тестом отдельно от конкретного механизма отказа.
+ */
+export function isReservedFunnelTypeName(kind: string, name: string): boolean {
+  return kind === FUNNEL_TYPE_KIND && isAxisTag(name);
+}
+
+export const FUNNEL_TYPE_AXIS_CONFLICT_MESSAGE =
+  'Имя типа воронки не может выглядеть как осевой тег ("АВ Продукт: …" и т.п.) — такое имя перепишет чужую ось';
+
+/**
+ * Выбрасывается createRef, когда вызывающий пытается завести значение
+ * funnel_types, совпадающее по форме с осевым тегом. createRef в остальном
+ * не имеет истории отказов (get-or-create не может «не найти» валидное имя),
+ * так что исключение — минимальное по объёму изменение; ловится маршрутом
+ * /api/refs и превращается в 400, а не в общий 500 (см. internalError в http.ts).
+ */
+export class FunnelTypeAxisConflictError extends Error {
+  constructor(name: string) {
+    super(`Значение "${name}" типа воронки выглядит как осевой тег`);
+    this.name = 'FunnelTypeAxisConflictError';
+  }
+}
 
 export type RefRow = { id: number; name: string };
 
@@ -86,6 +131,10 @@ export function listRefs(db: AnyDB, kind: string): RefRow[] {
  * Returns the existing row if found, inserts and returns the new row otherwise.
  */
 export function createRef(db: AnyDB, kind: string, name: string): RefRow {
+  if (isReservedFunnelTypeName(kind, name)) {
+    throw new FunnelTypeAxisConflictError(name);
+  }
+
   const table = resolveTable(kind);
 
   // Try to find existing row
@@ -120,7 +169,7 @@ export function getRefById(db: AnyDB, kind: string, id: number): RefRow | undefi
 }
 
 /** Fetch a single row by exact name, or undefined if it doesn't exist. */
-function getRefByName(db: AnyDB, kind: string, name: string): RefRow | undefined {
+export function getRefByName(db: AnyDB, kind: string, name: string): RefRow | undefined {
   const table = resolveTable(kind);
   return db
     .select({ id: table.id, name: table.name })
@@ -131,14 +180,15 @@ function getRefByName(db: AnyDB, kind: string, name: string): RefRow | undefined
 
 /**
  * Direct FK usage on the `funnels` row itself. Only products/contractors/
- * sources are stored as FK columns — channels/directions/tags have no FK
- * column and are only ever referenced through funnel_tags.
+ * sources/funnel_types are stored as FK columns — channels/directions/tags
+ * have no FK column and are only ever referenced through funnel_tags.
  */
 function directFkFunnelIds(db: AnyDB, kind: RefKind, id: number): number[] {
   const column =
     kind === 'products' ? funnels.productId
     : kind === 'contractors' ? funnels.contractorId
     : kind === 'sources' ? funnels.sourceId
+    : kind === FUNNEL_TYPE_KIND ? funnels.funnelTypeId
     : undefined;
   if (!column) return [];
   return (
@@ -162,15 +212,14 @@ function funnelIdsForTagId(db: AnyDB, tagId: number): number[] {
 }
 
 /**
- * Look up the "АВ <Axis>: <value>" tag row that mirrors a products/
- * contractors/channels/directions ref value, if the axis has ever been
- * synced onto a funnel. Returns undefined for kinds with no axis mapping
- * (sources, tags) or if the tag was never created.
+ * Look up the mirrored tag row for a products/contractors/channels/
+ * directions/funnel_types ref value, if it has ever been synced onto a
+ * funnel. Returns undefined for kinds with no tag mirror (sources, tags)
+ * or if the tag was never created.
  */
 function findAxisTagRow(db: AnyDB, kind: RefKind, value: string): RefRow | undefined {
-  const axis = AXIS_KIND_TO_AXIS[kind];
-  if (!axis) return undefined;
-  const tagName = `${AXIS_PREFIXES[axis]}${value}`;
+  const tagName = refTagNameFor(kind, value);
+  if (!tagName) return undefined;
   return getRefByName(db, 'tags', tagName);
 }
 
@@ -178,9 +227,16 @@ export type RefUsage = { count: number; funnelIds: number[] };
 
 /**
  * Number of DISTINCT funnels that reference this ref row — via a direct FK
- * column (products/contractors/sources), via funnel_tags directly (tags),
- * and/or via the mirrored "АВ <Axis>: <value>" tag (products/contractors/
- * channels/directions). Union of every source, deduplicated by funnel id.
+ * column (products/contractors/sources/funnel_types), via funnel_tags
+ * directly (tags), and/or via the mirrored tag (products/contractors/
+ * channels/directions → "АВ <Axis>: <value>"; funnel_types → само значение,
+ * см. refTagNameFor). funnel_types так считается вдвойне — и через
+ * funnels.funnel_type_id, и через одноимённый тег: `materializeFunnelTags`
+ * (funnels.ts) кладёт маркер в слой идентичности наравне с осями и зовёт
+ * `createRef(db, 'tags', …)` для него так же, как для четырёх осей, так что
+ * зеркальный тег заводится РЕАЛЬНО, на первом же сохранении воронки с этим
+ * типом — не «если когда-нибудь появится». В живой базе он уже есть:
+ * `АВ Квиз`, `АВ Прямые`. Union of every source, deduplicated by funnel id.
  */
 export function getRefUsage(db: AnyDB, kind: RefKind, row: RefRow): RefUsage {
   const ids = new Set<number>();
@@ -247,7 +303,8 @@ function renameOrMergeTag(db: AnyDB, oldName: string, newName: string): void {
 export type RenameRefResult =
   | { ok: true; row: RefRow }
   | { ok: false; error: 'not_found' }
-  | { ok: false; error: 'duplicate' };
+  | { ok: false; error: 'duplicate' }
+  | { ok: false; error: 'axis_conflict' };
 
 /**
  * Rename a reference value. Validates uniqueness within the same table.
@@ -257,6 +314,19 @@ export type RenameRefResult =
  * picks up the new text immediately. Funnel names are derived live from
  * these tags (see funnelName/getAxesForFunnel in lib/funnels.ts), so no
  * further per-funnel update is needed.
+ *
+ * Для funnel_types зеркальный тег равен самому значению — у маркера типа нет
+ * двоеточия, поэтому переименование через AXIS_PREFIXES не годится (см.
+ * refTagNameFor). Двоевластие с `tag_templates`, из-за которого переименование
+ * «АВ Автоворонка» когда-то задевало бы и шаблонный тег, закрыто пятой осью:
+ * маркеров в `tag_templates` теперь ноль (см. funnel-type.ts и
+ * migrate-phase5-data.ts), так что переименовывать любое значение funnel_types
+ * здесь безопасно.
+ *
+ * Отдельно отвергает переименование в имя, которое выглядит как осевой тег
+ * (`isReservedFunnelTypeName` — см. её докстринг): без этого барьера
+ * `newName = "АВ Продукт: X"` материализовался бы как осевой тег и переписал
+ * бы чужую ось у каждой воронки этого типа.
  */
 export function renameRef(db: AnyDB, kind: RefKind, id: number, newName: string): RenameRefResult {
   const table = resolveTable(kind);
@@ -265,6 +335,10 @@ export function renameRef(db: AnyDB, kind: RefKind, id: number, newName: string)
 
   if (existing.name === newName) {
     return { ok: true, row: existing };
+  }
+
+  if (isReservedFunnelTypeName(kind, newName)) {
+    return { ok: false, error: 'axis_conflict' };
   }
 
   const dup = getRefByName(db, kind, newName);
@@ -276,10 +350,9 @@ export function renameRef(db: AnyDB, kind: RefKind, id: number, newName: string)
   db.transaction((tx) => {
     tx.update(table).set({ name: newName }).where(eq(table.id, id)).run();
 
-    const axis = AXIS_KIND_TO_AXIS[kind];
-    if (axis) {
-      renameOrMergeTag(tx, `${AXIS_PREFIXES[axis]}${existing.name}`, `${AXIS_PREFIXES[axis]}${newName}`);
-    }
+    const oldTag = refTagNameFor(kind, existing.name);
+    const newTag = refTagNameFor(kind, newName);
+    if (oldTag && newTag) renameOrMergeTag(tx, oldTag, newTag);
 
     result = { id, name: newName };
   });
@@ -325,13 +398,13 @@ export function deleteRef(db: AnyDB, kind: RefKind, id: number): DeleteRefResult
   db.transaction((tx) => {
     tx.delete(table).where(eq(table.id, id)).run();
 
-    const axis = AXIS_KIND_TO_AXIS[kind];
-    if (axis) {
-      const axisTag = findAxisTagRow(tx, kind, existing.name);
-      if (axisTag) {
-        tx.delete(funnelTags).where(eq(funnelTags.tagId, axisTag.id)).run();
-        tx.delete(tags).where(eq(tags.id, axisTag.id)).run();
-      }
+    // findAxisTagRow уже само возвращает undefined для видов без зеркального
+    // тега (sources, tags) — отдельная проверка через AXIS_KIND_TO_AXIS здесь
+    // не нужна и до funnel_types её не доводили бы неверно.
+    const axisTag = findAxisTagRow(tx, kind, existing.name);
+    if (axisTag) {
+      tx.delete(funnelTags).where(eq(funnelTags.tagId, axisTag.id)).run();
+      tx.delete(tags).where(eq(tags.id, axisTag.id)).run();
     }
   });
 

@@ -24,7 +24,9 @@ File-level map of the repo. For architecture and conventions see
 - `src/db/client.ts` - DB path resolution (`FUNNELS_DB_PATH` / repo-root default).
 - `src/lib/` - domain helpers: funnels, refs, days, blocks (+ block-fill,
   url-field), the three-layer tags system (`ab-tags`, `tag-templates`,
-  `tag-overrides`), status, rooms-grid, funnel-compact, export, validation, plus
+  `tag-overrides`) plus the identity-layer fifth axis (`funnel-type.ts` -
+  `funnel_types` seed values and label, no `db`/network access of its own),
+  status, rooms-grid, funnel-compact, export, validation, plus
   http/errors and client hooks; monitoring (`monitor-status`, `monitor-urls`,
   `monitor-kinds`, `monitor-targets`, `monitor-check`, `monitor-run`,
   `monitor-view`, `monitor-scheduler`). See CLAUDE.md for the full module list.
@@ -37,7 +39,7 @@ File-level map of the repo. For architecture and conventions see
 - `next.config.ts` - webpack config; aliases `src/db/client.ts` away for the
   Edge bundle so `instrumentation.ts` compiles under the Edge runtime forced
   by `middleware.ts` (see CLAUDE.md Deployment section).
-- `scripts/` - phased migrations (Phase 2–6), data backfills, and seed/runners
+- `scripts/` - phased migrations (Phase 2–7), data backfills, and seed/runners
   used by tests and Docker.
 - `tests/` - Vitest suite (routes, lib, migrations, middleware);
   `tests/helpers/` holds fixtures shared between suites (e.g. `monitoring.ts`,

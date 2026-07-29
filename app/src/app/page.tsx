@@ -43,6 +43,7 @@ interface FunnelListItem {
   productName: string;
   name: string;
   axes: FunnelAxes;
+  funnelType: string | null;
 }
 
 interface ToastState {
@@ -293,6 +294,7 @@ export default function HomePage() {
           frontCode: funnel.frontCode,
           status: funnel.status,
           title: buildTitle(funnel),
+          funnelType: funnel.funnelType,
         }}
         onSetStatus={(s) => handleSetStatus(funnel, s)}
         onDuplicate={() => handleDuplicate(funnel)}

@@ -12,6 +12,7 @@ import { copyFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
+import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import { copyDbForTest } from './helpers/db';
 
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
@@ -24,6 +25,7 @@ copyDbForTest(REAL_DB, TMP_DB);
 // computing tagSets, so the route under test needs it present.
 const migrationSqlite = new Database(TMP_DB);
 runMigratePhase5(migrationSqlite);
+runMigratePhase8(migrationSqlite);
 migrationSqlite.close();
 
 process.env.FUNNELS_DB_PATH = TMP_DB;
@@ -63,7 +65,7 @@ describe('GET /api/export', () => {
 
     // Header row uses ';' delimiter
     expect(lines[0]).toBe(
-      'ID;Код;Воронка;Статус;Продукт;Подрядчик;Канал;Направление;Раздел;Время;День;Описание;Ссылка'
+      'ID;Код;Воронка;Статус;Продукт;Подрядчик;Канал;Направление;Тип;Раздел;Время;День;Описание;Ссылка'
     );
 
     // ~700+ links across ~32 funnels
@@ -71,6 +73,11 @@ describe('GET /api/export', () => {
 
     // A known GC-room link should be present somewhere in the export
     expect(withoutBom).toContain('gc.ksamata.ru');
+
+    // Пятая ось различает f33 и f43: у них дословно совпадают все четыре оси
+    // (ЖИВО / НИМБ / Яндекс / РСЯ), и до этой колонки строки экспорта были
+    // неразличимы — ровно та беда, ради которой вводилась пятая ось.
+    expect(withoutBom).toContain(';АВ Квиз;');
   });
 });
 
@@ -87,6 +94,8 @@ describe('buildExportRows — roomsEnabled gating', () => {
     const tmp = join(tmpdir(), `ksamata_export_gate_${Date.now()}.db`);
     copyDbForTest(REAL_DB, tmp);
     const sqlite = new Database(tmp);
+    const { runMigratePhase8 } = await import('../scripts/migrate-phase8');
+    runMigratePhase8(sqlite);
     const db = drizzle(sqlite, { schema });
 
     const roomsRowsFor = (num: number) =>
@@ -121,6 +130,7 @@ describe('toCsv (unit)', () => {
         contractor: 'К',
         channel: 'Ч',
         direction: 'Н',
+        funnelType: 'АВ Автоворонка',
         section: 'Лендинги',
         time: '15:00',
         day: '',
@@ -133,7 +143,7 @@ describe('toCsv (unit)', () => {
     const lines = csv.split('\r\n');
 
     expect(lines[0]).toBe(
-      'ID;Код;Воронка;Статус;Продукт;Подрядчик;Канал;Направление;Раздел;Время;День;Описание;Ссылка'
+      'ID;Код;Воронка;Статус;Продукт;Подрядчик;Канал;Направление;Тип;Раздел;Время;День;Описание;Ссылка'
     );
 
     // The ';'-containing name field must be quoted
@@ -147,8 +157,8 @@ describe('toCsv (unit)', () => {
 
     const base = {
       num: 1, frontCode: 'f1', name: 'n', status: 'active', product: 'П',
-      contractor: 'К', channel: 'Ч', direction: 'Н', section: 'Лендинги',
-      time: '', day: '',
+      contractor: 'К', channel: 'Ч', direction: 'Н', funnelType: 'АВ Автоворонка',
+      section: 'Лендинги', time: '', day: '',
     };
     const csv = toCsv([
       { ...base, description: '=HYPERLINK("https://evil/","Открыть")', url: '+79001234567' },

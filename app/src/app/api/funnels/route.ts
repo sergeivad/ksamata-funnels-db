@@ -3,7 +3,7 @@ import { db } from '@/db/client';
 import { funnelCreateSchema } from '@/lib/validation';
 import { listFunnels, createFunnel } from '@/lib/funnels';
 import { internalError } from '@/lib/http';
-import { ConflictError } from '@/lib/errors';
+import { ConflictError, ValidationError } from '@/lib/errors';
 
 export async function GET() {
   try {
@@ -56,6 +56,10 @@ export async function POST(req: NextRequest) {
         { error: `Код ${parsed.data.frontCode} уже занят другой воронкой` },
         { status: 409 }
       );
+    }
+    // Неизвестный тип воронки (resolveFunnelTypeId) — вина запроса, не сервера.
+    if (err instanceof ValidationError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
     }
     return internalError('POST /api/funnels', err);
   }

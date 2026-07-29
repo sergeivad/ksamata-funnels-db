@@ -20,7 +20,7 @@ from findings import (
     last_order_dates,
     registry_keys_of,
 )
-from normalize import parse_tagset
+from normalize import AUTOFUNNEL_TAG, av_key, parse_tagset, quad
 from retired import RETIRED_KEYS, is_retired
 
 RETIRED_KEY = ('БОО', 'Рома', 'Яндекс', 'Реклама')
@@ -32,6 +32,19 @@ LIVE_KEY = ('ЩЖ', 'Незнакомец', 'Яндекс', 'РСЯ')
 
 RETIRED_ON = RETIRED_KEYS[RETIRED_KEY][0]          # '2026-07-27'
 BEFORE, AFTER = '2026-05-01', '2026-09-01'
+
+# RETIRED_KEYS хранит СВЯЗКИ (четвёрки) — RETIRED_AV/LIVE_AV сознательно без
+# маркера типа воронки, чтобы не мешать этому. Но классы 7 и 9 сверяются с
+# `index` по ПОЛНОМУ (пятиэлементному) ключу — findings.is_complete_key
+# требует маркер (см. findings.py: «там речь именно о воронке, а не о
+# связке»). Без маркера запись отсеивается ДО того, как код вообще доходит
+# до is_retired, и тест на «отставка сработала» становится зелёным по
+# случайной причине (несовпадение по неполноте, а не по решению об отставке).
+# Эти TYPED-варианты нужны именно там, где такое совпадение важно исключить.
+RETIRED_AV_TYPED = RETIRED_AV + '|' + AUTOFUNNEL_TAG
+LIVE_AV_TYPED = LIVE_AV + '|' + AUTOFUNNEL_TAG
+RETIRED_KEY5 = RETIRED_KEY + (AUTOFUNNEL_TAG,)
+LIVE_KEY5 = LIVE_KEY + (AUTOFUNNEL_TAG,)
 
 
 def offer(offer_id, raw, title='Курс'):
@@ -108,40 +121,47 @@ def test_last_order_dates_ignores_incomplete_keys():
 
 
 # ─── класс 9 ─────────────────────────────────────────────────────────────────
+#
+# find_unknown_av_keys требует ПОЛНЫЙ ключ (с маркером) — используем
+# RETIRED_AV_TYPED/LIVE_AV_TYPED, чтобы отставка проверялась взаправду, а не
+# по случайному совпадению «ключ и так неполон».
 
 def test_class_9_skips_a_retired_key_that_only_sold_before_the_decision():
-    offers = [offer(1, RETIRED_AV + '|АВ Этап: Регистрация')]
+    offers = [offer(1, RETIRED_AV_TYPED + '|АВ Этап: Регистрация')]
     assert find_unknown_av_keys(offers, {}, {RETIRED_KEY: BEFORE}) == []
 
 
 def test_class_9_reports_a_retired_key_that_sold_again_afterwards():
-    offers = [offer(1, RETIRED_AV + '|АВ Этап: Регистрация')]
+    offers = [offer(1, RETIRED_AV_TYPED + '|АВ Этап: Регистрация')]
     found = find_unknown_av_keys(offers, {}, {RETIRED_KEY: AFTER})
     assert [f.cls for f in found] == [9]
     assert 'Рома' in found[0].subject
 
 
 def test_class_9_still_reports_keys_outside_the_registry():
-    offers = [offer(1, LIVE_AV + '|АВ Этап: Регистрация')]
+    offers = [offer(1, LIVE_AV_TYPED + '|АВ Этап: Регистрация')]
     found = find_unknown_av_keys(offers, {}, {})
     assert [f.cls for f in found] == [9]
     assert 'Незнакомец' in found[0].subject
 
 
 def test_class_9_stays_silent_when_the_funnel_exists_in_the_db():
-    offers = [offer(1, LIVE_AV + '|АВ Этап: Регистрация')]
-    assert find_unknown_av_keys(offers, {LIVE_KEY: {11}}, {}) == []
+    offers = [offer(1, LIVE_AV_TYPED + '|АВ Этап: Регистрация')]
+    assert find_unknown_av_keys(offers, {LIVE_KEY5: {11}}, {}) == []
 
 
 # ─── класс 14 ────────────────────────────────────────────────────────────────
+#
+# find_unused_offers тоже сравнивает по ПОЛНОМУ ключу (та же is_complete_key,
+# что и в классе 9) — см. комментарий у RETIRED_AV_TYPED выше.
 
 def test_class_14_skips_a_retired_key():
-    offers = [offer(1, RETIRED_AV + '|АВ Этап: Регистрация', title='Старый')]
+    offers = [offer(1, RETIRED_AV_TYPED + '|АВ Этап: Регистрация', title='Старый')]
     assert find_unused_offers(offers, []) == []
 
 
 def test_class_14_still_reports_offers_outside_the_registry():
-    offers = [offer(1, LIVE_AV + '|АВ Этап: Регистрация', title='Старый')]
+    offers = [offer(1, LIVE_AV_TYPED + '|АВ Этап: Регистрация', title='Старый')]
     found = find_unused_offers(offers, [])
     assert [f.cls for f in found] == [14]
     assert 'Старый' in found[0].subject
@@ -153,12 +173,16 @@ def test_class_14_stays_silent_for_a_retired_key_that_started_selling():
     Возвращать её обязан класс 9 (см. тест выше), и оба пути не должны
     сработать одновременно.
     """
-    groups = group_observations([obs(RETIRED_AV + '|АВ Этап: Регистрация', '2026-09-01')])
-    offers = [offer(1, RETIRED_AV + '|АВ Этап: Регистрация')]
+    groups = group_observations([obs(RETIRED_AV_TYPED + '|АВ Этап: Регистрация', '2026-09-01')])
+    offers = [offer(1, RETIRED_AV_TYPED + '|АВ Этап: Регистрация')]
     assert find_unused_offers(offers, groups) == []
 
 
 # ─── класс 7 подчиняется тому же правилу отставки, что и класс 9 ─────────────
+#
+# find_unresolved попадает в ветку класса 7 тоже только при ПОЛНОМ ключе
+# (is_complete_key на строке с `elif ... group.key not in index`) — те же
+# TYPED-варианты нужны и здесь.
 
 def test_class_7_skips_a_retired_key_that_only_sold_before_the_decision():
     """Иначе отставленная связка просто переезжает из класса 9 в класс 7.
@@ -166,15 +190,43 @@ def test_class_7_skips_a_retired_key_that_only_sold_before_the_decision():
     На живых данных 28 из 32 находок класса 7 были ровно теми связками,
     что уже отставлены.
     """
-    groups = group_observations([obs(RETIRED_AV + '|АВ Этап: Регистрация', BEFORE)])
+    groups = group_observations([obs(RETIRED_AV_TYPED + '|АВ Этап: Регистрация', BEFORE)])
     assert find_unresolved(groups, {}, {RETIRED_KEY}, {RETIRED_KEY: BEFORE}) == []
 
 
 def test_class_7_reports_a_retired_key_that_sold_again_afterwards():
-    groups = group_observations([obs(RETIRED_AV + '|АВ Этап: Регистрация', AFTER)])
-    found = find_unresolved(groups, {}, {RETIRED_KEY}, {RETIRED_KEY: AFTER})
+    # registry_keys — тоже полные ключи (registry_keys_of сравнивается по
+    # is_complete_key), поэтому RETIRED_KEY5, а не голая связка.
+    groups = group_observations([obs(RETIRED_AV_TYPED + '|АВ Этап: Регистрация', AFTER)])
+    found = find_unresolved(groups, {}, {RETIRED_KEY5}, {RETIRED_KEY: AFTER})
     assert [f.cls for f in found] == [7]
     assert 'Рома' in found[0].subject
+
+
+def test_forgetting_quad_would_break_retirement_for_a_typed_key():
+    """Ловит регрессию «is_retired позвали с полным пятиэлементным ключом».
+
+    RETIRED_KEYS хранит СВЯЗКИ (четвёрки), а не воронки целиком. Если
+    findings.py забудет обернуть av_key(...) в quad(...) и передаст в
+    is_retired полный пятиэлементный ключ, словарь RETIRED_KEYS не найдёт
+    совпадения НИ ПРИ КАКОМ маркере — пятиэлементный кортеж никогда не равен
+    четырёхэлементному. Отставленная связка немедленно вернётся в отчёт.
+
+    В отличие от соседних тестов класса 5/6/7/9/14 (там RETIRED_AV нарочно
+    БЕЗ маркера, и av_key даёт None пятым элементом), здесь ключ несёт
+    РЕАЛЬНЫЙ маркер («АВ Автоворонка»). Это исключает призрачную гипотезу
+    «тест ловит просто несовпадение длин, а не забытый quad конкретно»:
+    что с маркером, что без — забытый quad одинаково не находит связку в
+    словаре четвёрок, и это единственное, что здесь проверяется.
+    """
+    typed_group_key = quad(av_key(parse_tagset(RETIRED_AV_TYPED)))
+    assert typed_group_key == RETIRED_KEY  # сама связка не изменилась
+
+    groups = group_observations(
+        [obs(RETIRED_AV_TYPED + '|АВ Этап: Оплата', BEFORE)]
+    )
+    # Оплата без АВ Время — класс 5, самый простой путь к is_retired.
+    assert find_unresolved(groups, {}, frozenset(), {RETIRED_KEY: BEFORE}) == []
 
 
 # ─── классы 5 и 6 тоже: проверка стоит в начале find_unresolved ─────────────
@@ -226,9 +278,16 @@ def _drift_obs(raw, day, created, deal_id='1'):
 
 
 def _drift_pair(av, created):
-    """Единогласная пропажа маркера между двумя выгрузками — заведомая находка."""
+    """Единогласная пропажа тега между двумя выгрузками — заведомая находка.
+
+    Тег-пример — «АВ Время: 20», а не маркер типа воронки: маркер теперь
+    сам часть av_key (см. normalize.av_key), и find_drift группирует
+    наблюдения по слоту (ключ, tag_type) — включи/выключи маркер, и пара
+    наблюдений разъедется по двум разным слотам вместо одного дрейфующего.
+    «АВ Время: 20» в ключ не входит, поэтому безопасно им и подменяем.
+    """
     base = av + '|АВ Этап: Регистрация'
-    return [_drift_obs(base + '|АВ Квиз', 2, created, '1'),
+    return [_drift_obs(base + '|АВ Время: 20', 2, created, '1'),
             _drift_obs(base, 13, created, '2')]
 
 
@@ -311,9 +370,12 @@ def test_class_11_still_reports_a_live_key():
     assert [f.cls for f in found] == [11]
 
 
-def test_registry_keys_of_collects_only_complete_quadruples():
+def test_registry_keys_of_collects_only_complete_keys():
+    """registry_keys_of сравнивается по ПОЛНОМУ ключу (is_complete_key), не по
+    связке — offer(1) без маркера был бы неполон и молча выпал бы, и тест
+    остался бы зелёным по случайной причине. TYPED-вариант этого не даёт."""
     keys = registry_keys_of([
-        offer(1, RETIRED_AV + '|АВ Этап: Регистрация'),
+        offer(1, RETIRED_AV_TYPED + '|АВ Этап: Регистрация'),
         offer(2, 'АВ Продукт: БОО|АВ Этап: Оплата'),
     ])
-    assert keys == {RETIRED_KEY}
+    assert keys == {RETIRED_KEY5}

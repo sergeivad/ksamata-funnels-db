@@ -8,7 +8,7 @@
  */
 
 import { eq, sql, and } from 'drizzle-orm';
-import { ConflictError } from './errors';
+import { ConflictError, ValidationError } from './errors';
 import { type AnyDB, type DB } from '../db/client';
 import {
   funnels,
@@ -19,6 +19,7 @@ import {
   funnelBlockItems,
   salebotConfigs,
   tags,
+  funnelTypes,
   type Funnel,
 } from '../db/schema';
 import {
@@ -26,13 +27,15 @@ import {
   type TagSets,
   type Scenario,
   type OverrideMap,
+  type FunnelTypeContext,
   SCENARIOS,
   computeTagSet,
   tagNamesToAxes,
 } from './ab-tags';
-import { listTemplate } from './tag-templates';
+import { listTemplate, assertNotFunnelTypeMarker } from './tag-templates';
 import { listOverrides, replaceOverrides } from './tag-overrides';
-import { createRef, listRefs } from './refs';
+import { createRef, listRefs, getRefByName } from './refs';
+import { FUNNEL_TYPE_KIND } from './funnel-type';
 import { nextFrontCode, normalizeFrontCode } from './front-code';
 import { type FunnelCreate, type FunnelUpdate } from './validation';
 
@@ -50,6 +53,9 @@ export type FunnelListItem = {
   productName: string;
   name: string;
   axes: AbAxes;
+  // Пятая ось: null означает «тип не выбран», а не «неизвестно» — маркер
+  // просто не выпускается в теги (см. FunnelTypeContext в ab-tags.ts).
+  funnelType: string | null;
 };
 
 export type FunnelDetail = FunnelListItem & {
@@ -85,6 +91,39 @@ function getAxesForFunnel(db: AnyDB, funnelId: number): AbAxes {
 }
 
 /**
+ * Контекст пятой оси для воронки: её маркер и полный список известных.
+ * Читается из справочника, а не из зашитого списка — значения расширяемы.
+ */
+export function getFunnelTypeContext(db: AnyDB, funnelId: number): FunnelTypeContext {
+  const known = (db.select({ name: funnelTypes.name }).from(funnelTypes).all() as { name: string }[])
+    .map((r) => r.name);
+
+  const row = db
+    .select({ name: funnelTypes.name })
+    .from(funnels)
+    .leftJoin(funnelTypes, eq(funnelTypes.id, funnels.funnelTypeId))
+    .where(eq(funnels.id, funnelId))
+    .get() as { name: string | null } | undefined;
+
+  return { name: row?.name ?? null, known };
+}
+
+/**
+ * Тип разрешается ТОЛЬКО среди существующих значений. createRef здесь был бы
+ * get-or-create, и опечатка в API завела бы пятый маркер, который тут же уехал
+ * бы в теги и в аудит. Новые значения заводятся через /refs осознанно.
+ */
+function resolveFunnelTypeId(tx: AnyDB, name: string): number {
+  const row = getRefByName(tx, FUNNEL_TYPE_KIND, name);
+  if (!row) {
+    throw new ValidationError(
+      `Неизвестный тип воронки «${name}». Заведите его в справочнике типов, если он появился в GetCourse.`,
+    );
+  }
+  return row.id;
+}
+
+/**
  * Rebuild a funnel's materialized tags in `funnel_tags` from the three layers:
  * global template + axis tags + per-funnel overrides (see computeTagSet).
  * Wipes ALL funnel_tags for the funnel and rewrites — the effective set is
@@ -95,7 +134,7 @@ function getAxesForFunnel(db: AnyDB, funnelId: number): AbAxes {
 function materializeFunnelTags(db: AnyDB, funnelId: number, axes: AbAxes): void {
   const template = listTemplate(db);
   const overrides = listOverrides(db, funnelId);
-  const sets: TagSets = computeTagSet(template, axes, overrides);
+  const sets: TagSets = computeTagSet(template, axes, overrides, getFunnelTypeContext(db, funnelId));
 
   db.delete(funnelTags).where(eq(funnelTags.funnelId, funnelId)).run();
 
@@ -202,7 +241,18 @@ function allocateFrontCode(db: AnyDB): string {
  * GET /api/funnels — list all funnels with axes derived from reg tags.
  */
 export function listFunnels(db: DB): FunnelListItem[] {
-  const rows = db.select().from(funnels).all();
+  const rows = db
+    .select({
+      id: funnels.id,
+      num: funnels.num,
+      frontCode: funnels.frontCode,
+      status: funnels.status,
+      productName: funnels.productName,
+      funnelType: funnelTypes.name, // NULL, если тип не выбран
+    })
+    .from(funnels)
+    .leftJoin(funnelTypes, eq(funnelTypes.id, funnels.funnelTypeId))
+    .all();
 
   return rows.map((f) => {
     const axes = getAxesForFunnel(db, f.id);
@@ -212,6 +262,7 @@ export function listFunnels(db: DB): FunnelListItem[] {
       frontCode: f.frontCode ?? '',
       status: f.status ?? 'active',
       productName: f.productName,
+      funnelType: f.funnelType ?? null,
       name: funnelName(axes),
       axes,
     };
@@ -228,13 +279,15 @@ export function getFunnel(db: DB, id: number): FunnelDetail | null {
   const axes = getAxesForFunnel(db, row.id);
   const template = listTemplate(db);
   const overrides = listOverrides(db, row.id);
-  const tagSets = computeTagSet(template, axes, overrides);
+  const typeCtx = getFunnelTypeContext(db, row.id);
+  const tagSets = computeTagSet(template, axes, overrides, typeCtx);
   return {
     id:           row.id,
     num:          row.num,
     frontCode:    row.frontCode    ?? '',
     status:       row.status       ?? 'active',
     productName:  row.productName,
+    funnelType:   typeCtx.name,
     name:         funnelName(axes),
     sourceId:     row.sourceId,
     productId:    row.productId,
@@ -308,6 +361,7 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
         timeLabelB:         data.timeLabelB         ?? '19:00',
         roomsReplayEnabled: data.roomsReplayEnabled ? 1 : 0,
         roomsEnabled:       data.roomsEnabled === false ? 0 : 1,
+        funnelTypeId:       data.funnelType ? resolveFunnelTypeId(tx, data.funnelType) : null,
       })
       .returning()
       .get() as Funnel;
@@ -315,12 +369,18 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
     // Materialize AV tags
     materializeFunnelTags(tx, inserted.id, axes);
 
+    const typeName = inserted.funnelTypeId
+      ? (tx.select({ name: funnelTypes.name }).from(funnelTypes)
+           .where(eq(funnelTypes.id, inserted.funnelTypeId)).get() as { name: string }).name
+      : null;
+
     createdFunnel = {
       id:          inserted.id,
       num:         inserted.num,
       frontCode:   inserted.frontCode ?? '',
       status:      inserted.status ?? 'active',
       productName: inserted.productName,
+      funnelType:  typeName,
       name:        funnelName(axes),
       axes,
     };
@@ -395,6 +455,9 @@ export function createDraftFunnel(db: DB): FunnelListItem {
     frontCode:   inserted.frontCode ?? '',
     status:      inserted.status ?? 'draft',
     productName: inserted.productName,
+    // Черновик заводится без типа намеренно — так же, как и без осей
+    // (см. комментарий выше): решение о типе принимается при заполнении.
+    funnelType:  null,
     name:        funnelName(emptyAxes),
     axes:        emptyAxes,
   };
@@ -456,6 +519,9 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
     if (data.timeLabelB         !== undefined) scalarUpdate.timeLabelB         = data.timeLabelB;
     if (data.roomsReplayEnabled !== undefined) scalarUpdate.roomsReplayEnabled = data.roomsReplayEnabled ? 1 : 0;
     if (data.roomsEnabled       !== undefined) scalarUpdate.roomsEnabled       = data.roomsEnabled ? 1 : 0;
+    if (data.funnelType !== undefined) {
+      scalarUpdate.funnelTypeId = data.funnelType ? resolveFunnelTypeId(tx, data.funnelType) : null;
+    }
 
     // If product/contractor/source names change, update FKs too
     if (data.product !== undefined) {
@@ -494,9 +560,13 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
       tx.update(funnels).set(scalarUpdate).where(eq(funnels.id, id)).run();
     }
 
-    // Re-sync AV tags if any axis was provided
+    // Re-sync AV tags if any axis was provided.
+    // Тип воронки входит сюда наравне с осями: он тоже слой идентичности,
+    // и PATCH с одним лишь типом обязан пересчитать теги. Без этого правка
+    // типа молча меняла бы только колонку.
     const hasAxes = data.product !== undefined || data.contractor !== undefined
-      || data.channel !== undefined || data.direction !== undefined;
+      || data.channel !== undefined || data.direction !== undefined
+      || data.funnelType !== undefined;
 
     if (hasAxes) {
       const currentAxes = getAxesForFunnel(tx, id);
@@ -511,12 +581,17 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
 
     const finalRow = tx.select().from(funnels).where(eq(funnels.id, id)).get()!;
     const finalAxes = getAxesForFunnel(tx, id);
+    const finalTypeName = finalRow.funnelTypeId
+      ? (tx.select({ name: funnelTypes.name }).from(funnelTypes)
+           .where(eq(funnelTypes.id, finalRow.funnelTypeId)).get() as { name: string } | undefined)?.name ?? null
+      : null;
     result = {
       id:          finalRow.id,
       num:         finalRow.num,
       frontCode:   finalRow.frontCode ?? '',
       status:      finalRow.status ?? 'active',
       productName: finalRow.productName,
+      funnelType:  finalTypeName,
       name:        funnelName(finalAxes),
       axes:        finalAxes,
     };
@@ -553,6 +628,40 @@ export function applyTagOverrides(db: DB, id: number, patch: OverrideMap): Funne
   const existing = db.select({ id: funnels.id }).from(funnels).where(eq(funnels.id, id)).get();
   if (!existing) return null;
   db.transaction((tx) => {
+    // Только add: имя маркера в remove безвредно и гасится движком
+    // (identity-тег неудаляем, см. computeTagSet) — незачем лениво отвергать
+    // то, что и так ничего не делает. add — другое дело: без этой проверки
+    // запрос молча ложится строкой в funnel_tag_overrides и никогда ни на что
+    // не влияет (см. assertNotFunnelTypeMarker в tag-templates.ts).
+    //
+    // Проверяем не сам patch, а РАЗНИЦУ с уже сохранённым (`current`).
+    // Маршрут мёржит патч со старыми данными для сценариев, которых нет в
+    // теле запроса (см. route.ts: `patch[s] = parsed.data[s] ?? current[s]`),
+    // так что patch здесь — это ПОЛНАЯ карта всех четырёх сценариев, а не
+    // только присланные. Если проверять её целиком, воронка со старой строкой
+    // маркера в add (эндпоинт до этого барьера отвечал 200 и клал такую
+    // строку; либо duplicateFunnel → copyFunnelChildren пишет
+    // funnel_tag_overrides напрямую, минуя оба барьера) начнёт получать 400
+    // на любой частичный PATCH, который эту строку даже не трогает — вызывающий
+    // прислал совсем другой сценарий и не может понять, за что отказ. Сравнение
+    // с `current` устраняет это естественно: для сценария, которого нет в
+    // теле запроса, patch[s].add совпадает с current[s].add ровно потому, что
+    // он был взят оттуда же — новых имён ноль, отказа не будет.
+    //
+    // Оговорка: это держится, только пока route.ts переносит current[s].add
+    // В patch[s].add БЕЗ нормализации (как сейчас — прямое присваивание). Если
+    // кто-то добавит trim/сортировку/дедуп массива перед сравнением или перед
+    // мёржем, `alreadyStored.has(name)` перестанет находить совпадение для
+    // формально того же имени в другом виде — и отказ вернётся молча, для
+    // PATCH, который старую строку маркера даже не трогал. Это ровно тот
+    // регресс, что уже ловился в этой ветке (см. историю коммитов
+    // «не ронять посторонний PATCH из-за старой строки маркера»).
+    const current = listOverrides(tx, id);
+    for (const scenario of SCENARIOS) {
+      const alreadyStored = new Set(current[scenario]?.add ?? []);
+      const newNames = (patch[scenario]?.add ?? []).filter((name) => !alreadyStored.has(name));
+      assertNotFunnelTypeMarker(tx, newNames);
+    }
     const axes = getAxesForFunnel(tx, id);
     replaceOverrides(tx, id, patch);
     materializeFunnelTags(tx, id, axes);
@@ -693,6 +802,10 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
         timeLabelB:         source.timeLabelB ?? '19:00',
         roomsReplayEnabled: source.roomsReplayEnabled ?? 0,
         roomsEnabled:       (source.roomsEnabled ?? 1) ? 1 : 0,
+        // Пятая ось — тот же слой идентичности, что и остальные оси выше:
+        // дубликат обязан унаследовать тип, иначе «faithful copy» перестаёт
+        // быть таковой и маркер тихо теряется на копии.
+        funnelTypeId:       source.funnelTypeId ?? null,
       })
       .returning()
       .get() as Funnel;
@@ -701,8 +814,14 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
     // Must run BEFORE materialize so the copied overrides are applied.
     copyFunnelChildren(tx, id, inserted.id);
 
-    // Materialize AV tags from source axes (reads the just-copied overrides)
+    // Materialize AV tags from source axes (reads the just-copied overrides
+    // AND the just-inserted funnelTypeId via getFunnelTypeContext).
     materializeFunnelTags(tx, inserted.id, sourceAxes);
+
+    const typeName = inserted.funnelTypeId
+      ? (tx.select({ name: funnelTypes.name }).from(funnelTypes)
+           .where(eq(funnelTypes.id, inserted.funnelTypeId)).get() as { name: string } | undefined)?.name ?? null
+      : null;
 
     return {
       id:          inserted.id,
@@ -710,6 +829,7 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
       frontCode:   '',
       status:      'draft',
       productName: inserted.productName,
+      funnelType:  typeName,
       name:        funnelName(sourceAxes),
       axes:        sourceAxes,
     };

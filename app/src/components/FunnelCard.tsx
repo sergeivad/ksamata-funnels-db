@@ -6,12 +6,14 @@ import { ChevronRight, Copy, MoreVertical, Trash2 } from 'lucide-react';
 import CodeChip from './CodeChip';
 import StatusPill from './StatusPill';
 import { FUNNEL_STATUSES, STATUS_ACTION_LABELS, type FunnelStatus } from '@/lib/status';
+import { DEFAULT_FUNNEL_TYPE } from '@/lib/funnel-type';
 
 interface Funnel {
   id: number;
   frontCode: string;
   status: FunnelStatus;
   title: string;
+  funnelType: string | null;
 }
 
 interface FunnelCardProps {
@@ -29,8 +31,11 @@ export default function FunnelCard({
 }: FunnelCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const href = `/funnels/${funnel.id}`;
+  // Вторая колонка была фиксированной 80px под один статус-пилл; с чипом типа
+  // воронки рядом контент мог не влезать и наезжать на кнопки действий, поэтому
+  // 80px теперь только нижняя граница, а не потолок.
   const containerClass =
-    'grid grid-cols-[minmax(0,1fr)_80px_auto_22px] items-center gap-3 rounded-[8px] border px-3 py-2.5 text-left transition max-[760px]:grid-cols-[minmax(0,1fr)_auto] border-[var(--color-border-soft)] bg-[rgba(255,255,255,0.38)] hover:bg-white';
+    'grid grid-cols-[minmax(0,1fr)_minmax(80px,auto)_auto_22px] items-center gap-3 rounded-[8px] border px-3 py-2.5 text-left transition max-[760px]:grid-cols-[minmax(0,1fr)_auto] border-[var(--color-border-soft)] bg-[rgba(255,255,255,0.38)] hover:bg-white';
 
   const actionBtnClass =
     'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] border bg-white transition border-[var(--color-border-soft)] text-[#111111] hover:border-[#111111]';
@@ -51,8 +56,20 @@ export default function FunnelCard({
 
       {/* Status pill — wrapped so the span sizes to its text instead of
           stretching to fill the grid column (which left a big empty gap). */}
-      <div className="min-w-0">
+      <div className="flex min-w-0 flex-wrap items-center gap-1">
         <StatusPill status={funnel.status} />
+        {/* Тип воронки показываем только когда он отличается от дефолтной
+            «АВ Автоворонка» — иначе изменится 72 карточки из 72, хотя тип
+            есть лишь у меньшинства. Префикс "АВ " срезаем только тут, для
+            компактности чипа; хранится и выпускается тег дословно. */}
+        {funnel.funnelType && funnel.funnelType !== DEFAULT_FUNNEL_TYPE && (
+          <span
+            className="rounded bg-[#F1E7D6] px-1.5 py-0.5 text-[11px] text-[#7A5B22]"
+            title="Тип воронки"
+          >
+            {funnel.funnelType.replace(/^АВ /, '')}
+          </span>
+        )}
       </div>
 
       {/* Action buttons */}

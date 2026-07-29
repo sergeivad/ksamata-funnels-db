@@ -30,6 +30,13 @@ export const contractors = sqliteTable('contractors', {
   name: text('name').notNull().unique(),
 });
 
+// Пятая ось: тип воронки. Имя = текст маркера GetCourse дословно
+// («АВ Автоворонка», «АВ Прямые», …), см. src/lib/funnel-type.ts.
+export const funnelTypes = sqliteTable('funnel_types', {
+  id:   integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull().unique(),
+});
+
 // ─── funnels ──────────────────────────────────────────────────────────────────
 
 export const funnels = sqliteTable(
@@ -63,6 +70,8 @@ export const funnels = sqliteTable(
     // New columns added by migration
     status:           text('status').default('active'),
     frontCode:        text('front_code').default(''),
+    // Phase 8: пятая ось. NULL = тип не выбран, маркер не выпускается.
+    funnelTypeId:     integer('funnel_type_id').references(() => funnelTypes.id),
     // Phase 3 columns
     comment:            text('comment').default(''),
     timeLabelA:         text('time_label_a').default('15:00'),
@@ -321,6 +330,7 @@ export type Source           = typeof sources.$inferSelect;
 export type Tag              = typeof tags.$inferSelect;
 export type Product          = typeof products.$inferSelect;
 export type Contractor       = typeof contractors.$inferSelect;
+export type FunnelType       = typeof funnelTypes.$inferSelect;
 export type Funnel           = typeof funnels.$inferSelect;
 export type FunnelTag        = typeof funnelTags.$inferSelect;
 export type FunnelDay        = typeof funnelDays.$inferSelect;

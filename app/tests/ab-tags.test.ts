@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, it, expect } from 'vitest';
 import {
   tagNamesToAxes,
   axisTagNames,
@@ -125,5 +125,64 @@ describe('tagNamesToAxes (unchanged)', () => {
   test('round-trips axis tags', () => {
     expect(tagNamesToAxes(['АВ Продукт: ТКМ', 'АВ Канал: Яндекс', 'автоворонки']))
       .toEqual({ product: 'ТКМ', contractor: '', channel: 'Яндекс', direction: '' });
+  });
+});
+
+describe('пятая ось: маркер типа воронки', () => {
+  const axes = { product: 'ЖИВО', contractor: 'НИМБ', channel: 'Яндекс', direction: 'РСЯ' };
+  const empty = { reg: { add: [], remove: [] }, time_15: { add: [], remove: [] },
+                  time_19: { add: [], remove: [] }, messenger: { add: [], remove: [] } };
+  const known = ['АВ Автоворонка', 'АВ Прямые', 'АВ Квиз', 'АВ Квиз-Лайт'];
+  const tpl = { reg: [], time_15: [], time_19: [], messenger: [] };
+
+  it('кладёт маркер во все четыре сценария как axis', () => {
+    const out = computeTagSet(tpl, axes, empty, { name: 'АВ Квиз', known });
+    for (const s of SCENARIOS) {
+      const chip = out[s].tags.find((t) => t.name === 'АВ Квиз');
+      expect(chip, `сценарий ${s}`).toBeDefined();
+      expect(chip!.source).toBe('axis');
+    }
+  });
+
+  it('без типа маркера нет вовсе', () => {
+    const out = computeTagSet(tpl, axes, empty, { name: null, known });
+    expect(out.reg.tags.some((t) => known.includes(t.name))).toBe(false);
+  });
+
+  it('гасит чужой маркер, пришедший из шаблона', () => {
+    const withAuto = { ...tpl, reg: ['АВ Автоворонка', 'допродажи'] };
+    const out = computeTagSet(withAuto, axes, empty, { name: 'АВ Квиз', known });
+    const names = out.reg.tags.map((t) => t.name);
+    expect(names).toContain('АВ Квиз');
+    expect(names).not.toContain('АВ Автоворонка');
+    expect(names).toContain('допродажи');
+  });
+
+  it('гасит маркер, пришедший через add-оверрайд', () => {
+    const ov = { ...empty, reg: { add: ['АВ Прямые'], remove: [] } };
+    const out = computeTagSet(tpl, axes, ov, { name: 'АВ Квиз', known });
+    expect(out.reg.tags.map((t) => t.name)).not.toContain('АВ Прямые');
+  });
+
+  it('свой маркер неудаляем через remove-оверрайд', () => {
+    // Маркер должен реально лежать в staticTags сценария и быть целью remove —
+    // иначе suppressed вычисляется от пустого массива и проверка ничего не ловит.
+    const tplWithMarker = { ...tpl, reg: ['АВ Квиз'] };
+    const ov = { ...empty, reg: { add: [], remove: ['АВ Квиз'] } };
+    const out = computeTagSet(tplWithMarker, axes, ov, { name: 'АВ Квиз', known });
+    expect(out.reg.tags.map((t) => t.name)).toContain('АВ Квиз');
+    expect(out.reg.suppressed).not.toContain('АВ Квиз');
+  });
+
+  it('маркер уже в собственном шаблоне не даёт дубль с source default', () => {
+    // Ровно сегодняшнее состояние базы: «АВ Автоворонка» зашит в шаблон всем
+    // воронкам, и воронка типа «Автоворонка» встречает свой же маркер в
+    // своём же шаблоне. Должен остаться один чип, и его source — 'axis'
+    // (из безусловного пуша маркера), а не 'default' (из статического слоя).
+    const tplWithMarker = { ...tpl, reg: ['АВ Квиз'] };
+    const out = computeTagSet(tplWithMarker, axes, empty, { name: 'АВ Квиз', known });
+    const chips = out.reg.tags.filter((t) => t.name === 'АВ Квиз');
+    expect(chips).toHaveLength(1);
+    expect(chips[0].source).toBe('axis');
   });
 });
