@@ -49,12 +49,16 @@ which is `app/`).
 
 Drizzle SQLite. Core + lookup + content + tags tables:
 
-- **Lookups:** `sources`, `products`, `contractors`, `tags` (global tag names).
+- **Lookups:** `sources`, `products`, `contractors`, `funnel_types` (funnel-type
+  marker, `{id, name}` — `name` holds the GetCourse marker text verbatim, e.g.
+  `АВ Автоворонка`/`АВ Прямые`/`АВ Квиз`/`АВ Квиз-Лайт`), `tags` (global tag names).
 - **`funnels`** — one row per funnel: identity FKs (source/product/contractor),
-  `variant`, `productName`, landing/dashboard URLs, raw tag strings
-  (`tag19Raw`/`tag15Raw`/`regTagsRaw`), `roomIdsJson`, `bothelpCondition`,
-  `status` (`active`/`draft`/`archive`), `frontCode`, `comment`,
-  `timeLabelA`/`timeLabelB`, and room toggles `roomsEnabled` / `roomsReplayEnabled`.
+  nullable `funnelTypeId` FK into `funnel_types` (`NULL` = type not chosen, no
+  marker emitted at all — same rule as an empty axis), `variant`, `productName`,
+  landing/dashboard URLs, raw tag strings (`tag19Raw`/`tag15Raw`/`regTagsRaw`),
+  `roomIdsJson`, `bothelpCondition`, `status` (`active`/`draft`/`archive`),
+  `frontCode`, `comment`, `timeLabelA`/`timeLabelB`, and room toggles
+  `roomsEnabled` / `roomsReplayEnabled`.
 - **`funnel_days`** — per-funnel day × time-slot rows (`timeSlot` `19`/`15`,
   `dayNum`) with room fields and legacy content columns.
 - **`funnel_blocks`** / **`funnel_block_items`** — structured content blocks
@@ -104,6 +108,13 @@ Tags are resolved, not stored once. Understand the layering before editing:
 Raw tag strings on `funnels` (`*Raw`) are import/export artifacts, not the
 source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 (tsx) or the API, never with raw SQL.**
+
+Поверх трёх слоёв лежит **слой идентичности**: четыре осевых тега
+(`АВ Продукт:` и три остальных) и **маркер типа воронки** — пятая ось,
+выводимая из `funnels.funnel_type_id` (справочник `funnel_types`,
+`app/src/lib/funnel-type.ts`). Теги идентичности нельзя ни удалить
+оверрайдом, ни положить в шаблон: `computeTagSet` гасит их в обоих слоях.
+Значения типа расширяемы через `/refs` — набор маркеров задаёт GetCourse.
 
 ## Domain helpers (`app/src/lib/`)
 
@@ -339,9 +350,15 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
   as `add` overrides so Phase 5's resync doesn't drop them).
 - **Phase 6** — monitoring tables (`monitor_targets`, `monitor_target_funnels`,
   `monitor_state`, `monitor_events`, `monitor_source_kind_prefs`).
+- **Phase 7** — `funnel_types` (seeded with the four GetCourse markers) +
+  `funnels.funnel_type_id`, plus a backfill of `АВ Автоворонка` onto every
+  existing funnel. The backfill is not a decision about type — it preserves
+  what the database already asserted (the marker was already hardcoded into
+  every `tag_templates` scenario), so `funnel_tags` does not change by a
+  single row; only where the marker comes from changes.
 
 **Docker runs, in order** (`app/docker-entrypoint.sh`): Phase 2 → 3 (+data) →
-4 → 5 → legacy-tag-override backfill → 6.
+4 → 5 → legacy-tag-override backfill → 6 → 7.
 
 **Running a migration by hand** resolves its DB through `scripts/cli-db-path.ts`:
 the default is the repo-root DB **relative to the script**, not to `cwd`, and a
