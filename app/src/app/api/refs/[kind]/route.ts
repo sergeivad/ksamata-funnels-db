@@ -8,6 +8,8 @@ import {
   isImmutableKind,
   IMMUTABLE_KIND_MESSAGE,
   VALID_KINDS,
+  FunnelTypeAxisConflictError,
+  FUNNEL_TYPE_AXIS_CONFLICT_MESSAGE,
 } from '@/lib/refs';
 import { internalError } from '@/lib/http';
 
@@ -67,6 +69,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     const row = createRef(db, kind, parsed.data.name);
     return NextResponse.json(row, { status: 200 });
   } catch (err: unknown) {
+    // Барьер пункта 1 финальной рецензии: имя funnel_types, похожее на осевой
+    // тег, — ожидаемый отказ валидации (400), а не внутренняя ошибка (500).
+    if (err instanceof FunnelTypeAxisConflictError) {
+      return NextResponse.json({ error: FUNNEL_TYPE_AXIS_CONFLICT_MESSAGE }, { status: 400 });
+    }
     return internalError('POST /api/refs/[kind]', err);
   }
 }

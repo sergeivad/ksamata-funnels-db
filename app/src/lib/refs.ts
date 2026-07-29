@@ -12,7 +12,7 @@ import {
   productDurations,
   funnelTypes,
 } from '../db/schema';
-import { AXIS_PREFIXES, type AbAxes } from './ab-tags';
+import { AXIS_PREFIXES, isAxisTag, type AbAxes } from './ab-tags';
 import { FUNNEL_TYPE_KIND } from './funnel-type';
 
 // Explicit whitelist — never interpolate `kind` into SQL
@@ -80,6 +80,40 @@ export function refTagNameFor(kind: RefKind, value: string): string | null {
   return axis ? `${AXIS_PREFIXES[axis]}${value}` : null;
 }
 
+/**
+ * Барьер финальной рецензии (пункт 1): значение funnel_types не может выглядеть
+ * как осевой тег ("АВ Продукт: …" и т.п.). `refTagNameFor(FUNNEL_TYPE_KIND, value)`
+ * возвращает value ДОСЛОВНО — без двоеточия и обёртки, в отличие от четырёх осей,
+ * — поэтому такое имя материализуется КАК ОСЕВОЙ тег и при ближайшем
+ * `computeTagSet` перепишет чужую ось (`getAxesForFunnel` читает оси из тегов)
+ * у каждой воронки этого типа. Опечатка вида «АВ Продукт: ПОДДЕЛКА», заведённая
+ * через `/refs`, воспроизводимо превращала `ЖИВО / НИМБ / Яндекс / РСЯ` в
+ * `ПОДДЕЛКА / НИМБ / Яндекс / РСЯ`.
+ *
+ * Экспортирована (а не спрятана внутри createRef/renameRef), чтобы её можно
+ * было проверить юнит-тестом отдельно от конкретного механизма отказа.
+ */
+export function isReservedFunnelTypeName(kind: string, name: string): boolean {
+  return kind === FUNNEL_TYPE_KIND && isAxisTag(name);
+}
+
+export const FUNNEL_TYPE_AXIS_CONFLICT_MESSAGE =
+  'Имя типа воронки не может выглядеть как осевой тег ("АВ Продукт: …" и т.п.) — такое имя перепишет чужую ось';
+
+/**
+ * Выбрасывается createRef, когда вызывающий пытается завести значение
+ * funnel_types, совпадающее по форме с осевым тегом. createRef в остальном
+ * не имеет истории отказов (get-or-create не может «не найти» валидное имя),
+ * так что исключение — минимальное по объёму изменение; ловится маршрутом
+ * /api/refs и превращается в 400, а не в общий 500 (см. internalError в http.ts).
+ */
+export class FunnelTypeAxisConflictError extends Error {
+  constructor(name: string) {
+    super(`Значение "${name}" типа воронки выглядит как осевой тег`);
+    this.name = 'FunnelTypeAxisConflictError';
+  }
+}
+
 export type RefRow = { id: number; name: string };
 
 /** Return all rows for a reference table, ordered by name. */
@@ -97,6 +131,10 @@ export function listRefs(db: AnyDB, kind: string): RefRow[] {
  * Returns the existing row if found, inserts and returns the new row otherwise.
  */
 export function createRef(db: AnyDB, kind: string, name: string): RefRow {
+  if (isReservedFunnelTypeName(kind, name)) {
+    throw new FunnelTypeAxisConflictError(name);
+  }
+
   const table = resolveTable(kind);
 
   // Try to find existing row
@@ -193,9 +231,12 @@ export type RefUsage = { count: number; funnelIds: number[] };
  * directly (tags), and/or via the mirrored tag (products/contractors/
  * channels/directions → "АВ <Axis>: <value>"; funnel_types → само значение,
  * см. refTagNameFor). funnel_types так считается вдвойне — и через
- * funnels.funnel_type_id, и через одноимённый тег, если он когда-нибудь
- * появится (сегодня миграция фазы 7 такой тег не создаёт, но код к этому
- * готов). Union of every source, deduplicated by funnel id.
+ * funnels.funnel_type_id, и через одноимённый тег: `materializeFunnelTags`
+ * (funnels.ts) кладёт маркер в слой идентичности наравне с осями и зовёт
+ * `createRef(db, 'tags', …)` для него так же, как для четырёх осей, так что
+ * зеркальный тег заводится РЕАЛЬНО, на первом же сохранении воронки с этим
+ * типом — не «если когда-нибудь появится». В живой базе он уже есть:
+ * `АВ Квиз`, `АВ Прямые`. Union of every source, deduplicated by funnel id.
  */
 export function getRefUsage(db: AnyDB, kind: RefKind, row: RefRow): RefUsage {
   const ids = new Set<number>();
@@ -262,7 +303,8 @@ function renameOrMergeTag(db: AnyDB, oldName: string, newName: string): void {
 export type RenameRefResult =
   | { ok: true; row: RefRow }
   | { ok: false; error: 'not_found' }
-  | { ok: false; error: 'duplicate' };
+  | { ok: false; error: 'duplicate' }
+  | { ok: false; error: 'axis_conflict' };
 
 /**
  * Rename a reference value. Validates uniqueness within the same table.
@@ -275,12 +317,16 @@ export type RenameRefResult =
  *
  * Для funnel_types зеркальный тег равен самому значению — у маркера типа нет
  * двоеточия, поэтому переименование через AXIS_PREFIXES не годится (см.
- * refTagNameFor). ⚠️ До задачи 6 этим же именем владеет ещё и tag_templates:
- * «АВ Автоворонка» стоит в шаблоне как обычный AV-тег, поэтому переименование
- * ЭТОГО конкретного маркера через funnel_types заденет и шаблонный тег на
- * всех воронках, что его несут (см. task-2-report.md, раздел про Critical).
- * Задача 6 убирает маркер из шаблона и снимает это двоевластие — до неё
- * переименовывать «АВ Автоворонка» здесь не стоит.
+ * refTagNameFor). Двоевластие с `tag_templates`, из-за которого переименование
+ * «АВ Автоворонка» когда-то задевало бы и шаблонный тег, закрыто пятой осью:
+ * маркеров в `tag_templates` теперь ноль (см. funnel-type.ts и
+ * migrate-phase5-data.ts), так что переименовывать любое значение funnel_types
+ * здесь безопасно.
+ *
+ * Отдельно отвергает переименование в имя, которое выглядит как осевой тег
+ * (`isReservedFunnelTypeName` — см. её докстринг): без этого барьера
+ * `newName = "АВ Продукт: X"` материализовался бы как осевой тег и переписал
+ * бы чужую ось у каждой воронки этого типа.
  */
 export function renameRef(db: AnyDB, kind: RefKind, id: number, newName: string): RenameRefResult {
   const table = resolveTable(kind);
@@ -289,6 +335,10 @@ export function renameRef(db: AnyDB, kind: RefKind, id: number, newName: string)
 
   if (existing.name === newName) {
     return { ok: true, row: existing };
+  }
+
+  if (isReservedFunnelTypeName(kind, newName)) {
+    return { ok: false, error: 'axis_conflict' };
   }
 
   const dup = getRefByName(db, kind, newName);

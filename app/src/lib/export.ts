@@ -24,6 +24,11 @@ export type ExportRow = {
   contractor: string;
   channel: string;
   direction: string;
+  // Пятая ось (см. src/lib/funnel-type.ts). Пустая строка = тип не выбран —
+  // тот же плейсхолдер, что у остальных осей, а не NULL-строка, чтобы CSV
+  // не начал печатать "null". Без этой колонки f33 и f43 неразличимы в CSV:
+  // у них дословно совпадают все четыре оси, различает только тип.
+  funnelType: string;
   section: string;
   time: string;
   day: string;
@@ -40,6 +45,7 @@ export const EXPORT_HEADERS = [
   'Подрядчик',
   'Канал',
   'Направление',
+  'Тип',
   'Раздел',
   'Время',
   'День',
@@ -79,6 +85,7 @@ export function buildExportRows(db: DB): ExportRow[] {
       contractor: f.axes.contractor,
       channel: f.axes.channel,
       direction: f.axes.direction,
+      funnelType: f.funnelType ?? '',
     };
 
     let rowCount = 0;
@@ -179,6 +186,7 @@ export function toCsv(rows: ExportRow[]): string {
         r.contractor,
         r.channel,
         r.direction,
+        r.funnelType,
         r.section,
         r.time,
         r.day,

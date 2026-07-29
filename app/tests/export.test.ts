@@ -65,7 +65,7 @@ describe('GET /api/export', () => {
 
     // Header row uses ';' delimiter
     expect(lines[0]).toBe(
-      'Номер;Код;Воронка;Статус;Продукт;Подрядчик;Канал;Направление;Раздел;Время;День;Описание;Ссылка'
+      'Номер;Код;Воронка;Статус;Продукт;Подрядчик;Канал;Направление;Тип;Раздел;Время;День;Описание;Ссылка'
     );
 
     // ~700+ links across ~32 funnels
@@ -73,6 +73,11 @@ describe('GET /api/export', () => {
 
     // A known GC-room link should be present somewhere in the export
     expect(withoutBom).toContain('gc.ksamata.ru');
+
+    // Пятая ось различает f33 и f43: у них дословно совпадают все четыре оси
+    // (ЖИВО / НИМБ / Яндекс / РСЯ), и до этой колонки строки экспорта были
+    // неразличимы — ровно та беда, ради которой вводилась пятая ось.
+    expect(withoutBom).toContain(';АВ Квиз;');
   });
 });
 
@@ -125,6 +130,7 @@ describe('toCsv (unit)', () => {
         contractor: 'К',
         channel: 'Ч',
         direction: 'Н',
+        funnelType: 'АВ Автоворонка',
         section: 'Лендинги',
         time: '15:00',
         day: '',
@@ -137,7 +143,7 @@ describe('toCsv (unit)', () => {
     const lines = csv.split('\r\n');
 
     expect(lines[0]).toBe(
-      'Номер;Код;Воронка;Статус;Продукт;Подрядчик;Канал;Направление;Раздел;Время;День;Описание;Ссылка'
+      'Номер;Код;Воронка;Статус;Продукт;Подрядчик;Канал;Направление;Тип;Раздел;Время;День;Описание;Ссылка'
     );
 
     // The ';'-containing name field must be quoted
@@ -151,8 +157,8 @@ describe('toCsv (unit)', () => {
 
     const base = {
       num: 1, frontCode: 'f1', name: 'n', status: 'active', product: 'П',
-      contractor: 'К', channel: 'Ч', direction: 'Н', section: 'Лендинги',
-      time: '', day: '',
+      contractor: 'К', channel: 'Ч', direction: 'Н', funnelType: 'АВ Автоворонка',
+      section: 'Лендинги', time: '', day: '',
     };
     const csv = toCsv([
       { ...base, description: '=HYPERLINK("https://evil/","Открыть")', url: '+79001234567' },

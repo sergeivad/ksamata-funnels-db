@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import Database from 'better-sqlite3';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { PHASE5_TEMPLATE_SEED } from '../scripts/migrate-phase5-data';
+import { SEED_FUNNEL_TYPES } from '../src/lib/funnel-type';
 
 describe('migrate-phase5', () => {
   it('creates both tables and seeds the template idempotently', () => {
@@ -39,5 +40,18 @@ describe('migrate-phase5', () => {
     expect(count.c).toBe(PHASE5_TEMPLATE_SEED.length);
 
     sqlite.close();
+  });
+
+  // Пункт 3 финальной рецензии: тест выше сверяет сид с ТОЙ ЖЕ константой,
+  // которую читает код сидирования — если кто-нибудь вернёт маркер типа
+  // воронки в PHASE5_TEMPLATE_SEED, этот тест останется зелёным, потому что
+  // ожидание пересчитается вместе с изменением. Стержень ветки — «маркера
+  // в шаблоне нет» — здесь никем не проверяется. Этот тест сверяет сид
+  // с НЕЗАВИСИМЫМ источником (SEED_FUNNEL_TYPES, funnel-type.ts), так что
+  // возврат маркера в сид его красит.
+  it('ни одно имя PHASE5_TEMPLATE_SEED не совпадает с маркером типа воронки', () => {
+    const markerNames = new Set<string>(SEED_FUNNEL_TYPES);
+    const offenders = PHASE5_TEMPLATE_SEED.filter((r) => markerNames.has(r.name));
+    expect(offenders).toEqual([]);
   });
 });
