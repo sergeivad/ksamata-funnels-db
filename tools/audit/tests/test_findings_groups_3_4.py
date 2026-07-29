@@ -14,11 +14,24 @@ from findings import (
     group_observations,
     registry_av_tags,
 )
-from normalize import MARKER_TAGS, parse_tagset
+from normalize import AUTOFUNNEL_TAG, MARKER_TAGS, parse_tagset
 
-KEY = ('ДБО', 'NR', 'ВК', 'In Stream')
+# Пятый элемент — маркер типа воронки. AV/KEY здесь БЕЗ маркера (классы 12
+# тестируют его отсутствие явно, поэтому AV не должен нести маркер по
+# умолчанию — см. комментарий у класса 12 ниже), поэтому KEY несёт явный
+# None пятым, чтобы совпадать с av_key(...) наблюдений/ожиданий из AV.
+KEY = ('ДБО', 'NR', 'ВК', 'In Stream', None)
 AV = 'АВ Продукт: ДБО|АВ Подрядчик: NR|АВ Канал: ВК|АВ Направление: In Stream'
 INDEX = {KEY: {11}}
+
+# Классы 9, 13, 14 (плюс registry_keys_of) сравнивают по ПОЛНОМУ ключу —
+# findings.is_complete_key требует маркер, там речь о конкретной воронке, а
+# не о связке (см. комментарии в findings.py). Без маркера офер/наблюдение
+# отсеялись бы как неполные ещё до сравнения с индексом, и соответствующие
+# тесты были бы зелёными по случайной причине, а не потому, что сравнение
+# действительно сработало.
+KEY5 = ('ДБО', 'NR', 'ВК', 'In Stream', AUTOFUNNEL_TAG)
+INDEX5 = {KEY5: {11}}
 
 
 def offer(offer_id, raw, title='Курс'):
@@ -51,10 +64,10 @@ def test_class_8_reports_collision_with_both_funnels():
 
 
 def test_class_9_reports_av_key_present_in_registry_but_absent_from_db():
-    offers = [offer(1, AV + '|АВ Этап: Регистрация'),
+    offers = [offer(1, AV + '|АВ Этап: Регистрация|' + AUTOFUNNEL_TAG),
               offer(2, 'АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
-                       'АВ Направление: РСЯ|АВ Этап: Регистрация')]
-    found = find_unknown_av_keys(offers, INDEX, {})
+                       'АВ Направление: РСЯ|АВ Этап: Регистрация|' + AUTOFUNNEL_TAG)]
+    found = find_unknown_av_keys(offers, INDEX5, {})
     assert [f.cls for f in found] == [9]
     assert 'ЩЖ' in found[0].subject
 
@@ -62,7 +75,7 @@ def test_class_9_reports_av_key_present_in_registry_but_absent_from_db():
 def test_class_9_ignores_offer_with_incomplete_quadruple():
     offers = [offer(1, 'АВ Продукт: ДБО|АВ Канал: ВК|АВ Этап: Регистрация'),
               offer(2, 'АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
-                       'АВ Направление: РСЯ|АВ Этап: Регистрация')]
+                       'АВ Направление: РСЯ|АВ Этап: Регистрация|' + AUTOFUNNEL_TAG)]
     found = find_unknown_av_keys(offers, INDEX, {})
     assert [f.cls for f in found] == [9]
     assert 'ЩЖ' in found[0].subject
@@ -70,7 +83,7 @@ def test_class_9_ignores_offer_with_incomplete_quadruple():
 
 def test_class_9_counts_offers_per_key():
     raw = ('АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
-           'АВ Направление: РСЯ|АВ Этап: Регистрация')
+           'АВ Направление: РСЯ|АВ Этап: Регистрация|' + AUTOFUNNEL_TAG)
     found = find_unknown_av_keys([offer(1, raw), offer(2, raw)], INDEX, {})
     assert len(found) == 1
     assert found[0].deals == 2
@@ -174,10 +187,14 @@ def test_class_13_ignores_drafts_and_archive():
 
 
 def test_class_14_reports_av_offer_with_zero_deals():
-    groups = group_observations([obs(AV + '|АВ Этап: Регистрация')])
-    offers = [offer(1, AV + '|АВ Этап: Регистрация'),
+    # find_unused_offers тоже сравнивает по ПОЛНОМУ ключу — маркер обязателен
+    # у всех троих (наблюдения и обоих офферов), иначе они отсеются как
+    # неполные ещё до сравнения с observed_keys/is_complete_key.
+    groups = group_observations([obs(AV + '|АВ Этап: Регистрация|' + AUTOFUNNEL_TAG)])
+    offers = [offer(1, AV + '|АВ Этап: Регистрация|' + AUTOFUNNEL_TAG),
               offer(2, 'АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
-                       'АВ Направление: РСЯ|АВ Этап: Регистрация', title='Старый')]
+                       'АВ Направление: РСЯ|АВ Этап: Регистрация|' + AUTOFUNNEL_TAG,
+                    title='Старый')]
     found = find_unused_offers(offers, groups)
     assert [f.cls for f in found] == [14]
     assert 'Старый' in found[0].subject
@@ -191,7 +208,8 @@ def test_class_14_ignores_offer_with_incomplete_quadruple():
     groups = group_observations([obs(AV + '|АВ Этап: Регистрация')])
     offers = [offer(1, 'АВ Продукт: ДБО|АВ Канал: ВК|АВ Этап: Регистрация'),
               offer(2, 'АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
-                       'АВ Направление: РСЯ|АВ Этап: Регистрация', title='Старый')]
+                       'АВ Направление: РСЯ|АВ Этап: Регистрация|' + AUTOFUNNEL_TAG,
+                    title='Старый')]
     found = find_unused_offers(offers, groups)
     assert [f.cls for f in found] == [14]
     assert 'Старый' in found[0].subject

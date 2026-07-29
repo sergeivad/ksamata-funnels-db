@@ -11,9 +11,13 @@ from findings import (
     find_unsupported_stage,
     group_observations,
 )
-from normalize import parse_tagset
+from normalize import AUTOFUNNEL_TAG, parse_tagset
 
-KEY = ('ДБО', 'NR', 'ВК', 'In Stream')
+# Пятый элемент — маркер типа воронки (см. normalize.av_key). AV — намеренно
+# БЕЗ маркера здесь (большинство тестов этого файла не о нём), поэтому у KEY
+# явный None пятым: иначе g.key (5 элементов) никогда не совпал бы с
+# буквальным 4-элементным литералом ни при каких условиях.
+KEY = ('ДБО', 'NR', 'ВК', 'In Stream', None)
 AV = 'АВ Продукт: ДБО|АВ Подрядчик: NR|АВ Канал: ВК|АВ Направление: In Stream'
 INDEX = {KEY: {11}}
 
@@ -76,7 +80,7 @@ def test_class_1_collapses_mass_missing_tag_but_lists_rare_ones_individually():
     expectations = []
     index = {}
     for i in range(6):
-        key = (f'П{i}', 'NR', 'ВК', 'In Stream')
+        key = (f'П{i}', 'NR', 'ВК', 'In Stream', None)
         present = (
             f'АВ Продукт: П{i}|АВ Подрядчик: NR|АВ Канал: ВК|'
             'АВ Направление: In Stream|АВ Этап: Регистрация'
@@ -236,9 +240,12 @@ def test_class_6_reports_predpisok_as_unresolved():
 
 
 def test_class_7_reports_known_type_but_unknown_funnel():
-    other = ('ЩЖ', 'НИМБ', 'Яндекс', 'РСЯ')
+    # Класс 7 сравнивает по ПОЛНОМУ ключу (findings.is_complete_key — там
+    # речь о конкретной воронке, а не о связке), поэтому маркер обязателен:
+    # без него запись отсеялась бы как неполная ДО проверки индекса, и тест
+    # был бы зелёным по случайной причине.
     raw = ('АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
-           'АВ Направление: РСЯ|АВ Этап: Регистрация')
+           'АВ Направление: РСЯ|АВ Этап: Регистрация|' + AUTOFUNNEL_TAG)
     found = find_unresolved(group_observations([obs(raw, 2)]), INDEX)
     assert [f.cls for f in found] == [7]
     assert 'ЩЖ' in found[0].subject
@@ -249,8 +256,9 @@ def test_classes_5_6_7_are_mutually_exclusive():
     groups = group_observations([
         obs(AV + '|АВ Этап: Оплата', 2, '1'),
         obs(AV + '|АВ Этап: Предписок', 2, '2'),
+        # class 7 требует полный ключ — см. комментарий в тесте выше.
         obs('АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
-            'АВ Направление: РСЯ|АВ Этап: Регистрация', 2, '3'),
+            'АВ Направление: РСЯ|АВ Этап: Регистрация|' + AUTOFUNNEL_TAG, 2, '3'),
     ])
     found = find_unresolved(groups, INDEX)
     assert sorted(f.cls for f in found) == [5, 6, 7]
@@ -284,10 +292,13 @@ def test_class_4_still_reports_two_different_refinements_under_one_general_tag()
 
 
 # ─── класс 7: два фильтра ────────────────────────────────────────────────────
-
+#
+# С маркером: class7 (ветка `elif is_complete_key(group.key) and ... not in
+# index`) требует полный ключ, иначе запись отсеялась бы неполной ещё до
+# сравнения с реестром, и тесты про фильтр реестра проверяли бы не его.
 OTHER_AV = ('АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
-            'АВ Направление: РСЯ|АВ Этап: Регистрация')
-OTHER_KEY = ('ЩЖ', 'НИМБ', 'Яндекс', 'РСЯ')
+            'АВ Направление: РСЯ|АВ Этап: Регистрация|' + AUTOFUNNEL_TAG)
+OTHER_KEY = ('ЩЖ', 'НИМБ', 'Яндекс', 'РСЯ', AUTOFUNNEL_TAG)
 
 
 def test_class_7_hides_a_key_that_is_no_longer_in_the_registry():

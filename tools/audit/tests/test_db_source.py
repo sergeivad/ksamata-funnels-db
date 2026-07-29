@@ -58,9 +58,14 @@ def make_db(tmp_path, funnels, tag_links):
     return str(path)
 
 
+# Маркер типа воронки включён намеренно: build_av_index требует ПОЛНЫЙ
+# (пятиэлементный) ключ (is_complete_key) — с фазы 7 funnel_tags реальной
+# базы всегда несёт маркер наравне с осями, и без него build_av_index
+# отбросил бы эти expectations как неполные, а index[(...)] в тестах ниже
+# упал бы с KeyError вместо содержательной проверки.
 AV_DBO_NR_VK_IS = [
     'АВ Продукт: ДБО', 'АВ Подрядчик: NR',
-    'АВ Канал: ВК', 'АВ Направление: In Stream',
+    'АВ Канал: ВК', 'АВ Направление: In Stream', 'АВ Автоворонка',
 ]
 
 
@@ -130,7 +135,7 @@ def test_load_expectations_leaves_data_untouched(tmp_path):
     con = sqlite3.connect(db)
     remaining = con.execute('SELECT count(*) FROM funnel_tags').fetchone()[0]
     con.close()
-    assert remaining == 4
+    assert remaining == len(AV_DBO_NR_VK_IS)
 
 
 def test_build_av_index_maps_key_to_funnels(tmp_path):
@@ -140,12 +145,13 @@ def test_build_av_index_maps_key_to_funnels(tmp_path):
         [(11, 'reg', AV_DBO_NR_VK_IS), (11, 'time_19', AV_DBO_NR_VK_IS)],
     )
     index = build_av_index(load_expectations(db))
-    assert index[('ДБО', 'NR', 'ВК', 'In Stream')] == {11}
+    assert index[('ДБО', 'NR', 'ВК', 'In Stream', 'АВ Автоворонка')] == {11}
 
 
 def test_find_key_collisions_detects_two_funnels_on_one_key(tmp_path):
+    # Маркер обязателен: build_av_index требует ПОЛНЫЙ ключ (is_complete_key).
     shared = ['АВ Продукт: ЖИВО', 'АВ Подрядчик: НИМБ',
-              'АВ Канал: Яндекс', 'АВ Направление: РСЯ']
+              'АВ Канал: Яндекс', 'АВ Направление: РСЯ', 'АВ Автоворонка']
     db = make_db(
         tmp_path,
         [(34, 34, 'f33', 'ЖИВО НИМБ РСЯ', 'active'),
@@ -153,7 +159,7 @@ def test_find_key_collisions_detects_two_funnels_on_one_key(tmp_path):
         [(34, 'reg', shared), (46, 'reg', shared)],
     )
     collisions = find_key_collisions(build_av_index(load_expectations(db)))
-    assert collisions == {('ЖИВО', 'НИМБ', 'Яндекс', 'РСЯ'): {34, 46}}
+    assert collisions == {('ЖИВО', 'НИМБ', 'Яндекс', 'РСЯ', 'АВ Автоворонка'): {34, 46}}
 
 
 def test_find_key_collisions_ignores_single_funnel_keys(tmp_path):
@@ -164,9 +170,9 @@ def test_find_key_collisions_ignores_single_funnel_keys(tmp_path):
     в результат.
     """
     unique = ['АВ Продукт: ЖИВО', 'АВ Подрядчик: НИМБ',
-              'АВ Канал: Яндекс', 'АВ Направление: РСЯ']
+              'АВ Канал: Яндекс', 'АВ Направление: РСЯ', 'АВ Автоворонка']
     shared = ['АВ Продукт: КВИЗ', 'АВ Подрядчик: НИМБ',
-              'АВ Канал: ВК', 'АВ Направление: In Stream']
+              'АВ Канал: ВК', 'АВ Направление: In Stream', 'АВ Автоворонка']
     db = make_db(
         tmp_path,
         [(34, 34, 'f33', 'ЖИВО НИМБ РСЯ', 'active'),
@@ -175,7 +181,7 @@ def test_find_key_collisions_ignores_single_funnel_keys(tmp_path):
         [(34, 'reg', unique), (46, 'reg', shared), (47, 'reg', shared)],
     )
     collisions = find_key_collisions(build_av_index(load_expectations(db)))
-    assert collisions == {('КВИЗ', 'НИМБ', 'ВК', 'In Stream'): {46, 47}}
+    assert collisions == {('КВИЗ', 'НИМБ', 'ВК', 'In Stream', 'АВ Автоворонка'): {46, 47}}
 
 
 def test_incomplete_keys_are_excluded_from_index(tmp_path):

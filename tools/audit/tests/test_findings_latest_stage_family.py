@@ -10,14 +10,22 @@ from findings import (
     find_unresolved,
     group_observations,
 )
-from normalize import parse_tagset
+from normalize import AUTOFUNNEL_TAG, parse_tagset
 
-KEY = ('ДБО', 'NR', 'ВК', 'In Stream')
+# Пятый элемент — маркер типа воронки. KEY несёт явный None пятым: AV в этом
+# файле без маркера, а трейлинг-None нужен, чтобы литерал совпадал по длине
+# и значению с тем, что реально возвращает av_key(...) для таких тегов.
+KEY = ('ДБО', 'NR', 'ВК', 'In Stream', None)
 AV = 'АВ Продукт: ДБО|АВ Подрядчик: NR|АВ Канал: ВК|АВ Направление: In Stream'
 INDEX = {KEY: {11}}
 
+# ORPHAN_AV, в отличие от AV, НЕСЁТ маркер: ниже он используется ровно там,
+# где class7 (find_unresolved) сравнивает по ПОЛНОМУ ключу — findings.
+# is_complete_key требует маркер (речь о конкретной воронке, а не о связке).
+# Без него запись отсеялась бы как неполная ещё до сравнения с
+# ORPHAN_INDEX, и тест был бы зелёным по случайной причине.
 ORPHAN_AV = ('АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
-             'АВ Направление: РСЯ')
+             'АВ Направление: РСЯ|' + AUTOFUNNEL_TAG)
 ORPHAN_INDEX = {}
 
 

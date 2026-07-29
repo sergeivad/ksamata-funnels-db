@@ -22,8 +22,10 @@ from normalize import (
     classify,
     is_av_tag,
     is_complete_key,
+    is_complete_quad,
     is_external_tag,
     key_label,
+    quad,
 )
 from retired import is_retired
 
@@ -39,7 +41,7 @@ CLASS_TITLES = {
     9: 'АВ-четвёрка есть в GetCourse, но нет ни одной воронки',
     10: 'Предложение с неполной АВ-четвёркой',
     11: 'Ось есть в GetCourse, но отсутствует в словаре базы целиком',
-    12: 'Предложение с АВ Этап, но без АВ Автоворонка',
+    12: 'Предложение с АВ Этап, но без маркера типа воронки',
     13: 'Воронка active, но ни одного наблюдения за период',
     14: 'Предложение с АВ-тегами и нулём заказов — кандидат в архив',
     15: 'Дрейф разметки АВ: тег появился у всей четвёрки или исчез у всей',
@@ -136,7 +138,14 @@ def registry_av_tags(offers):
 
 
 def last_order_dates(observations):
-    """АВ-четвёрка → дата последнего ЗАКАЗА по ней, ISO-строка.
+    """АВ-СВЯЗКА (четвёрка, не полный ключ) → дата последнего ЗАКАЗА, ISO-строка.
+
+    Ключ — именно quad(av_key(...)), а не полный пятиэлементный ключ: отставка
+    (retired.RETIRED_KEYS) решается по связке целиком, независимо от маркера
+    типа воронки, поэтому и дата последнего заказа должна собираться по той же
+    связке — иначе два наблюдения одной связки с разными (или отсутствующими)
+    маркерами разъедутся по разным записям словаря, и is_retired получит
+    неполную историю заказов.
 
     Именно дата заказа, а не дата файла выгрузки: отставка снимается тем, что
     связка снова продала, а не тем, что её застали в свежем срезе. Пустые и
@@ -145,8 +154,8 @@ def last_order_dates(observations):
     """
     result = {}
     for obs in observations:
-        key = av_key(obs.tags)
-        if not is_complete_key(key):
+        key = quad(av_key(obs.tags))
+        if not is_complete_quad(key):
             continue
         created = (obs.deal_created or '').strip()
         current = result.get(key)
@@ -355,7 +364,11 @@ def find_extra_axes(groups, vocabulary, order_dates=None, registry_tags=frozense
     order_dates = order_dates or {}
     result = []
     for group in _latest_by_stage_family(groups):
-        if is_retired(group.key, order_dates.get(group.key)):
+        # RETIRED_KEYS и order_dates индексированы СВЯЗКОЙ (quad), а не полным
+        # пятиэлементным ключом — см. предупреждение в retired.py. Передать
+        # сюда group.key напрямую значит, что ни одна запись отставки никогда
+        # не совпадёт: пятёрка не равна четвёрке ни при каком маркере.
+        if is_retired(quad(group.key), order_dates.get(quad(group.key))):
             continue
         unknown = sorted(
             tag for tag in group.tags
@@ -497,7 +510,9 @@ def find_unresolved(groups, index, registry_keys=frozenset(), order_dates=None):
     order_dates = order_dates or {}
     result = []
     for group in _latest_by_stage_family(groups):
-        if is_retired(group.key, order_dates.get(group.key)):
+        # Отставка — по связке (quad), см. предупреждение в retired.py: полный
+        # ключ (с маркером) никогда не совпадёт ни с одной записью RETIRED_KEYS.
+        if is_retired(quad(group.key), order_dates.get(quad(group.key))):
             continue
 
         if group.reason == 'no_time':
@@ -571,9 +586,13 @@ def find_unknown_av_keys(offers, index, order_dates):
     counts = defaultdict(list)
     for offer in _offers_with_av(offers):
         key = av_key(offer.tags)
+        # Полный ключ (не quad): здесь речь именно о ВОРОНКЕ конкретного типа,
+        # а не о связке — без маркера нельзя понять, под какой ИМЕННО тип
+        # (автоворонка? квиз?) искать funnel в index.
         if not is_complete_key(key) or key in index:
             continue
-        if is_retired(key, order_dates.get(key)):
+        # А вот отставка — по связке (см. предупреждение в retired.py).
+        if is_retired(quad(key), order_dates.get(quad(key))):
             continue
         counts[key].append(offer)
 
@@ -597,13 +616,24 @@ def find_unknown_av_keys(offers, index, order_dates):
 
 
 def find_incomplete_offer_keys(offers):
-    """Класс 10: у предложения с АВ-тегами четвёрка неполна."""
+    """Класс 10: у предложения с АВ-тегами четвёрка (СВЯЗКА) неполна.
+
+    Проверяется именно quad, а не полный пятиэлементный ключ: класс 10 — про
+    пропущенную ОСЬ, а про пропущенный МАРКЕР типа воронки уже отдельно
+    отчитывается класс 12. Проверять здесь is_complete_key означало бы, что
+    единственное предложение без маркера (но с полной четвёркой) попадало бы
+    сразу в оба класса про один и тот же факт.
+
+    Из того же соображения `missing` вычисляется по quad(key), а не по key:
+    у key теперь пять элементов, а в AXES их четыре — enumerate(key) отдал бы
+    AXES[4] и упал бы с IndexError на первом же предложении без маркера.
+    """
     result = []
     for offer in _offers_with_av(offers):
         key = av_key(offer.tags)
-        if is_complete_key(key):
+        if is_complete_quad(key):
             continue
-        missing = [AXES[i] for i, part in enumerate(key) if part is None]
+        missing = [AXES[i] for i, part in enumerate(quad(key)) if part is None]
         result.append(
             Finding(
                 cls=10,
@@ -643,7 +673,8 @@ def find_unknown_axes_in_registry(offers, vocabulary, order_dates=None):
     counts = defaultdict(set)
     for offer in _offers_with_av(offers):
         key = av_key(offer.tags)
-        if is_retired(key, order_dates.get(key)):
+        # Отставка — по связке; см. предупреждение в retired.py.
+        if is_retired(quad(key), order_dates.get(quad(key))):
             continue
         for tag in offer.tags:
             if (tag.startswith('АВ ') and tag not in vocabulary
@@ -749,7 +780,8 @@ def find_unused_offers(offers, groups):
         if not is_complete_key(key) or key in observed_keys:
             continue
         # Дату не передаём: сюда доходят только четвёрки с нулём заказов.
-        if is_retired(key):
+        # Отставка — по связке (quad), не по полному ключу: см. retired.py.
+        if is_retired(quad(key)):
             continue
         result.append(
             Finding(
@@ -830,7 +862,8 @@ def find_drift(observations, index, expectations, order_dates=None):
     for (key, tag_type), by_date in sorted(
         slots.items(), key=lambda kv: (key_label(kv[0][0]), kv[0][1])
     ):
-        if is_retired(key, order_dates.get(key)):
+        # Отставка — по связке; см. предупреждение в retired.py.
+        if is_retired(quad(key), order_dates.get(quad(key))):
             continue
         timeline = []
         for file_date in sorted(by_date.keys()):
