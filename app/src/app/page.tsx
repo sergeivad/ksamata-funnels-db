@@ -14,6 +14,7 @@ import {
   type StatusFilter,
   isStatusFilter,
   matchesStatusFilter,
+  countLabel,
   STATUS_TOAST,
 } from '@/lib/status';
 
@@ -55,13 +56,29 @@ function isGroupBy(v: unknown): v is GroupBy {
   return v === 'contractor' || v === 'product' || v === 'none';
 }
 
+/**
+ * Ищем по имени и F-коду — и только по ним. Раньше в стог клали ещё `f${num}`
+ * и сам num, а num с F не связан (совпадают у 16 воронок из 72): запрос «f70»
+ * находил и настоящую f70, и воронку с num=70, у которой на карточке написано
+ * f74. Подстрочный поиск по коду сохраняет и «f5», и «5».
+ */
 function matchesSearch(f: FunnelListItem, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  const haystack = [f.name, f.frontCode, `f${f.num}`, String(f.num)]
-    .join(' ')
-    .toLowerCase();
-  return haystack.includes(q);
+  return [f.name, f.frontCode].join(' ').toLowerCase().includes(q);
+}
+
+/**
+ * Чем назвать воронку в диалоге удаления. Показывать `num` тут нельзя: на
+ * карточке, которую человек только что нажал, написан F-код, и «Удалить
+ * воронку №70?» спрашивало про воронку с другим номером на экране.
+ */
+function funnelLabel(f: FunnelListItem): string {
+  if (f.frontCode) return f.frontCode;
+  const hasAxes = Object.values(f.axes).some((v) => v.trim() !== '');
+  if (hasAxes) return `«${f.name}»`;
+  if (f.productName.trim()) return `«${f.productName.trim()}»`;
+  return 'без кода и названия';
 }
 
 export default function HomePage() {
@@ -207,7 +224,7 @@ export default function HomePage() {
 
   const handleDelete = useCallback(
     async (funnel: FunnelListItem) => {
-      if (!window.confirm(`Удалить воронку №${funnel.num}? Это действие нельзя отменить.`)) {
+      if (!window.confirm(`Удалить воронку ${funnelLabel(funnel)}? Это действие нельзя отменить.`)) {
         return;
       }
 
@@ -239,7 +256,6 @@ export default function HomePage() {
       .sort(compareByFrontCodeDesc);
   }, [funnels, statusFilter, search]);
 
-  const isFiltered = statusFilter !== 'all' || search.trim() !== '';
 
   function buildTitle(f: FunnelListItem): string {
     const allEmpty =
@@ -372,9 +388,7 @@ export default function HomePage() {
           <GroupToggle value={groupBy} onChange={handleGroupByChange} />
           <div className="flex items-center gap-3">
             <span className="text-[12px] text-[var(--color-text-secondary)]">
-              {isFiltered
-                ? `${visibleFunnels.length} из ${funnels.length}`
-                : `${visibleFunnels.length} всего`}
+              {countLabel(visibleFunnels.length, funnels.length)}
             </span>
             <a
               href="/api/export"

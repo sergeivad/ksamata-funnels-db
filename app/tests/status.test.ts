@@ -3,6 +3,7 @@ import {
   isFunnelStatus,
   isStatusFilter,
   matchesStatusFilter,
+  countLabel,
   STATUS_META,
   STATUS_ACTION_LABELS,
   FUNNEL_STATUS_VALUES,
@@ -53,5 +54,32 @@ describe('STATUS_META / STATUS_ACTION_LABELS', () => {
   test('archive copy is correct', () => {
     expect(STATUS_META.archive.label).toBe('Архив');
     expect(STATUS_ACTION_LABELS.archive).toBe('В архив');
+  });
+});
+
+/**
+ * Счётчик под списком воронок. Вкладка «Все» намеренно прячет архив
+ * (`matchesStatusFilter`), но счётчик считал вид неотфильтрованным и писал
+ * «51 всего» — то есть ровно в состоянии по умолчанию утверждал, что воронок
+ * всего 51 при 72 в базе. Владелец на этом решил, что новые воронки не
+ * доехали до прода, 2026-07-29.
+ */
+describe('countLabel', () => {
+  test('на вкладке «Все» показывает «из», пока архив скрыт', () => {
+    expect(countLabel(51, 72)).toBe('51 из 72');
+  });
+
+  test('без скрытых пишет «всего»', () => {
+    expect(countLabel(72, 72)).toBe('72 всего');
+  });
+
+  // Ноль показанных — тоже честное «0 из N», иначе «0 всего» читается как
+  // «воронок нет вообще», а не «ничего не нашлось».
+  test('пустая выдача не выглядит как пустая база', () => {
+    expect(countLabel(0, 72)).toBe('0 из 72');
+  });
+
+  test('пустая база остаётся «0 всего»', () => {
+    expect(countLabel(0, 0)).toBe('0 всего');
   });
 });

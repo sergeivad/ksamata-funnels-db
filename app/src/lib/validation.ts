@@ -1,11 +1,16 @@
 import { z } from 'zod';
 import { FUNNEL_STATUS_VALUES } from './status';
 import { isAxisTag } from './ab-tags';
+import { FRONT_CODE_RE, normalizeFrontCode } from './front-code';
 
-// Matches ^f\d+$ or empty string ''
+// Matches ^f\d+$ or empty string '' — после приведения к канону.
+// Нормализация идёт ДО проверки: код часто прилетает из буфера обмена, и
+// « f80 » или «F80» — это тот же код, а не повод отдать 400. Домен (funnels.ts)
+// нормализует ещё раз, поэтому скрипты в обход API получают тот же результат.
 const frontCodeSchema = z
   .string()
-  .refine((v) => v === '' || /^f\d+$/.test(v), {
+  .transform(normalizeFrontCode)
+  .refine((v) => v === '' || FRONT_CODE_RE.test(v), {
     message: "frontCode must be empty or match ^f\\d+$",
   });
 

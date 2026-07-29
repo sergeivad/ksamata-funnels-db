@@ -16,6 +16,7 @@ import path from 'path';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
+import { runMigratePhase7 } from '../scripts/migrate-phase7';
 import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import * as schema from '../src/db/schema';
 import { copyDbForTest } from './helpers/db';
@@ -25,6 +26,7 @@ let tmp: string;
 let sqlite: Database.Database;
 let existingId: number;
 let numA: number;
+let codeB: string;
 let numB: number;
 
 /* eslint-disable @typescript-eslint/consistent-type-imports */
@@ -44,11 +46,17 @@ beforeEach(async () => {
   runMigratePhase3(sqlite);
   runMigrateMessengerTagType(sqlite);
   runMigratePhase5(sqlite);
+  runMigratePhase7(sqlite);
   runMigratePhase8(sqlite);
   const rows = sqlite.prepare('SELECT id, num FROM funnels ORDER BY num LIMIT 2').all() as { id: number; num: number }[];
   existingId = rows[0].id;
   numA = rows[0].num;
   numB = rows[1].num;
+  // Именно занятый код, а не «код второй строки»: у воронки может не быть кода,
+  // и тест на конфликт молча проверял бы пустую строку, которая не конфликтует.
+  codeB = (sqlite
+    .prepare(`SELECT front_code AS frontCode FROM funnels WHERE id <> ? AND front_code <> '' LIMIT 1`)
+    .get(existingId) as { frontCode: string }).frontCode;
   const db = drizzle(sqlite, { schema });
   vi.doMock('@/db/client', () => ({ db }));
 
@@ -102,6 +110,16 @@ describe('POST /api/funnels', () => {
   it('rejects a duplicate num with 409', async () => {
     const res = await listPOST(jsonReq('POST', { ...VALID_CREATE, num: numA }));
     expect(res.status).toBe(409);
+  });
+
+  it('занятый F-код — тоже 409, и в тексте написано про код, а не про num', async () => {
+    // Ответ был захардкожен под num, поэтому конфликт кода приезжал на экран
+    // как «Funnel with num=… already exists» — то есть про не то поле.
+    const res = await listPOST(jsonReq('POST', { ...VALID_CREATE, frontCode: codeB }));
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toContain(codeB);
+    expect(body.error).not.toContain('num=');
   });
 
   it('неизвестный тип воронки → 400, а не 500', async () => {
@@ -174,6 +192,12 @@ describe('PATCH /api/funnels/[id]', () => {
   it('returns 404 for a missing funnel', async () => {
     const res = await idPATCH(jsonReq('PATCH', { status: 'draft' }), params(999999));
     expect(res.status).toBe(404);
+  });
+  it('returns 409 when changing frontCode to one already taken', async () => {
+    const res = await idPATCH(jsonReq('PATCH', { frontCode: codeB }), params(existingId));
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toContain(codeB);
   });
   it('returns 409 when changing num to one already taken', async () => {
     const res = await idPATCH(jsonReq('PATCH', { num: numB }), params(existingId));

@@ -35,18 +35,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(funnel, { status: 201 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error';
-    // Friendly pre-check path: createFunnel throws ConflictError on duplicate num.
+    // Friendly pre-check path: createFunnel throws ConflictError — на занятый
+    // num ИЛИ на занятый F-код, поэтому причину берём из самой ошибки. Пока
+    // ответ был захардкожен под num, конфликт кода приезжал на экран как
+    // «Funnel with num=… already exists» — то есть про не то поле.
+    if (err instanceof ConflictError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
     // TOCTOU path: SQLite UNIQUE constraint fires inside the transaction — эта
     // строка приходит из драйвера, поэтому здесь сравнение с текстом уместно.
-    if (
-      err instanceof ConflictError ||
-      message.includes('UNIQUE constraint failed: funnels.num')
-    ) {
+    // Штатно её перехватывают asNumConflict/asFrontCodeConflict; это страховка.
+    if (message.includes('UNIQUE constraint failed: funnels.num')) {
       return NextResponse.json(
         { error: `Funnel with num=${parsed.data.num} already exists` },
         { status: 409 }
       );
     }
+    if (message.includes('UNIQUE constraint failed: funnels.front_code')) {
+      return NextResponse.json(
+        { error: `Код ${parsed.data.frontCode} уже занят другой воронкой` },
+        { status: 409 }
+      );
+    }
+    // Неизвестный тип воронки (resolveFunnelTypeId) — вина запроса, не сервера.
     if (err instanceof ValidationError) {
       return NextResponse.json({ error: err.message }, { status: 400 });
     }

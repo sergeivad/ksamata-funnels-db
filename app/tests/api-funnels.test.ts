@@ -22,9 +22,11 @@ import {
   duplicateFunnel,
   resyncAllFunnels,
 } from '../src/lib/funnels';
+import { nextFrontCode } from '../src/lib/front-code';
 import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
+import { runMigratePhase7 } from '../scripts/migrate-phase7';
 import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import { replaceDays, listDays } from '../src/lib/funnel-days';
 import { ConflictError } from '../src/lib/errors';
@@ -45,6 +47,9 @@ sqlite.pragma('foreign_keys = ON');
 runMigratePhase3(sqlite);
 runMigrateMessengerTagType(sqlite);
 runMigratePhase5(sqlite);
+// Уникальный индекс на front_code — чтобы тесты видели ту же защиту, что и
+// прод: без него дубль кода ловила бы только предпроверка в funnels.ts.
+runMigratePhase7(sqlite);
 runMigratePhase8(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
@@ -133,6 +138,68 @@ describe('createFunnel', () => {
   });
 });
 
+// ─── F-КОД ────────────────────────────────────────────────────────────────────
+// Код — то, чем воронка называется во внешних материалах, поэтому два одинаковых
+// кода хуже двух одинаковых num: «f77» и «f77» для человека неразличимы. До
+// Phase-7 у колонки не было ни индекса, ни проверки.
+describe('уникальность F-кода', () => {
+  const withCode = (num: number, frontCode: string) => ({
+    ...BASE_FUNNEL_DATA,
+    num,
+    frontCode,
+    productName: `Код ${frontCode}`,
+  });
+
+  it('createFunnel отказывает в занятом коде и называет владельца', () => {
+    const taken = createFunnel(testDb, withCode(9910, 'f9910'));
+    expect(() => createFunnel(testDb, withCode(9911, 'f9910'))).toThrow(ConflictError);
+    expect(() => createFunnel(testDb, withCode(9911, 'f9910'))).toThrow(
+      new RegExp(`#${taken.id}`),
+    );
+  });
+
+  it('пустой код не конфликтует ни с чем — таких воронок в базе десяток', () => {
+    expect(() => createFunnel(testDb, withCode(9912, ''))).not.toThrow();
+    expect(() => createFunnel(testDb, withCode(9913, ''))).not.toThrow();
+  });
+
+  it('код приводится к канону на записи: « F9914 » → «f9914»', () => {
+    const created = createFunnel(testDb, withCode(9914, ' F9914 '));
+    expect(created.frontCode).toBe('f9914');
+    // И регистр не даёт обойти проверку занятости.
+    expect(() => createFunnel(testDb, withCode(9915, 'F9914'))).toThrow(ConflictError);
+  });
+
+  it('updateFunnel отказывает в чужом коде, но пропускает свой собственный', () => {
+    const a = createFunnel(testDb, withCode(9916, 'f9916'));
+    const b = createFunnel(testDb, withCode(9917, 'f9917'));
+
+    expect(() => updateFunnel(testDb, b.id, { frontCode: 'f9916' })).toThrow(ConflictError);
+    // Повторное сохранение той же формы не должно падать в 409.
+    expect(() => updateFunnel(testDb, a.id, { frontCode: 'f9916' })).not.toThrow();
+  });
+
+  it('уникальный индекс держит и мимо приложения (TOCTOU-путь)', () => {
+    createFunnel(testDb, withCode(9918, 'f9918'));
+    const { funnels: funnelsTable } = schema;
+    expect(() =>
+      testDb.insert(funnelsTable).values({
+        num: 9919,
+        frontCode: 'f9918',
+        status: 'active',
+        productName: 'Duplicate code',
+        variant: 'А',
+        landingUrl: '',
+        startDate: '',
+        blockName: '',
+        productId: 1,
+        contractorId: 1,
+        sourceId: 1,
+      }).run()
+    ).toThrow(/UNIQUE constraint failed: funnels\.front_code/i);
+  });
+});
+
 // ─── CREATE DRAFT ───────────────────────────────────────────────────────────────
 describe('createDraftFunnel', () => {
   it('creates a draft with next free num, status=draft, EMPTY axes', () => {
@@ -144,9 +211,32 @@ describe('createDraftFunnel', () => {
     expect(draft).toHaveProperty('id');
     expect(draft.num).toBe(maxNum + 1);
     expect(draft.status).toBe('draft');
-    expect(draft.frontCode).toBe(`f${maxNum + 1}`);
+    expect(draft.frontCode).toBe(nextFrontCode(before.map((f) => f.frontCode)));
     // Axes are empty — the user fills them on the card
     expect(draft.axes).toEqual({ product: '', contractor: '', channel: '', direction: '' });
+  });
+
+  it('код берётся от максимума КОДОВ, а не от num', () => {
+    // Ровно та поломка, ради которой всё затевалось: `f${num}` брал номер из
+    // чужой последовательности и мог попасть в уже занятый код.
+    const maxNum = Math.max(...listFunnels(testDb).map((f) => f.num));
+    createFunnel(testDb, {
+      ...BASE_FUNNEL_DATA,
+      num: maxNum + 500,
+      frontCode: `f${maxNum + 900}`,
+      productName: 'Код впереди num',
+    });
+
+    const draft = createDraftFunnel(testDb);
+
+    expect(draft.frontCode).toBe(`f${maxNum + 901}`);
+    expect(draft.frontCode).not.toBe(`f${draft.num}`);
+  });
+
+  it('два черновика подряд не получают один и тот же код', () => {
+    const first = createDraftFunnel(testDb);
+    const second = createDraftFunnel(testDb);
+    expect(second.frontCode).not.toBe(first.frontCode);
   });
 
   it('reads back empty axes via getFunnel and creates NO AV tags', () => {
