@@ -1168,17 +1168,34 @@ git commit -m "feat(tags): маркер уходит из шаблона и за
  * и лендинг, в базе лежит вебинарная воронка, а недостающие квиз/прямые —
  * это отдельные воронки, которых в базе нет.
  *
+ * ПРЕДВАРИТЕЛЬНОЕ УСЛОВИЕ: справочник funnel_types и колонка funnel_type_id
+ * должны уже существовать (Фаза 7). На проде это делает docker-entrypoint.sh
+ * при старте контейнера, но для ручного прогона — по умолчанию и для копии
+ * из Step 2/3 — это отдельный шаг, ничего его не делает за вас:
+ *   FUNNELS_DB_PATH=/abs/path/ksamata_funnels.db npx tsx scripts/migrate-phase7.ts
+ * Без него скрипт падает в ОБОИХ режимах: assertNotFunnelTypeMarker (внутри
+ * replaceTemplateScenario, --apply) и getFunnelTypeContext (внутри
+ * axesMismatch → getFunnel, --dry-run тоже, на первой же цели) читают
+ * funnel_types и без миграции получат «no such table».
+ *
+ * Каждая мутация — своя отдельная транзакция (по одной на сценарий шаблона,
+ * одна на общий ресинк тегов, по одной на каждую из двенадцати воронок).
+ * Падение на любом шаге останавливает скрипт, но не откатывает уже
+ * применённые шаги и не портит недошедшие — скрипт идемпотентен (уже
+ * очищенный сценарий и уже проставленный тип просто пропускаются с «=»),
+ * поэтому повторный `--apply` после сбоя безопасно продолжит с того места,
+ * где остановился, а не задвоит работу.
+ *
  * Запуск из app/ (сначала обязательно с --dry-run):
  *   FUNNELS_DB_PATH=/abs/path/ksamata_funnels.db npx tsx scripts/set-funnel-types-2026-07-28.ts --dry-run
  *   FUNNELS_DB_PATH=/abs/path/ksamata_funnels.db npx tsx scripts/set-funnel-types-2026-07-28.ts --apply
  */
 import { eq } from 'drizzle-orm';
 import { db } from '../src/db/client';
-import { funnels } from '../src/db/schema';
-import { getFunnel, updateFunnel } from '../src/lib/funnels';
+import { funnels, funnelTags, tags } from '../src/db/schema';
+import { getFunnel, updateFunnel, resyncAllFunnels } from '../src/lib/funnels';
 import { SCENARIOS } from '../src/lib/ab-tags';
 import { listTemplate, replaceTemplateScenario } from '../src/lib/tag-templates';
-import { resyncAllFunnels } from '../src/lib/funnels';
 import { SEED_FUNNEL_TYPES } from '../src/lib/funnel-type';
 
 const PROD = process.env.PROD_BASE_URL ?? 'https://funnels.ksamata.ru';
@@ -1214,13 +1231,57 @@ function axesMismatch(id: number, want: (typeof TARGETS)[number]): string[] {
     .map((axis) => `${axis}: «${full.axes[axis] || '—'}» вместо «${want[axis]}»`);
 }
 
+/**
+ * Число воронок на проде — только для справки в шапке вывода, ни на что не
+ * влияет. Задача прямо запрещает скрипту трогать прод, поэтому недоступный
+ * прод (сеть, авторизация, временная недоступность) не должен валить прогон
+ * по локальной копии — предупреждаем и продолжаем без этой строки.
+ */
+async function prodFunnelCount(): Promise<number | null> {
+  try {
+    const res = await fetch(`${PROD}/api/funnels`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const list = await res.json() as { num: number }[];
+    return list.length;
+  } catch (err) {
+    console.error(`  ! прод недоступен, счётчик пропущен: ${(err as Error).message}`);
+    return null;
+  }
+}
+
+/** Итоговая сводка по маркерам — та самая проверка, что раньше делалась отдельным sqlite3-запросом руками. */
+function printMarkerSummary(): void {
+  const rows = db
+    .select({ funnelId: funnelTags.funnelId, name: tags.name })
+    .from(funnelTags)
+    .innerJoin(tags, eq(tags.id, funnelTags.tagId))
+    .all() as { funnelId: number; name: string }[];
+
+  const byMarker = new Map<string, Set<number>>();
+  for (const name of SEED_FUNNEL_TYPES) byMarker.set(name, new Set());
+  for (const row of rows) {
+    if (byMarker.has(row.name)) byMarker.get(row.name)!.add(row.funnelId);
+  }
+
+  console.log('\nИтог по маркерам типа:');
+  for (const name of SEED_FUNNEL_TYPES) {
+    console.log(`  ${name}: ${byMarker.get(name)!.size}`);
+  }
+}
+
 async function main() {
-  const prodList = await (await fetch(`${PROD}/api/funnels`)).json() as { num: number }[];
-  console.log(`Прод: ${prodList.length} воронок. Локально: `
+  const prodCount = await prodFunnelCount();
+  const prodLine = prodCount === null ? 'прод: н/д' : `прод: ${prodCount} воронок`;
+  console.log(`${prodLine}. Локально: `
     + `${db.select({ id: funnels.id }).from(funnels).all().length}.\n`);
 
-  // Шаг 1 — живой шаблон.
+  // Шаг 1 — живой шаблон. Сперва чистим все сценарии по отдельности (каждый
+  // replaceTemplateScenario — своя транзакция), и только потом один общий
+  // resyncAllFunnels — а не по разу на сценарий, как раньше: ресинк
+  // пересчитывает теги ВСЕХ воронок по ВСЕМ сценариям разом, так что четыре
+  // прогона подряд повторяли одну и ту же работу трижды впустую.
   const markers = new Set(SEED_FUNNEL_TYPES);
+  let templateChanged = false;
   for (const scenario of SCENARIOS) {
     const current = listTemplate(db)[scenario] ?? [];
     const cleaned = current.filter((n) => !markers.has(n));
@@ -1229,12 +1290,14 @@ async function main() {
     } else if (dryRun) {
       console.log(`  - шаблон ${scenario}: убрать ${current.filter((n) => markers.has(n)).join(', ')}`);
     } else {
-      db.transaction((tx) => {
-        replaceTemplateScenario(tx, scenario, cleaned);
-        resyncAllFunnels(tx);
-      });
+      replaceTemplateScenario(db, scenario, cleaned);
+      templateChanged = true;
       console.log(`  ✓ шаблон ${scenario} очищен`);
     }
+  }
+  if (templateChanged) {
+    resyncAllFunnels(db);
+    console.log('  ✓ теги всех воронок пересчитаны по очищенному шаблону');
   }
 
   // Шаг 2 — типы.
@@ -1261,6 +1324,8 @@ async function main() {
       console.log(`  ✓ ${want.code}: «${current ?? '—'}» → «${want.type}»`);
     }
   }
+
+  if (!dryRun) printMarkerSummary();
 }
 
 main().catch((err) => { console.error(err); process.exit(1); });
@@ -1294,8 +1359,27 @@ SELECT t.name, COUNT(DISTINCT ft.funnel_id) FROM funnel_tags ft
 
 - [ ] **Step 4: Применить к живой базе**
 
+Живой `ksamata_funnels.db` Фаза 7 ещё не накатана (это отдельная миграция —
+на проде её делает `docker-entrypoint.sh` при старте контейнера, а локально
+никто её за вас не запускает). Без неё скрипт падает в ОБОИХ режимах: и
+`--apply` (на первой же чистке шаблона — `assertNotFunnelTypeMarker` читает
+`funnel_types`), и `--dry-run` (на первой цели `f43` — `axesMismatch →
+getFunnel → getFunnelTypeContext`, тот же справочник). Поэтому первый шаг —
+миграция, и только потом оба режима скрипта:
+
 ```bash
 cd app
+FUNNELS_DB_PATH=$(cd .. && pwd)/ksamata_funnels.db npx tsx scripts/migrate-phase7.ts
+sqlite3 $(cd .. && pwd)/ksamata_funnels.db "SELECT COUNT(*) FROM funnel_types;"
+sqlite3 $(cd .. && pwd)/ksamata_funnels.db "SELECT COUNT(*) FROM funnels WHERE funnel_type_id IS NULL;"
+```
+
+Ожидание: первый запрос — `4` (`SEED_FUNNEL_TYPES`), второй — `0` (бэкфилл
+Фазы 7 проставил всем воронкам «АВ Автоворонка», раз это ещё не решение о
+типе, а сохранение текущего маркера из шаблона). Если числа другие —
+останавливаться, дальше не идти.
+
+```bash
 FUNNELS_DB_PATH=$(cd .. && pwd)/ksamata_funnels.db npx tsx scripts/set-funnel-types-2026-07-28.ts --dry-run
 FUNNELS_DB_PATH=$(cd .. && pwd)/ksamata_funnels.db npx tsx scripts/set-funnel-types-2026-07-28.ts --apply
 ```
@@ -1311,6 +1395,13 @@ sqlite3 ksamata_funnels.db 'SELECT COUNT(*) FROM monitor_targets;'
 Ожидание последней команды: `0`.
 
 - [ ] **Step 5: Коммит**
+
+Диф `ksamata_funnels.db` в этом коммите — результат ДВУХ разных мутаций,
+выполненных подряд на Step 4: схемы Фазы 7 (справочник `funnel_types`,
+колонка `funnels.funnel_type_id`, бэкфилл всем «АВ Автоворонка») и
+собственно двенадцати правок этого скрипта. Это одна пара `git add` +
+`git commit`, а не две — но если разбирать диф базы построчно, схемные
+изменения в нём тоже будут, и это ожидаемо, не путать с посторонней порчей.
 
 ```bash
 git add app/scripts/set-funnel-types-2026-07-28.ts ksamata_funnels.db
