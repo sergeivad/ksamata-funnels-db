@@ -184,6 +184,9 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 - `ab-tags.ts` — A/B tag computation engine (axes ↔ names, `computeTagSet`).
 - `tag-templates.ts` / `tag-overrides.ts` — read/replace the two tag layers.
 - `status.ts` — funnel status constants/meta (active/draft/archive).
+- `auth.ts` — чистое ядро авторизации (учётки, подпись сессии, `resolveAccess`),
+  Edge-безопасное; `auth-server.ts` — обвязка на Node (`getViewer`,
+  `requireEditor`). Подробно — раздел Auth ниже.
 - `rooms-grid.ts` — build/flatten the rooms grid (slot × day).
 - `funnel-compact.ts` — grouping/visibility for the compact view.
 - `export.ts` — build export rows + CSV serialization. Fields starting with
@@ -291,21 +294,31 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 - `PATCH /api/monitoring/targets` — bulk enable/disable by `sourceKind`.
 - `PATCH /api/monitoring/targets/[id]` — enable/disable one target.
 - `GET /api/monitoring/events` — incident history.
+- `POST /api/auth/login` — вход: пара имя/пароль → cookie сессии. Ответ на
+  неверные данные один и тот же независимо от того, существует ли имя (иначе
+  форма перечисляет учётки); 429 после `LOGIN_MAX_ATTEMPTS` неудач с одного
+  адреса — счётчик живёт на `globalThis`, см. правило про синглтоны.
+- `POST /api/auth/logout` — гасит cookie.
 
-Rooms and status have **no dedicated endpoints** — they persist through the
+Все мутирующие роуты и GET приватных начинаются с `requireEditor(req)` —
+второй рубеж, см. раздел Auth. Rooms and status have **no dedicated endpoints** — they persist through the
 funnel `PATCH` and the days `PUT`.
 
 ## Pages & components
 
 Pages (`app/src/app/`): `page.tsx` (funnel list), `funnels/[id]/page.tsx`
 (edit), `tags/page.tsx` (global template editor), `refs/page.tsx` (lookup
-tables), `monitoring/page.tsx` (landing-availability dashboard).
+tables), `monitoring/page.tsx` (landing-availability dashboard),
+`login/page.tsx` (вход редактора). Последние три закрыты серверным
+`EditorGate` через свои `layout.tsx`.
 
 Components (`app/src/components/`): `AppHeader`, `FunnelCard`,
 `FunnelCompactView`, `FunnelIdentity`, `FunnelSections`, `BlockEditor`,
 `BlockListField`, `RoomsEditor`, `TagTemplateEditor`, `RefSelect`/`RefTable`,
+`AuthProvider` (контекст прав + `useCanEdit`), `EditorGate`, `LoginForm`,
 plus UI primitives (`StatusPill`, `CodeChip`, `Segmented`, `Switch`,
-`GroupToggle`, `UrlInput`, `Toast`). `monitoring/` (`MonitorStatusPill`,
+`GroupToggle`, `UrlInput`, `Toast` — у первых четырёх есть `disabled`/
+`readOnly` для режима просмотра). `monitoring/` (`MonitorStatusPill`,
 `MonitorSummary`, `MonitorTable`, `MonitorEvents`) backs the monitoring page.
 
 ## Database contract & WAL
@@ -417,18 +430,63 @@ One-off / local-only scripts (NOT in any automated path): `seed-phase1.ts`,
 never the real DB), `migrate-messenger-tagtype.ts`, `backfill-messenger-tags.ts`,
 `backfill-status.ts`.
 
-## Auth (`app/src/middleware.ts`)
+## Auth (`app/src/lib/auth.ts`, `auth-server.ts`, `middleware.ts`)
 
-HTTP Basic Auth in Next.js middleware (Edge). `resolveAuthDecision(env, header)`:
+Модель — **«читают все, пишут свои»**. Список воронок и карточки открыты
+анонимно; справочники, теги, мониторинг, CSV-экспорт и любой не-GET — только
+редактору. Сервис публично читаем по URL: `X-Robots-Tag: noindex, nofollow` на
+каждом ответе и `app/src/app/robots.ts` — это просьба поисковикам, не защита.
 
-- `ADMIN_AUTH_DISABLED === 'true'` (exact) → **auth OFF everywhere**, including
-  production, even if `ADMIN_BASIC_AUTH` is set. Kill-switch. ⚠️ makes the admin
-  publicly reachable.
-- Else `ADMIN_BASIC_AUTH` must be non-empty and contain `:`:
-  - unset/invalid **and `NODE_ENV=production`** → **503 fail-closed** (a
-    forgotten credential never yields a public admin).
-  - unset/invalid in **dev** → open (pass through, warns once).
-  - valid → constant-time compare of the `Authorization: Basic` header; mismatch → 401.
+Решение принимает **одна чистая функция** `resolveAccess(env, req)` в
+[app/src/lib/auth.ts](app/src/lib/auth.ts) — Edge-безопасная (никаких `node:*`,
+`next/headers`, БД), потому что её вызывают оба рубежа:
+
+1. **`middleware.ts`** (Edge) — первый рубеж на каждый запрос.
+2. **`requireEditor(req)`** (`auth-server.ts`) — второй рубеж, первой строкой в
+   каждом мутирующем обработчике и в GET приватных роутов; `EditorGate` —
+   то же для страниц `/refs`, `/tags`, `/monitoring` (они рендерят данные прямо
+   из БД, минуя API). Дублирование намеренное: `matcher` мидлвары ломается одной
+   правкой и молча. Функция общая, поэтому рубежи не разъедутся.
+
+Порядок решений (`AccessDecision`):
+
+- `ADMIN_AUTH_DISABLED === 'true'` (ровно) → `disabled`: авторизации нет вообще.
+  Kill-switch. ⚠️ теперь это раздача **прав на правку**, а не только чтения.
+- Не-GET с `Origin`, чей хост ≠ `Host` → `forbidden-origin` (403). Проверка идёт
+  **до** определения редактора: CSRF-запрос приходит как раз со своей cookie.
+  Отсутствующий `Origin` не блокируем — его не шлют curl и скрипты, а браузер
+  от кросс-сайтовой записи уже отсечён `SameSite=Lax`.
+- Валидная сессия **или** `Authorization: Basic` из `ADMIN_USERS` /
+  `ADMIN_BASIC_AUTH` → `allow`.
+- Учётки не настроены: вне прода → `open` (всё разрешено, локальная разработка
+  и тесты работают без единой переменной); в проде → чтение работает, запись
+  отвечает `misconfigured` (503). Забытая переменная не даёт админку на запись.
+- Дальше аноним: `/login` и `/api/auth/*` всегда `allow`; не-GET →
+  `unauthorized`; путь из белого списка `isPublicReadPath` → `allow`; иначе
+  страница → `redirect-login`, API → `unauthorized` (редирект в ответ на fetch
+  вернул бы HTML вместо JSON).
+
+`isPublicReadPath` — **белый список**, не «всё, кроме»: новый роут по умолчанию
+закрыт. В нём `/`, `/funnels/<id>` и только те GET-и API, без которых они не
+отрисуются. `/api/export` там нет сознательно — один GET отдаёт всю базу.
+
+**Сессия** — stateless: cookie `kf_session` вида `v1.<payload>.<hmac>`,
+HMAC-SHA256 через Web Crypto (одна реализация на Edge и Node), `HttpOnly` +
+`SameSite=Lax` + `Secure` в проде, срок 30 дней без скользящего продления.
+Имя из токена сверяется с `ADMIN_USERS` на каждом запросе, поэтому удаление
+строки отзывает доступ сразу, а не через месяц. `ADMIN_SESSION_SECRET`
+обязателен в проде (минимум 16 символов): слабый ключ — подделываемая сессия;
+вне прода выводится из `ADMIN_USERS`, так что локально настраивать нечего.
+
+**В интерфейсе** право приходит из серверного layout (`getViewer`) в клиентский
+контекст `AuthProvider` → `useCanEdit()`. Анониму те же экраны: текстовые поля
+`readOnly` (не `disabled` — за ссылкой сюда и приходят, а из `disabled` её не
+выделишь), селекты и тумблеры `disabled`, кнопки сохранения и удаления скрыты.
+`RefSelect` в этом режиме **не ходит** в `/api/refs` — он анониму закрыт, и
+запрос вернул бы 401. Это отражение прав, а не защита: запрещают два рубежа.
+
+`PUBLIC_READ_ENABLED=false` возвращает прежнюю модель «всё под авторизацией»
+без выката кода.
 
 ## Deployment
 
@@ -460,7 +518,8 @@ Full notes: [app/DEPLOY.md](app/DEPLOY.md).
 hot-reload, auth off) that bind-mounts the real repo DB at `/data`. It does
 **not** run the entrypoint seed/migration flow — that path is production-only.
 
-Env vars: `FUNNELS_DB_PATH`, `ADMIN_BASIC_AUTH`, `ADMIN_AUTH_DISABLED`,
+Env vars: `FUNNELS_DB_PATH`, `ADMIN_USERS`, `ADMIN_SESSION_SECRET`,
+`PUBLIC_READ_ENABLED`, `ADMIN_BASIC_AUTH`, `ADMIN_AUTH_DISABLED`,
 `MONITOR_ENABLED`, `MONITOR_INTERVAL_MINUTES`, `NODE_ENV`, `PORT`. See
 [app/.env.example](app/.env.example).
 

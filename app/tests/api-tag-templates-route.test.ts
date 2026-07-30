@@ -21,6 +21,14 @@ import * as schema from '../src/db/schema';
 import { replaceOverrides } from '../src/lib/tag-overrides';
 import { copyDbForTest } from './helpers/db';
 
+// Роуты теперь принимают запрос (второй рубеж авторизации, requireEditor).
+// В тестовом окружении учётки не заданы, значит доступ открыт — важно лишь
+// передать объект запроса.
+function anonReq(): never {
+  return new Request('http://test') as never;
+}
+
+
 const REAL_DB = path.resolve(process.cwd(), '..', 'ksamata_funnels.db');
 let tmp: string;
 let sqlite: Database.Database;
@@ -63,7 +71,7 @@ const params = (scenario: string) => ({ params: Promise.resolve({ scenario }) })
 
 describe('GET /api/tag-templates', () => {
   it('returns the template grouped by scenario', async () => {
-    const res = await GET();
+    const res = await GET(anonReq());
     expect(res.status).toBe(200);
     const body = await res.json();
 
@@ -92,7 +100,7 @@ describe('PUT /api/tag-templates/[scenario]', () => {
     expect(body.ok).toBe(true);
     expect(body.names).toEqual(['автоворонки', 'новый']);
 
-    const after = await (await GET()).json();
+    const after = await (await GET(anonReq())).json();
     expect(after.reg).toEqual(['автоворонки', 'новый']);
   });
 
@@ -182,7 +190,7 @@ describe('PUT /api/tag-templates/[scenario]', () => {
 
     // Отказ должен быть по существу (400 от ValidationError), а не 500 —
     // и шаблон должен остаться нетронутым.
-    const after = await (await GET()).json();
+    const after = await (await GET(anonReq())).json();
     expect(after.reg).not.toContain('АВ Квиз');
   });
 });

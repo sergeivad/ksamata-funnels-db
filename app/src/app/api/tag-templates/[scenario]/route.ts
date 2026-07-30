@@ -6,10 +6,14 @@ import { replaceTemplateScenario } from '@/lib/tag-templates';
 import { resyncAllFunnels } from '@/lib/funnels';
 import { internalError } from '@/lib/http';
 import { ValidationError } from '@/lib/errors';
+import { requireEditor } from '@/lib/auth-server';
 
 type Params = { params: Promise<{ scenario: string }> };
 
 export async function PUT(req: NextRequest, { params }: Params) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
+
   const { scenario } = await params;
   if (!SCENARIOS.includes(scenario as Scenario)) {
     return NextResponse.json(

@@ -11,6 +11,11 @@ interface Props {
   placeholder?: string;
   /** Classes for the underlying <input> (sizing, border, font, etc.). */
   className?: string;
+  /**
+   * Режим просмотра. Именно `readOnly`, а не `disabled`: главное, зачем сюда
+   * приходят без прав, — забрать ссылку, а из disabled-поля текст не выделишь.
+   */
+  readOnly?: boolean;
 }
 
 // Icons are hover-revealed on pointer devices; on touch (no hover) they stay
@@ -25,7 +30,7 @@ const REVEAL =
  * after copying. Copy state is self-contained, so any number of these can
  * live in one grid without wiring.
  */
-export default function UrlInput({ value, onChange, onFocus, onBlur, placeholder, className }: Props) {
+export default function UrlInput({ value, onChange, onFocus, onBlur, placeholder, className, readOnly = false }: Props) {
   const { status, copy } = useCopyFlash(1500);
   const hasUrl = value.trim() !== '';
   const openableUrl = /^https?:\/\//i.test(value.trim()) ? value.trim() : null;
@@ -42,6 +47,7 @@ export default function UrlInput({ value, onChange, onFocus, onBlur, placeholder
         onBlur={onBlur}
         placeholder={placeholder}
         title={value}
+        readOnly={readOnly}
         className={className}
       />
       {hasUrl && (

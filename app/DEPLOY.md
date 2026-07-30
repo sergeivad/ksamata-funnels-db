@@ -13,8 +13,27 @@ Dokploy builds the image directly from the Git repo. Point the build context at 
 |---|---|
 | `FUNNELS_DB_PATH` | `/data/ksamata_funnels.db` |
 | `NODE_ENV` | `production` (set in Dockerfile) |
-| `ADMIN_BASIC_AUTH` | `login:password` — **required in production**: without it every request gets 503 (fail-closed) |
-| `ADMIN_AUTH_DISABLED` | `true` turns auth OFF everywhere (overrides `ADMIN_BASIC_AUTH` and the production fail-closed). ⚠️ makes the admin publicly reachable. Remove to restore auth. |
+| `ADMIN_USERS` | `имя:пароль`, через запятую или перевод строки — учётки редакторов |
+| `ADMIN_SESSION_SECRET` | ключ подписи сессии, **обязателен в проде**, минимум 16 символов (`openssl rand -base64 32`) |
+| `PUBLIC_READ_ENABLED` | `false` закрывает и чтение тоже — возврат к прежней модели без выката кода |
+| `ADMIN_BASIC_AUTH` | совместимость: одиночная учётка на запись для curl и скриптов |
+| `ADMIN_AUTH_DISABLED` | `true` выключает авторизацию целиком. ⚠️ админку сможет **править** любой. Убери переменную, чтобы вернуть вход. |
+
+### Модель доступа
+
+Список воронок и карточки читает кто угодно без входа. Справочники, шаблон
+тегов, мониторинг, CSV-экспорт и любое изменение данных — только после входа
+на `/login`. Сервис отдаёт `X-Robots-Tag: noindex, nofollow` и `robots.txt`
+с `Disallow: /`, но это просьба к поисковикам, а не защита: **всё, что видно
+на карточке воронки — URL лендов, ссылки GetCourse, комментарии — доступно
+любому, кто знает адрес сервиса.**
+
+Без `ADMIN_USERS` и `ADMIN_SESSION_SECRET` прод не падает целиком: чтение
+работает, а любая запись отвечает 503 с именем недостающей переменной. Так
+забытая переменная не превращается в админку, открытую на запись.
+
+**Выкатывая эту версию, задай обе переменные до перезапуска** — иначе править
+данные будет нельзя, пока они не появятся.
 
 ## Persistent volume
 

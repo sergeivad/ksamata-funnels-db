@@ -6,6 +6,7 @@ import type { BlockItem } from '@/lib/funnel-blocks';
 import { parsePastedLine, missingStandardLabels } from '@/lib/block-fill';
 import { checkUrlField } from '@/lib/url-field';
 import { copyText } from '@/lib/clipboard';
+import { useCanEdit } from './AuthProvider';
 
 interface Props {
   fields: 1 | 2;
@@ -17,6 +18,7 @@ interface Props {
 }
 
 export default function BlockListField({ fields, slot, items, onChange, showStandardSet }: Props) {
+  const canEdit = useCanEdit();
   const rows = items.filter((it) => it.slot === slot);
 
   // Which row currently flashes a copy result (index within `rows`).
@@ -24,6 +26,9 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function update(indexInRows: number, patch: Partial<BlockItem>) {
+    // Поля в просмотре readOnly, но Enter и вставка на readOnly-инпуте всё
+    // равно доходят до обработчика — мутацию отсекаем здесь, а не только в вёрстке.
+    if (!canEdit) return;
     let seen = -1;
     onChange(
       items.map((it) => {
@@ -35,11 +40,13 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
   }
 
   function remove(indexInRows: number) {
+    if (!canEdit) return;
     let seen = -1;
     onChange(items.filter((it) => (it.slot === slot ? ++seen !== indexInRows : true)));
   }
 
   function add() {
+    if (!canEdit) return;
     onChange([...items, { slot, label: '', url: '' }]);
   }
 
@@ -49,6 +56,7 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
    * чужую подпись бы затёрло.
    */
   function fixRow(indexInRows: number) {
+    if (!canEdit) return;
     const row = rows[indexInRows];
     const check = checkUrlField(row.url);
     if (check.level !== 'error') return;
@@ -59,11 +67,13 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
   const missingStandard = showStandardSet ? missingStandardLabels(rows.map((r) => r.label)) : [];
 
   function addStandardSet() {
+    if (!canEdit) return;
     if (missingStandard.length === 0) return;
     onChange([...items, ...missingStandard.map((label) => ({ slot, label, url: '' }))]);
   }
 
   function handleUrlPaste(indexInRows: number, e: React.ClipboardEvent<HTMLInputElement>) {
+    if (!canEdit) return;
     const text = e.clipboardData.getData('text');
     // Single line — default behaviour. Trim first: a copied spreadsheet cell
     // ends with "\n" but is still one line, not a multi-row paste.
@@ -149,6 +159,7 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
                 value={row.label}
                 onChange={(e) => update(i, { label: e.target.value })}
                 placeholder="описание…"
+                readOnly={!canEdit}
                 className="h-7 w-full min-w-0 rounded-[6px] border border-[var(--line-soft)] bg-white px-2 text-[12px] text-[var(--ink)]"
               />
             )}
@@ -161,6 +172,7 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
                 onPaste={(e) => handleUrlPaste(i, e)}
                 placeholder="ссылка…"
                 title={row.url}
+                readOnly={!canEdit}
                 aria-invalid={check.level === 'error'}
                 className={`h-7 w-full min-w-0 rounded-[6px] border ${urlBorder} bg-white px-2 font-mono text-[12px] text-[var(--ink)]`}
               />
@@ -208,9 +220,15 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
             >
               {flash ? (flash.ok ? <Check size={15} /> : <AlertCircle size={15} />) : <Copy size={15} />}
             </button>
-            <button type="button" onClick={() => remove(i)} aria-label="Удалить строку" className="flex justify-center text-[var(--faint)] hover:text-[var(--ink)]">
-              <Trash2 size={15} />
-            </button>
+            {canEdit ? (
+              <button type="button" onClick={() => remove(i)} aria-label="Удалить строку" className="flex justify-center text-[var(--faint)] hover:text-[var(--ink)]">
+                <Trash2 size={15} />
+              </button>
+            ) : (
+              // Колонка остаётся на месте: сетка задана gridTemplateColumns, и
+              // выпавшая ячейка сдвинула бы всю строку влево.
+              <span aria-hidden />
+            )}
           </div>
           {check.level !== 'ok' && (
             <p
@@ -220,7 +238,7 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
               }`}
             >
               <span>{check.message}</span>
-              {check.level === 'error' && (
+              {check.level === 'error' && canEdit && (
                 <button
                   type="button"
                   onClick={() => fixRow(i)}
@@ -234,6 +252,7 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
           </div>
         );
       })}
+      {canEdit && (
       <div className="mt-1 flex flex-wrap items-center gap-3">
         <button type="button" onClick={add} className="flex w-fit items-center gap-1 text-[12px] font-semibold text-[var(--orange)]">
           <Plus size={13} /> добавить
@@ -248,6 +267,7 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
           </button>
         )}
       </div>
+      )}
     </div>
   );
 }

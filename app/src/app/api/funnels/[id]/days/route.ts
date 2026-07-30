@@ -4,6 +4,7 @@ import { listDays, replaceDays, funnelExists, type DayCell } from '@/lib/funnel-
 import { ValidationError } from '@/lib/errors';
 import { parseRouteId } from '@/lib/validation';
 import { internalError } from '@/lib/http';
+import { requireEditor } from '@/lib/auth-server';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -23,6 +24,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 export async function PUT(req: NextRequest, { params }: Params) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
+
   const { id } = await params;
   const numId = parseRouteId(id);
   if (numId === null) {

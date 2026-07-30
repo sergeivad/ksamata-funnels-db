@@ -10,6 +10,7 @@ import { urlFieldErrors } from '@/lib/url-field';
 import { copyText } from '@/lib/clipboard';
 import Switch from './Switch';
 import Segmented from './Segmented';
+import { useCanEdit } from './AuthProvider';
 import BlockListField from './BlockListField';
 
 interface Props {
@@ -30,6 +31,7 @@ function normalizeItems(items: BlockItem[], mode: BlockMode): BlockItem[] {
 type SavedSnapshot = { enabled: boolean; mode: BlockMode; items: BlockItem[] };
 
 export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB, onDirtyChange }: Props) {
+  const canEdit = useCanEdit();
   const def = getBlockDef(initial.kind);
   const [enabled, setEnabled] = useState(initial.enabled);
   const [mode, setMode] = useState<BlockMode>(initial.mode);
@@ -153,7 +155,7 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
         <span className="text-[13px] font-medium text-[var(--muted)]">{def.title}</span>
         <span className="ml-auto flex items-center gap-3">
           {error && <span role="alert" className="text-[11px] font-medium text-[#B42318]">{error}</span>}
-          <Switch checked={false} onChange={(v) => toggleEnabled(v)} />
+          <Switch checked={false} onChange={(v) => toggleEnabled(v)} disabled={!canEdit} />
         </span>
       </div>
     );
@@ -168,6 +170,7 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
           <Segmented
             options={[{ value: 'common', label: 'Общее' }, { value: 'by_time', label: 'По времени' }]}
             value={mode}
+            disabled={!canEdit}
             onChange={(v) => {
               // Local state only — no autosave: a stray toggle must not touch
               // the DB. The change persists via the explicit «Сохранить».
@@ -204,7 +207,7 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
               {copiedAll === 'ok' ? <Check size={15} /> : copiedAll === 'failed' ? <AlertCircle size={15} /> : <Copy size={15} />}
             </button>
           )}
-          <Switch checked={enabled} onChange={(v) => toggleEnabled(v)} />
+          <Switch checked={enabled} onChange={(v) => toggleEnabled(v)} disabled={!canEdit} />
         </span>
       </div>
 
@@ -224,7 +227,7 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
           </div>
           <div className="flex-1">
             <div className="mb-1 text-[11px] font-medium text-[var(--muted)]">{timeLabelB}</div>
-            {slot19Empty && slot15HasRows && (
+            {canEdit && slot19Empty && slot15HasRows && (
               <button
                 type="button"
                 onClick={fillSlot19FromSlot15}
@@ -240,6 +243,7 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
         </div>
       )}
 
+      {canEdit && (
       <div className="mt-3 flex items-center justify-end gap-3">
         {error && <span role="alert" className="text-[11px] font-medium text-[#B42318]">{error}</span>}
         {brokenUrlRows > 0 && (
@@ -258,6 +262,7 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
           {saving ? 'Сохранение…' : 'Сохранить'}
         </button>
       </div>
+      )}
     </div>
   );
 }

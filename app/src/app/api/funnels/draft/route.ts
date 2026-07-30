@@ -1,13 +1,17 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { createDraftFunnel } from '@/lib/funnels';
 import { internalError } from '@/lib/http';
+import { requireEditor } from '@/lib/auth-server';
 
 /**
  * POST /api/funnels/draft — create a blank draft funnel and return it.
  * Used by the "Новая воронка" action: create-then-edit-in-place flow.
  */
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
+
   try {
     const funnel = createDraftFunnel(db);
     return NextResponse.json(funnel, { status: 201 });

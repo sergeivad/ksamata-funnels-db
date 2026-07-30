@@ -12,6 +12,7 @@ import {
 } from '@/lib/refs';
 import { REF_MAX, parseRouteId } from '@/lib/validation';
 import { internalError } from '@/lib/http';
+import { requireEditor } from '@/lib/auth-server';
 
 type Params = { params: Promise<{ kind: string; id: string }> };
 
@@ -43,6 +44,9 @@ function guardMutableKind(kind: string): NextResponse | null {
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
+
   const { kind, id } = await params;
 
   if (!isValidKind(kind)) {
@@ -96,7 +100,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: Params) {
+export async function DELETE(req: NextRequest, { params }: Params) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
+
   const { kind, id } = await params;
 
   if (!isValidKind(kind)) {

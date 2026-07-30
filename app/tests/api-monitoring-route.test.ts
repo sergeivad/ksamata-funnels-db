@@ -13,6 +13,14 @@ import * as schema from '../src/db/schema';
 import { clearMonitoringState } from './helpers/monitoring';
 import { copyDbForTest } from './helpers/db';
 
+// Роуты теперь принимают запрос (второй рубеж авторизации, requireEditor).
+// В тестовом окружении учётки не заданы, значит доступ открыт — важно лишь
+// передать объект запроса.
+function anonReq(): never {
+  return new Request('http://test') as never;
+}
+
+
 const REAL_DB = path.resolve(process.cwd(), '..', 'ksamata_funnels.db');
 let tmp: string;
 let sqlite: Database.Database;
@@ -71,7 +79,7 @@ function seedTarget(url: string, sourceKind = 'landings', enabled = 1): number {
 describe('GET /api/monitoring', () => {
   it('отдаёт сводку, виды источников и цели', async () => {
     seedTarget('https://a.ru/');
-    const res = await GET();
+    const res = await GET(anonReq());
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.summary.enabled).toBe(1);
@@ -207,7 +215,7 @@ describe('POST /api/monitoring/run', () => {
       runMonitorCycle: async () => null,
     }));
     const { POST } = await import('../src/app/api/monitoring/run/route');
-    const res = await POST();
+    const res = await POST(anonReq());
     expect(res.status).toBe(409);
   });
 
@@ -221,7 +229,7 @@ describe('POST /api/monitoring/run', () => {
     }));
     const { POST } = await import('../src/app/api/monitoring/run/route');
 
-    const res = await POST();
+    const res = await POST(anonReq());
 
     expect(res.status).toBe(202);
     expect(await res.json()).toEqual({ started: true });
@@ -238,7 +246,7 @@ describe('POST /api/monitoring/run', () => {
     }));
     const { POST } = await import('../src/app/api/monitoring/run/route');
 
-    const res = await POST();
+    const res = await POST(anonReq());
     expect(res.status).toBe(202);
 
     await new Promise((r) => setTimeout(r, 0)); // даём микрозадаче с .catch отработать

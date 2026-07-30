@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useCanEdit } from './AuthProvider';
 
 interface RefRow {
   id: number;
@@ -38,17 +39,25 @@ export default function RefSelect({ kind, label, value, onChange, required, erro
   // Бэкенд (isReservedFunnelTypeName в refs.ts) уже отвергает имя, похожее на
   // осевой тег, но убирать саму возможность добавить тип отсюда — это то,
   // что превращает границу дизайна из пожелания в код, а не только в 400 в ответ.
-  const canAddNew = kind !== 'funnel_types';
+  const canEdit = useCanEdit();
+  const canAddNew = canEdit && kind !== 'funnel_types';
 
   const [refs, setRefs] = useState<RefRow[]>([]);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [addError, setAddError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(canEdit);
   const [loadFailed, setLoadFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    // В режиме просмотра список вариантов не нужен: выбирать не из чего, а
+    // сам справочник анониму закрыт — запрос вернул бы 401 и оставил поле в
+    // «Не удалось загрузить» вместо спокойно показанного значения.
+    if (!canEdit) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setLoadFailed(false);
@@ -65,7 +74,7 @@ export default function RefSelect({ kind, label, value, onChange, required, erro
         setLoadFailed(true);
       });
     return () => { cancelled = true; };
-  }, [kind, reloadKey]);
+  }, [kind, reloadKey, canEdit]);
 
   async function handleAdd() {
     const trimmed = newName.trim();
@@ -114,6 +123,7 @@ export default function RefSelect({ kind, label, value, onChange, required, erro
       ) : (
         <select
           value={value}
+          disabled={!canEdit}
           onChange={(e) => {
             if (e.target.value === '__add__') {
               setAdding(true);
@@ -123,6 +133,7 @@ export default function RefSelect({ kind, label, value, onChange, required, erro
           }}
           className={[
             'h-9 w-full rounded-[8px] border bg-white px-3 py-2 text-[13px] text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]',
+            'disabled:cursor-default disabled:bg-[var(--chip)] disabled:text-[var(--muted)]',
             error
               ? 'border-[#B42318]'
               : 'border-[var(--color-border-soft)]',

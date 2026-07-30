@@ -6,6 +6,7 @@ import { isBlockKind, getBlockDef, type BlockKind } from '@/lib/blocks';
 import { checkUrlField } from '@/lib/url-field';
 import { internalError } from '@/lib/http';
 import { parseRouteId } from '@/lib/validation';
+import { requireEditor } from '@/lib/auth-server';
 
 // Upper bound on items per block — guards against insert-amplification from a
 // pathological payload. A real block has at most a handful of links.
@@ -30,6 +31,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 export async function PUT(req: NextRequest, { params }: Params) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
+
   const { id, kind } = await params;
   const p = parse(id, kind);
   if ('error' in p) return p.error;

@@ -8,6 +8,7 @@ import Toast from '@/components/Toast';
 import GroupToggle, { type GroupBy } from '@/components/GroupToggle';
 import Segmented from '@/components/Segmented';
 import { confirmUnsavedNavigation } from '@/lib/useUnsavedGuard';
+import { useCanEdit } from '@/components/AuthProvider';
 import { compareByFrontCodeDesc } from '@/lib/funnel-sort';
 import {
   type FunnelStatus,
@@ -83,6 +84,7 @@ function funnelLabel(f: FunnelListItem): string {
 
 export default function HomePage() {
   const router = useRouter();
+  const canEdit = useCanEdit();
   const [funnels, setFunnels] = useState<FunnelListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -390,14 +392,18 @@ export default function HomePage() {
             <span className="text-[12px] text-[var(--color-text-secondary)]">
               {countLabel(visibleFunnels.length, funnels.length)}
             </span>
-            <a
-              href="/api/export"
-              download
-              className="flex items-center gap-1 text-[12px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"
-            >
-              <Download size={15} />
-              Экспорт CSV
-            </a>
+            {/* Экспорт отдаёт всю базу одним файлом — это ровно та ручка, ради
+                которой чтение и держат закрытым, поэтому она только редактору. */}
+            {canEdit && (
+              <a
+                href="/api/export"
+                download
+                className="flex items-center gap-1 text-[12px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"
+              >
+                <Download size={15} />
+                Экспорт CSV
+              </a>
+            )}
           </div>
         </div>
       )}

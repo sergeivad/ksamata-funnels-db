@@ -4,10 +4,14 @@ import { setSourceKindEnabled } from '@/lib/monitor-targets';
 import { monitorTargetsBulkPatchSchema } from '@/lib/validation';
 import { isKnownSourceKind } from '@/lib/monitor-kinds';
 import { internalError } from '@/lib/http';
+import { requireEditor } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
 export async function PATCH(req: NextRequest) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
+
   let body: unknown;
   try {
     body = await req.json();

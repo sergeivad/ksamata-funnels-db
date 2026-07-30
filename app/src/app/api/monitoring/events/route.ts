@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { listMonitorEvents } from '@/lib/monitor-view';
 import { internalError } from '@/lib/http';
+import { requireEditor } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,9 @@ function readNumber(raw: string | null, fallback: number, max: number): number {
 }
 
 export async function GET(req: NextRequest) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
+
   const url = new URL(req.url);
   const limit = readNumber(url.searchParams.get('limit'), DEFAULT_LIMIT, MAX_LIMIT);
   const offset = readNumber(url.searchParams.get('offset'), 0, Number.MAX_SAFE_INTEGER);

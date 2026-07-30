@@ -1,17 +1,24 @@
 /**
- * Tests for the optional Basic-Auth middleware.
- * ADMIN_BASIC_AUTH and NODE_ENV are mutated per test and restored in afterEach.
+ * Тесты мидлвары — первого рубежа доступа.
+ *
+ * Логика решения проверена таблицей в auth.test.ts; здесь — что мидлвара
+ * правильно превращает решение в ответ: редирект на форму, 401 на API, 403 на
+ * чужой Origin, 503 на ненастроенный прод, заголовок против индексации.
+ *
+ * Переменные окружения мутируются по тесту и восстанавливаются в afterEach.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
-import { middleware, resolveAuthDecision } from '../src/middleware';
+import { middleware } from '../src/middleware';
+import { SESSION_COOKIE, signSession } from '../src/lib/auth';
 
-const ORIGINAL_AUTH = process.env.ADMIN_BASIC_AUTH;
-const ORIGINAL_AUTH_DISABLED = process.env.ADMIN_AUTH_DISABLED;
+const KEYS = ['ADMIN_USERS', 'ADMIN_BASIC_AUTH', 'ADMIN_SESSION_SECRET', 'ADMIN_AUTH_DISABLED', 'PUBLIC_READ_ENABLED'] as const;
+const ORIGINAL: Record<string, string | undefined> = {};
 const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
 
-// NODE_ENV is a readonly-typed property in @types/node; go through
-// Object.defineProperty so tests can freely flip it.
+const SECRET = 'a-secret-long-enough-to-count';
+
+// NODE_ENV типизирован readonly в @types/node — идём через defineProperty.
 function setNodeEnv(value: string | undefined) {
   if (value === undefined) {
     delete (process.env as Record<string, string | undefined>).NODE_ENV;
@@ -20,191 +27,187 @@ function setNodeEnv(value: string | undefined) {
   Object.defineProperty(process.env, 'NODE_ENV', { value, configurable: true, writable: true, enumerable: true });
 }
 
+beforeEach(() => {
+  for (const k of KEYS) ORIGINAL[k] = process.env[k];
+  // Настроенный прод — самый интересный режим, от него и пляшем.
+  process.env.ADMIN_USERS = 'sergei:s3cret';
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  delete process.env.ADMIN_BASIC_AUTH;
+  delete process.env.ADMIN_AUTH_DISABLED;
+  delete process.env.PUBLIC_READ_ENABLED;
+  setNodeEnv('production');
+});
+
 afterEach(() => {
-  if (ORIGINAL_AUTH === undefined) delete process.env.ADMIN_BASIC_AUTH;
-  else process.env.ADMIN_BASIC_AUTH = ORIGINAL_AUTH;
-  if (ORIGINAL_AUTH_DISABLED === undefined) delete process.env.ADMIN_AUTH_DISABLED;
-  else process.env.ADMIN_AUTH_DISABLED = ORIGINAL_AUTH_DISABLED;
+  for (const k of KEYS) {
+    if (ORIGINAL[k] === undefined) delete process.env[k];
+    else process.env[k] = ORIGINAL[k];
+  }
   setNodeEnv(ORIGINAL_NODE_ENV);
 });
 
-function req(auth?: string) {
-  const headers = new Headers();
-  if (auth) headers.set('authorization', auth);
-  return new NextRequest('http://test/funnels/1', { headers });
+interface ReqOpts {
+  method?: string;
+  auth?: string;
+  cookie?: string;
+  origin?: string;
 }
+
+function req(path = '/', { method = 'GET', auth, cookie, origin }: ReqOpts = {}) {
+  const headers = new Headers({ host: 'admin.example' });
+  if (auth) headers.set('authorization', auth);
+  if (cookie) headers.set('cookie', `${SESSION_COOKIE}=${cookie}`);
+  if (origin) headers.set('origin', origin);
+  return new NextRequest(`http://admin.example${path}`, { method, headers });
+}
+
 const basic = (u: string, p: string) => `Basic ${Buffer.from(`${u}:${p}`).toString('base64')}`;
 
-describe('auth middleware', () => {
-  it('is a no-op when ADMIN_BASIC_AUTH is unset', () => {
-    delete process.env.ADMIN_BASIC_AUTH;
-    expect(middleware(req()).status).not.toBe(401);
+async function session(user = 'sergei') {
+  return signSession({ u: user, exp: Math.floor(Date.now() / 1000) + 3600 }, SECRET);
+}
+
+describe('публичное чтение', () => {
+  it('пускает анонима на список и карточку воронки', async () => {
+    for (const path of ['/', '/funnels/7', '/api/funnels', '/api/funnels/7/days']) {
+      const res = await middleware(req(path));
+      expect(res.status, path).toBe(200);
+    }
   });
 
-  it('challenges with 401 when configured and no credentials are sent', () => {
-    process.env.ADMIN_BASIC_AUTH = 'admin:s3cret';
-    const res = middleware(req());
+  it('вешает X-Robots-Tag на любой ответ, включая API', async () => {
+    // robots.txt покрывает только вежливые краулеры; заголовок — всех.
+    expect((await middleware(req('/'))).headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
+    expect((await middleware(req('/api/funnels'))).headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
+    expect((await middleware(req('/refs'))).headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
+  });
+});
+
+describe('закрытые страницы', () => {
+  it('уводит анонима на /login с возвратом', async () => {
+    const res = await middleware(req('/refs'));
+    expect(res.status).toBe(307);
+    const location = new URL(res.headers.get('location')!);
+    expect(location.pathname).toBe('/login');
+    expect(location.searchParams.get('next')).toBe('/refs');
+  });
+
+  it('в `next` кладёт только внутренний путь', async () => {
+    // `//evil.example` браузер трактует как абсолютный URL — открытый редирект
+    // из-под собственной формы входа.
+    const res = await middleware(req('//evil.example'));
+    const location = new URL(res.headers.get('location')!);
+    expect(location.searchParams.get('next')).toBeNull();
+  });
+
+  it('пускает редактора по сессии', async () => {
+    const res = await middleware(req('/refs', { cookie: await session() }));
+    expect(res.status).toBe(200);
+  });
+
+  it('не верит токену, подписанному чужим секретом', async () => {
+    const forged = await signSession(
+      { u: 'sergei', exp: Math.floor(Date.now() / 1000) + 3600 },
+      'другой-секрет-достаточной-длины'
+    );
+    expect((await middleware(req('/refs', { cookie: forged }))).status).toBe(307);
+  });
+});
+
+describe('закрытый API', () => {
+  it('отвечает 401 с вызовом Basic — для curl и скриптов', async () => {
+    const res = await middleware(req('/api/export'));
     expect(res.status).toBe(401);
     expect(res.headers.get('www-authenticate')).toContain('Basic');
   });
 
-  it('rejects wrong credentials with 401', () => {
-    process.env.ADMIN_BASIC_AUTH = 'admin:s3cret';
-    expect(middleware(req(basic('admin', 'wrong'))).status).toBe(401);
+  it('пускает по верному Basic и отвергает неверный', async () => {
+    expect((await middleware(req('/api/export', { auth: basic('sergei', 's3cret') }))).status).toBe(200);
+    expect((await middleware(req('/api/export', { auth: basic('sergei', 'wrong') }))).status).toBe(401);
   });
 
-  it('allows correct credentials', () => {
-    process.env.ADMIN_BASIC_AUTH = 'admin:s3cret';
-    expect(middleware(req(basic('admin', 's3cret'))).status).not.toBe(401);
-  });
-
-  it('rejects malformed base64 without throwing', () => {
-    process.env.ADMIN_BASIC_AUTH = 'admin:s3cret';
-    expect(middleware(req('Basic @@@not-base64@@@')).status).toBe(401);
-  });
-
-  it('accepts a credential containing non-ASCII (UTF-8) characters', () => {
-    process.env.ADMIN_BASIC_AUTH = 'админ:пароль€';
-    expect(middleware(req(basic('админ', 'пароль€'))).status).not.toBe(401);
-  });
-
-  it('rejects a near-miss non-ASCII credential', () => {
-    process.env.ADMIN_BASIC_AUTH = 'админ:пароль€';
-    expect(middleware(req(basic('админ', 'пароль'))).status).toBe(401);
-  });
-
-  describe('ADMIN_AUTH_DISABLED kill-switch', () => {
-    it('lets every request through when set to "true", even in production with valid creds', () => {
-      process.env.ADMIN_AUTH_DISABLED = 'true';
-      process.env.ADMIN_BASIC_AUTH = 'admin:s3cret';
-      setNodeEnv('production');
-      const res = middleware(req());
-      expect(res.status).not.toBe(401);
-      expect(res.status).not.toBe(503);
-    });
-
-    it('overrides production fail-closed when ADMIN_BASIC_AUTH is unset', () => {
-      process.env.ADMIN_AUTH_DISABLED = 'true';
-      delete process.env.ADMIN_BASIC_AUTH;
-      setNodeEnv('production');
-      expect(middleware(req()).status).not.toBe(503);
-    });
-
-    it('only "true" disables — other values still enforce auth', () => {
-      process.env.ADMIN_AUTH_DISABLED = '1';
-      process.env.ADMIN_BASIC_AUTH = 'admin:s3cret';
-      setNodeEnv('production');
-      expect(middleware(req()).status).toBe(401);
-    });
-  });
-
-  describe('production fail-closed (no valid ADMIN_BASIC_AUTH)', () => {
-    it('returns 503 in production when ADMIN_BASIC_AUTH is unset', () => {
-      delete process.env.ADMIN_BASIC_AUTH;
-      setNodeEnv('production');
-      const res = middleware(req());
-      expect(res.status).toBe(503);
-    });
-
-    it('503 response body names the missing variable', async () => {
-      delete process.env.ADMIN_BASIC_AUTH;
-      setNodeEnv('production');
-      const res = middleware(req());
-      expect(await res.text()).toContain('ADMIN_BASIC_AUTH');
-    });
-
-    it('returns 503 in production when ADMIN_BASIC_AUTH is an empty string', () => {
-      process.env.ADMIN_BASIC_AUTH = '';
-      setNodeEnv('production');
-      expect(middleware(req()).status).toBe(503);
-    });
-
-    it('returns 503 in production when ADMIN_BASIC_AUTH has no ":" separator', () => {
-      process.env.ADMIN_BASIC_AUTH = 'not-a-valid-credential';
-      setNodeEnv('production');
-      expect(middleware(req()).status).toBe(503);
-    });
-
-    it('still requires Basic Auth in production when ADMIN_BASIC_AUTH is valid', () => {
-      process.env.ADMIN_BASIC_AUTH = 'admin:s3cret';
-      setNodeEnv('production');
-      expect(middleware(req()).status).toBe(401);
-      expect(middleware(req(basic('admin', 's3cret'))).status).not.toBe(401);
-      expect(middleware(req(basic('admin', 's3cret'))).status).not.toBe(503);
-    });
-
-    it('stays open (non-production) when ADMIN_BASIC_AUTH is unset outside production', () => {
-      delete process.env.ADMIN_BASIC_AUTH;
-      setNodeEnv('development');
-      const res = middleware(req());
-      expect(res.status).not.toBe(401);
-      expect(res.status).not.toBe(503);
-    });
+  it('принимает совместимый ADMIN_BASIC_AUTH', async () => {
+    process.env.ADMIN_BASIC_AUTH = 'legacy:pass';
+    expect((await middleware(req('/api/export', { auth: basic('legacy', 'pass') }))).status).toBe(200);
   });
 });
 
-describe('resolveAuthDecision (pure decision logic)', () => {
-  it('is "disabled" when ADMIN_AUTH_DISABLED=true, overriding all else', () => {
-    expect(
-      resolveAuthDecision({ ADMIN_AUTH_DISABLED: 'true', ADMIN_BASIC_AUTH: 'admin:s3cret', NODE_ENV: 'production' }, null)
-    ).toBe('disabled');
-    expect(
-      resolveAuthDecision({ ADMIN_AUTH_DISABLED: 'true', ADMIN_BASIC_AUTH: undefined, NODE_ENV: 'production' }, null)
-    ).toBe('disabled');
+describe('запись', () => {
+  it('анониму запрещена даже там, где чтение открыто', async () => {
+    const res = await middleware(req('/api/funnels/7', { method: 'PATCH' }));
+    expect(res.status).toBe(401);
   });
 
-  it('ignores non-"true" ADMIN_AUTH_DISABLED values', () => {
-    expect(
-      resolveAuthDecision({ ADMIN_AUTH_DISABLED: 'false', ADMIN_BASIC_AUTH: undefined, NODE_ENV: 'production' }, null)
-    ).toBe('misconfigured');
-    expect(
-      resolveAuthDecision({ ADMIN_AUTH_DISABLED: '1', ADMIN_BASIC_AUTH: 'admin:s3cret', NODE_ENV: 'production' }, null)
-    ).toBe('unauthorized');
+  it('редактору по сессии разрешена', async () => {
+    const res = await middleware(req('/api/funnels/7', { method: 'PATCH', cookie: await session() }));
+    expect(res.status).toBe(200);
   });
 
-  it('is "open" when unset and not production', () => {
-    expect(resolveAuthDecision({ ADMIN_BASIC_AUTH: undefined, NODE_ENV: 'development' }, null)).toBe('open');
-    expect(resolveAuthDecision({ ADMIN_BASIC_AUTH: undefined, NODE_ENV: 'test' }, null)).toBe('open');
-    expect(resolveAuthDecision({ ADMIN_BASIC_AUTH: undefined, NODE_ENV: undefined }, null)).toBe('open');
+  it('с чужого Origin — 403, даже с валидной сессией', async () => {
+    const res = await middleware(req('/api/funnels/7', {
+      method: 'PATCH', cookie: await session(), origin: 'https://evil.example',
+    }));
+    expect(res.status).toBe(403);
   });
 
-  it('is "misconfigured" when unset/empty/invalid and NODE_ENV=production', () => {
-    expect(resolveAuthDecision({ ADMIN_BASIC_AUTH: undefined, NODE_ENV: 'production' }, null)).toBe('misconfigured');
-    expect(resolveAuthDecision({ ADMIN_BASIC_AUTH: '', NODE_ENV: 'production' }, null)).toBe('misconfigured');
-    expect(resolveAuthDecision({ ADMIN_BASIC_AUTH: 'no-colon-here', NODE_ENV: 'production' }, null)).toBe('misconfigured');
+  it('со своего Origin проходит', async () => {
+    const res = await middleware(req('/api/funnels/7', {
+      method: 'PATCH', cookie: await session(), origin: 'http://admin.example',
+    }));
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('форма входа', () => {
+  it('доступна анониму, включая POST на её роут', async () => {
+    expect((await middleware(req('/login'))).status).toBe(200);
+    expect((await middleware(req('/api/auth/login', { method: 'POST' }))).status).toBe(200);
+  });
+});
+
+describe('ненастроенное окружение', () => {
+  it('в проде без учёток: читать можно, писать — 503', async () => {
+    delete process.env.ADMIN_USERS;
+    delete process.env.ADMIN_SESSION_SECRET;
+    expect((await middleware(req('/'))).status).toBe(200);
+    const res = await middleware(req('/api/funnels', { method: 'POST' }));
+    expect(res.status).toBe(503);
+    expect(await res.text()).toContain('ADMIN_USERS');
   });
 
-  it('is "unauthorized" when configured but header missing or wrong', () => {
-    expect(resolveAuthDecision({ ADMIN_BASIC_AUTH: 'admin:s3cret', NODE_ENV: 'production' }, null)).toBe('unauthorized');
-    expect(
-      resolveAuthDecision({ ADMIN_BASIC_AUTH: 'admin:s3cret', NODE_ENV: 'production' }, basic('admin', 'wrong'))
-    ).toBe('unauthorized');
+  it('в проде с учётками, но без секрета — тоже 503 на запись', async () => {
+    delete process.env.ADMIN_SESSION_SECRET;
+    expect((await middleware(req('/api/funnels', { method: 'POST' }))).status).toBe(503);
   });
 
-  // RFC 7235: имя схемы регистронезависимо. Клиент, шлющий "basic ", получал
-  // 401 с верным паролем — и причину такого отказа не видно ни в логах, ни в теле.
-  it('принимает имя схемы в любом регистре', () => {
-    const cred = basic('admin', 's3cret').slice(6);
-    for (const scheme of ['Basic', 'basic', 'BASIC', 'BaSiC']) {
-      expect(
-        resolveAuthDecision({ ADMIN_BASIC_AUTH: 'admin:s3cret', NODE_ENV: 'production' }, `${scheme} ${cred}`)
-      ).toBe('ok');
-    }
+  it('вне прода без учёток открыто всё — локальная разработка', async () => {
+    delete process.env.ADMIN_USERS;
+    delete process.env.ADMIN_SESSION_SECRET;
+    setNodeEnv('development');
+    expect((await middleware(req('/refs'))).status).toBe(200);
+    expect((await middleware(req('/api/funnels', { method: 'POST' }))).status).toBe(200);
+  });
+});
+
+describe('kill-switch ADMIN_AUTH_DISABLED', () => {
+  it('пропускает всё, включая запись в проде с заданными учётками', async () => {
+    process.env.ADMIN_AUTH_DISABLED = 'true';
+    expect((await middleware(req('/refs'))).status).toBe(200);
+    expect((await middleware(req('/api/funnels/7', { method: 'DELETE' }))).status).toBe(200);
   });
 
-  it('не путает схему с чужой: Bearer с тем же телом — не авторизация', () => {
-    const cred = basic('admin', 's3cret').slice(6);
-    expect(
-      resolveAuthDecision({ ADMIN_BASIC_AUTH: 'admin:s3cret', NODE_ENV: 'production' }, `Bearer ${cred}`)
-    ).toBe('unauthorized');
+  it('выключает ровно "true" — прочие значения авторизацию сохраняют', async () => {
+    process.env.ADMIN_AUTH_DISABLED = '1';
+    expect((await middleware(req('/api/funnels/7', { method: 'DELETE' }))).status).toBe(401);
   });
+});
 
-  it('is "ok" when configured and header matches, regardless of NODE_ENV', () => {
-    expect(
-      resolveAuthDecision({ ADMIN_BASIC_AUTH: 'admin:s3cret', NODE_ENV: 'production' }, basic('admin', 's3cret'))
-    ).toBe('ok');
-    expect(
-      resolveAuthDecision({ ADMIN_BASIC_AUTH: 'admin:s3cret', NODE_ENV: 'development' }, basic('admin', 's3cret'))
-    ).toBe('ok');
+describe('PUBLIC_READ_ENABLED=false', () => {
+  it('возвращает прежнюю модель — всё под авторизацией', async () => {
+    process.env.PUBLIC_READ_ENABLED = 'false';
+    expect((await middleware(req('/'))).status).toBe(307);
+    expect((await middleware(req('/api/funnels'))).status).toBe(401);
+    // Редактора это не касается.
+    expect((await middleware(req('/', { cookie: await session() }))).status).toBe(200);
   });
 });

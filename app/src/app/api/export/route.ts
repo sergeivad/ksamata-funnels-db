@@ -1,14 +1,18 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { buildExportRows, toCsv } from '@/lib/export';
 import { internalError } from '@/lib/http';
+import { requireEditor } from '@/lib/auth-server';
 
 /**
  * GET /api/export — download a flat CSV of every funnel link, one row per
  * link, for staff who still work in Excel. UTF-8 BOM + ';' delimiter so
  * ru-locale Excel opens it without a manual import step.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
+
   try {
     const rows = buildExportRows(db);
     const BOM = '﻿';
