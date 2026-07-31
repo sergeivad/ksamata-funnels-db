@@ -10,13 +10,14 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { POST as loginPOST } from '../src/app/api/auth/login/route';
 import { POST as logoutPOST } from '../src/app/api/auth/logout/route';
 import { LOGIN_MAX_ATTEMPTS, SESSION_COOKIE, signSession } from '../src/lib/auth';
-import { readCookie } from '../src/lib/auth-server';
+import { readCookie, requireEditor } from '../src/lib/auth-server';
 
 const KEYS = ['ADMIN_USERS', 'ADMIN_BASIC_AUTH', 'ADMIN_SESSION_SECRET', 'ADMIN_AUTH_DISABLED', 'PUBLIC_READ_ENABLED'] as const;
 const ORIGINAL: Record<string, string | undefined> = {};
 const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
 
 const SECRET = 'a-secret-long-enough-to-count';
+const basic = (u: string, p: string) => `Basic ${Buffer.from(`${u}:${p}`).toString('base64')}`;
 
 function setNodeEnv(value: string | undefined) {
   if (value === undefined) {
@@ -151,6 +152,15 @@ describe('readCookie', () => {
     expect(readCookie('a=1', SESSION_COOKIE)).toBeNull();
     expect(readCookie(null, SESSION_COOKIE)).toBeNull();
   });
+
+  it('битое percent-encoding — это «cookie нет», а не исключение', () => {
+    // decodeURIComponent('%') кидает URIError; requireEditor вызывается роутами
+    // до своего try, так что необработанное исключение стало бы 500 вместо 401.
+    expect(() => readCookie(`${SESSION_COOKIE}=%`, SESSION_COOKIE)).not.toThrow();
+    expect(readCookie(`${SESSION_COOKIE}=%`, SESSION_COOKIE)).toBeNull();
+    // Соседние валидные cookie битая запись не портит.
+    expect(readCookie(`a=1; ${SESSION_COOKIE}=%; b=2`, SESSION_COOKIE)).toBeNull();
+  });
 });
 
 describe('второй рубеж: requireEditor в обработчиках', () => {
@@ -210,5 +220,75 @@ describe('второй рубеж: requireEditor в обработчиках', (
     );
     const { GET } = await import('../src/app/api/export/route');
     expect((await GET(apiReq('/api/export', 'GET', token))).status).toBe(401);
+  });
+});
+
+describe('requireEditor — лимит на перебор через Authorization: Basic', () => {
+  // До фикса лимит (LOGIN_MAX_ATTEMPTS за LOGIN_WINDOW_MS) висел только на
+  // POST /api/auth/login: сам заголовок туда никогда не попадает, поэтому
+  // перебор пароля через Basic на любой закрытый роут был бесплатным — 12
+  // неверных `curl -u ed:wrongN` на прод-сборке дали 12×401 без единого 429.
+  beforeEach(() => {
+    (globalThis as Record<symbol, unknown>)[Symbol.for('ksamata.loginAttempts')] = new Map();
+  });
+
+  // Метод неважен для самого лимита — берём PATCH на закрытый для анонима путь,
+  // чтобы Basic реально участвовал в решении (публичный GET прошёл бы и без него).
+  function req(method: string, headers: Record<string, string>) {
+    return new Request('http://admin.example/api/funnels/1', {
+      method,
+      headers: { host: 'admin.example', ...headers },
+    }) as never;
+  }
+
+  it('блокирует перебор через Basic после LOGIN_MAX_ATTEMPTS и не пускает даже верный пароль в окне блокировки', async () => {
+    const wrong = { 'x-forwarded-for': '10.5.5.5', authorization: basic('sergei', 'wrong') };
+    for (let i = 0; i < LOGIN_MAX_ATTEMPTS; i++) {
+      expect((await requireEditor(req('PATCH', wrong)))?.status).toBe(401);
+    }
+    expect((await requireEditor(req('PATCH', wrong)))?.status).toBe(429);
+
+    const right = { 'x-forwarded-for': '10.5.5.5', authorization: basic('sergei', 's3cret') };
+    expect((await requireEditor(req('PATCH', right)))?.status).toBe(429);
+
+    // Другой адрес этим не задет.
+    const otherIp = { 'x-forwarded-for': '10.5.5.9', authorization: basic('sergei', 's3cret') };
+    expect(await requireEditor(req('PATCH', otherIp))).toBeNull();
+  });
+
+  it('верный Basic обнуляет счётчик для своего ключа', async () => {
+    const ip = '10.6.6.6';
+    const wrong = { 'x-forwarded-for': ip, authorization: basic('sergei', 'wrong') };
+    for (let i = 0; i < LOGIN_MAX_ATTEMPTS - 1; i++) {
+      expect((await requireEditor(req('PATCH', wrong)))?.status).toBe(401);
+    }
+    const right = { 'x-forwarded-for': ip, authorization: basic('sergei', 's3cret') };
+    expect(await requireEditor(req('PATCH', right))).toBeNull();
+
+    // Счётчик обнулён — доступен снова полный лимит попыток, не блокировано сразу.
+    for (let i = 0; i < LOGIN_MAX_ATTEMPTS - 1; i++) {
+      expect((await requireEditor(req('PATCH', wrong)))?.status).toBe(401);
+    }
+  });
+
+  it('анонимный запрос без Authorization не тратит лимит', async () => {
+    // requireEditor вообще не вызывается на публичных GET (те не проходят
+    // через него — см. `api/funnels/[id]/route.ts`), но закрытый для анонима
+    // путь без единого заголовка Authorization дёргается сплошь и рядом.
+    // Такой запрос должен получать честный 401 не трогая счётчик — иначе
+    // аноним, просто листающий/пробующий закрытые страницы, забанил бы сам
+    // себя без единого предъявленного пароля.
+    const ip = '10.7.7.7';
+    const anon = { 'x-forwarded-for': ip };
+    for (let i = 0; i < LOGIN_MAX_ATTEMPTS + 5; i++) {
+      expect((await requireEditor(req('PATCH', anon)))?.status).toBe(401);
+    }
+
+    // Basic с этого же адреса ещё ни разу не предъявлялся — лимит цел.
+    const wrong = { 'x-forwarded-for': ip, authorization: basic('sergei', 'wrong') };
+    for (let i = 0; i < LOGIN_MAX_ATTEMPTS; i++) {
+      expect((await requireEditor(req('PATCH', wrong)))?.status).toBe(401);
+    }
+    expect((await requireEditor(req('PATCH', wrong)))?.status).toBe(429);
   });
 });

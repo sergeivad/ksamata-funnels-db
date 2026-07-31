@@ -186,7 +186,9 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 - `status.ts` — funnel status constants/meta (active/draft/archive).
 - `auth.ts` — чистое ядро авторизации (учётки, подпись сессии, `resolveAccess`),
   Edge-безопасное; `auth-server.ts` — обвязка на Node (`getViewer`,
-  `requireEditor`). Подробно — раздел Auth ниже.
+  `requireEditor`, оба через общий `resolveAccessFrom`); `login-attempts.ts` —
+  счётчик неудачных попыток на `globalThis`, Edge-безопасный, потому что его
+  зовут с обеих сторон. Подробно — раздел Auth ниже.
 - `rooms-grid.ts` — build/flatten the rooms grid (slot × day).
 - `funnel-compact.ts` — grouping/visibility for the compact view.
 - `export.ts` — build export rows + CSV serialization. Fields starting with
@@ -301,7 +303,9 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 - `POST /api/auth/logout` — гасит cookie.
 
 Все мутирующие роуты и GET приватных начинаются с `requireEditor(req)` —
-второй рубеж, см. раздел Auth. Rooms and status have **no dedicated endpoints** — they persist through the
+второй рубеж, см. раздел Auth.
+
+Rooms and status have **no dedicated endpoints** — they persist through the
 funnel `PATCH` and the days `PUT`.
 
 ## Pages & components
@@ -379,6 +383,19 @@ instance, so a module-level flag looks perfectly correct under test. If you add
 process-wide state (a cache, a lock, a connection, a queue), put it on
 `globalThis` and verify against `.next/standalone`, not against the test suite.
 
+**And `globalThis` only dedupes within ONE runtime.** Measured on
+`.next/standalone/server.js`: five failed Basic attempts counted by
+`middleware.ts` logged down to "осталось попыток 5", and the very next failure
+for the same key through `POST /api/auth/login` (a Node route) logged "осталось
+попыток 9" — it started from zero. The middleware runs in an isolated
+edge-runtime context that does **not** share `globalThis` with the Node runtime
+of API routes, even though both live in the same OS process. So a
+`globalThis` slot is one store per runtime, not one per process: state that
+must be shared across the Edge/Node boundary needs real external storage (the
+DB, a KV), and code that keeps a counter or a lock on both sides has **two** of
+them. `app/src/lib/login-attempts.ts` is deliberately in that position — see
+the Auth section.
+
 ## Migrations (`app/scripts/`)
 
 Migrations are phased and idempotent (guarded by schema markers or `IF NOT
@@ -447,6 +464,34 @@ never the real DB), `migrate-messenger-tagtype.ts`, `backfill-messenger-tags.ts`
    то же для страниц `/refs`, `/tags`, `/monitoring` (они рендерят данные прямо
    из БД, минуя API). Дублирование намеренное: `matcher` мидлвары ломается одной
    правкой и молча. Функция общая, поэтому рубежи не разъедутся.
+
+Общая функция сама по себе от расхождения **не спасает** — разъезжается
+извлечение запроса. Так и было: `getViewer` не читал `Authorization` вовсе, и
+редактор по Basic получал 307 на `/refs` и режим просмотра на карточке, хотя
+его запись API уже принимала. Поэтому `getViewer` и `requireEditor` ходят через
+один `resolveAccessFrom` в `auth-server.ts`: разными остаются только источники
+строк (`next/headers` в RSC против `Request` в роуте).
+
+**Лимит перебора пароля** (`login-attempts.ts`, 10 попыток за 15 минут на
+`ip|имя`) стоит в трёх местах, и место тут важнее логики:
+
+- `POST /api/auth/login` — форма входа;
+- **`middleware.ts`** — перебор через `Authorization: Basic`. Именно здесь, а не
+  в роуте: на отказ мидлвара формирует ответ сама, и роут не исполняется вовсе.
+  Пока проверка висела только в `requireEditor`, она была мёртвым кодом на любом
+  пути, который закрывает `matcher` — то есть почти на всех. Роутовые тесты
+  этого не видят, они зовут обработчик напрямую; ловится только замером на
+  `.next/standalone`;
+- `requireEditor` — та же проверка как защита в глубину, на случай сломанного
+  `matcher`.
+
+Два последних счётчика — **физически разные** (Edge и Node не делят
+`globalThis`, см. раздел про синглтоны), поэтому суммарно на ключ приходится до
+`2 × LOGIN_MAX_ATTEMPTS`. Свести в один можно только через внешнее хранилище.
+Ни анонимное чтение, ни cookie-сессия в счётчик не попадают — только запросы, где
+Basic реально предъявлен и решение принял именно он. `forbidden-origin` провалом
+не считается: `resolveAccess` отбивает по Origin **до** проверки пароля, так что
+там мог быть и верный.
 
 Порядок решений (`AccessDecision`):
 

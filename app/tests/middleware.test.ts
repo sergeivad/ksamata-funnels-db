@@ -10,7 +10,7 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { middleware } from '../src/middleware';
-import { SESSION_COOKIE, signSession } from '../src/lib/auth';
+import { LOGIN_MAX_ATTEMPTS, SESSION_COOKIE, signSession } from '../src/lib/auth';
 
 const KEYS = ['ADMIN_USERS', 'ADMIN_BASIC_AUTH', 'ADMIN_SESSION_SECRET', 'ADMIN_AUTH_DISABLED', 'PUBLIC_READ_ENABLED'] as const;
 const ORIGINAL: Record<string, string | undefined> = {};
@@ -36,6 +36,11 @@ beforeEach(() => {
   delete process.env.ADMIN_AUTH_DISABLED;
   delete process.env.PUBLIC_READ_ENABLED;
   setNodeEnv('production');
+  // Счётчик попыток живёт на globalThis и переживает тесты — чистим, иначе
+  // единичный неверный Basic из соседнего теста (все бьют с одного и того же
+  // "unknown|sergei" — x-forwarded-for тут нигде не задан) накапливался бы
+  // между тестами этого файла.
+  (globalThis as Record<symbol, unknown>)[Symbol.for('ksamata.loginAttempts')] = new Map();
 });
 
 afterEach(() => {
@@ -51,13 +56,15 @@ interface ReqOpts {
   auth?: string;
   cookie?: string;
   origin?: string;
+  ip?: string;
 }
 
-function req(path = '/', { method = 'GET', auth, cookie, origin }: ReqOpts = {}) {
+function req(path = '/', { method = 'GET', auth, cookie, origin, ip }: ReqOpts = {}) {
   const headers = new Headers({ host: 'admin.example' });
   if (auth) headers.set('authorization', auth);
   if (cookie) headers.set('cookie', `${SESSION_COOKIE}=${cookie}`);
   if (origin) headers.set('origin', origin);
+  if (ip) headers.set('x-forwarded-for', ip);
   return new NextRequest(`http://admin.example${path}`, { method, headers });
 }
 
@@ -209,5 +216,74 @@ describe('PUBLIC_READ_ENABLED=false', () => {
     expect((await middleware(req('/api/funnels'))).status).toBe(401);
     // Редактора это не касается.
     expect((await middleware(req('/', { cookie: await session() }))).status).toBe(200);
+  });
+});
+
+describe('мидлвара — лимит на перебор через Authorization: Basic', () => {
+  // До фикса лимит висел только в `requireEditor` (auth-server.ts), а мидлвара
+  // формирует ответ раньше роута — на любой закрытый путь запрос вообще не
+  // доходил до роута, и лимит был мёртвым кодом. Замер на прод-сборке (curl -u
+  // с неверным паролем на GET /api/export) подтвердил: 12×401 без единого 429.
+  it('блокирует перебор через Basic после LOGIN_MAX_ATTEMPTS и не пускает даже верный пароль в окне блокировки', async () => {
+    const opts = { auth: basic('sergei', 'wrong'), ip: '10.5.5.5' };
+    for (let i = 0; i < LOGIN_MAX_ATTEMPTS; i++) {
+      expect((await middleware(req('/api/export', opts))).status).toBe(401);
+    }
+    expect((await middleware(req('/api/export', opts))).status).toBe(429);
+
+    const right = { auth: basic('sergei', 's3cret'), ip: '10.5.5.5' };
+    expect((await middleware(req('/api/export', right))).status).toBe(429);
+
+    // Другой адрес не задет.
+    const otherIp = { auth: basic('sergei', 's3cret'), ip: '10.5.5.9' };
+    expect((await middleware(req('/api/export', otherIp))).status).toBe(200);
+  });
+
+  it('блокирует и на пути записи (PATCH), не только на чтении', async () => {
+    const opts = { method: 'PATCH', auth: basic('sergei', 'wrong'), ip: '10.5.6.6' };
+    for (let i = 0; i < LOGIN_MAX_ATTEMPTS; i++) {
+      expect((await middleware(req('/api/funnels/1', opts))).status).toBe(401);
+    }
+    expect((await middleware(req('/api/funnels/1', opts))).status).toBe(429);
+  });
+
+  it('верный Basic обнуляет счётчик для своего ключа', async () => {
+    const ip = '10.6.6.6';
+    const wrong = { auth: basic('sergei', 'wrong'), ip };
+    for (let i = 0; i < LOGIN_MAX_ATTEMPTS - 1; i++) {
+      expect((await middleware(req('/api/export', wrong))).status).toBe(401);
+    }
+    const right = { auth: basic('sergei', 's3cret'), ip };
+    expect((await middleware(req('/api/export', right))).status).toBe(200);
+
+    // Счётчик обнулён — снова доступен полный лимит попыток.
+    for (let i = 0; i < LOGIN_MAX_ATTEMPTS - 1; i++) {
+      expect((await middleware(req('/api/export', wrong))).status).toBe(401);
+    }
+  });
+
+  it('анонимное чтение публичной страницы и сессия не тратят лимит', async () => {
+    const ip = '10.7.7.7';
+    // Публичный GET без единого заголовка Authorization — разрешён, basic
+    // отсутствует, счётчик не тронут.
+    for (let i = 0; i < LOGIN_MAX_ATTEMPTS + 5; i++) {
+      expect((await middleware(req('/api/funnels', { ip }))).status).toBe(200);
+    }
+    // Cookie-сессия — тоже мимо счётчика Basic, даже на закрытом пути.
+    for (let i = 0; i < LOGIN_MAX_ATTEMPTS + 5; i++) {
+      expect((await middleware(req('/refs', { cookie: await session(), ip }))).status).toBe(200);
+    }
+    // Тот же адрес — Basic ещё ни разу не предъявлялся, лимит цел.
+    const wrong = { auth: basic('sergei', 'wrong'), ip };
+    for (let i = 0; i < LOGIN_MAX_ATTEMPTS; i++) {
+      expect((await middleware(req('/api/export', wrong))).status).toBe(401);
+    }
+    expect((await middleware(req('/api/export', wrong))).status).toBe(429);
+  });
+
+  it('POST /api/auth/login по-прежнему открыт мидлварой — лимит формы работает на самом роуте', async () => {
+    // Точка входа доступна анониму независимо от Basic-лимитера; форма имеет
+    // собственный счётчик (проверяется в api-auth-route.test.ts).
+    expect((await middleware(req('/api/auth/login', { method: 'POST' }))).status).toBe(200);
   });
 });
