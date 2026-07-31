@@ -35,8 +35,11 @@ services:
       # умолчанию выключено; поставьте "true", если правите сам мониторинг —
       # и тогда восстановите БД перед коммитом.
       MONITOR_ENABLED: "false"
-      # Kill-switch: "true" turns auth OFF everywhere, even in production and
-      # even if ADMIN_USERS is set. Uncomment to force-disable auth.
+      # Kill-switch: "true" выключает вход целиком в ЭТОМ (не-продовом) стеке,
+      # даже если задан ADMIN_USERS. В проде та же переменная игнорируется
+      # (см. CLAUDE.md, раздел Auth) — забытая "true" на боевом сервере однажды
+      # держала его публично редактируемым больше месяца. Раскомментируй, чтобы
+      # принудительно выключить авторизацию здесь.
       # ADMIN_AUTH_DISABLED: "true"
     volumes:
       # Live source for hot-reload.

@@ -327,7 +327,7 @@ export function isPublicReadEnabled(env: AuthEnv): boolean {
 // ── Решение о доступе ────────────────────────────────────────────────────────
 
 export type AccessDecision =
-  | 'disabled'         // kill-switch — авторизации нет вообще, пропускаем всё
+  | 'disabled'         // kill-switch вне прода — авторизации нет вообще, пропускаем всё
   | 'open'             // ничего не настроено, не прод — пропускаем всё (локальная разработка)
   | 'allow'            // разрешено: публичное чтение либо редактор
   | 'redirect-login'   // аноним на закрытой странице — на форму входа
@@ -361,13 +361,31 @@ function originMatchesHost(origin: string, host: string | null): boolean {
 }
 
 /**
+ * Игнорируется ли `ADMIN_AUTH_DISABLED=true` в этом окружении.
+ *
+ * В проде — да, всегда: переменную однажды поставили на боевом сервере «на
+ * время», чтобы зайти без пароля, и забыли больше чем на месяц — всё это время
+ * kill-switch стоял в решении раньше самих учёток и раньше fail-closed-503
+ * прода, поэтому сервис был публично РЕДАКТИРУЕМЫМ, а не только читаемым.
+ * Аварии, которую решает поголовное отключение авторизации в проде, не
+ * существует: потеряли пароль — задают новый `ADMIN_USERS`; нужно снять
+ * защиту чтения — для этого есть `PUBLIC_READ_ENABLED`, не трогающий запись.
+ * Поэтому в проде эта переменная теперь ни на что не влияет, а не выключает
+ * весь сервис одной опечаткой в конфиге хостинга.
+ */
+export function isKillSwitchIgnored(env: AuthEnv): boolean {
+  return env.ADMIN_AUTH_DISABLED === 'true' && env.NODE_ENV === 'production';
+}
+
+/**
  * Чистое решение о доступе: без NextRequest/NextResponse, чтобы проверялось
  * таблицей «путь × метод × credential», а не постройкой запросов Next.
  */
 export function resolveAccess(env: AuthEnv, req: AccessRequest): AccessResult {
-  // Kill-switch выше всего остального, включая fail-closed прода. Выключает
-  // ровно строка "true", чтобы описка не открывала админку.
-  if (env.ADMIN_AUTH_DISABLED === 'true') {
+  // Kill-switch — но не в проде (см. isKillSwitchIgnored выше). Вне прода
+  // ветка остаётся как была: выше всего остального, выключает ровно строка
+  // "true", чтобы описка не открывала админку локально.
+  if (env.ADMIN_AUTH_DISABLED === 'true' && !isKillSwitchIgnored(env)) {
     return { decision: 'disabled', user: null };
   }
 

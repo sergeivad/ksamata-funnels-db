@@ -12,6 +12,7 @@ import {
   canEditFrom,
   configuredUsers,
   isAllowed,
+  isKillSwitchIgnored,
   isLoginBlocked,
   isPublicReadPath,
   isSafeMethod,
@@ -388,11 +389,50 @@ describe('resolveAccess — ненастроенное окружение', () =
       .toBe('misconfigured');
   });
 
-  it('kill-switch открывает всё, включая прод с заданными учётками', () => {
-    const env: AuthEnv = { ...PROD, ADMIN_AUTH_DISABLED: 'true' };
+  it('kill-switch вне прода по-прежнему открывает всё — регрессия сохраняется намеренно', () => {
+    // Единственное окружение, где кто-то мог реально полагаться на старое
+    // поведение kill-switch, — локальная разработка и dev-стек, и там оно
+    // не меняется ни на грамм.
+    const env: AuthEnv = { ...PROD, NODE_ENV: 'development', ADMIN_AUTH_DISABLED: 'true' };
     const res = resolveAccess(env, reqOf({ method: 'DELETE', pathname: '/api/funnels/7' }));
     expect(res.decision).toBe('disabled');
     expect(canEditFrom(res)).toBe(true);
+  });
+
+  it('в проде kill-switch с заданными учётками игнорируется: чтение allow, запись анониму unauthorized', () => {
+    // Это ровно баг, который чинит эта правка: переменную поставили на боевом
+    // сервере «на время» и забыли на полтора месяца — сервис был публично
+    // РЕДАКТИРУЕМЫМ всё это время, потому что kill-switch стоял в решении
+    // раньше учёток. Теперь в проде эта строка ни на что не влияет: решение
+    // считается дальше как будто переменной нет вообще.
+    const env: AuthEnv = { ...PROD, ADMIN_AUTH_DISABLED: 'true' };
+    expect(resolveAccess(env, reqOf({ pathname: '/' })).decision).toBe('allow');
+    const write = resolveAccess(env, reqOf({ method: 'DELETE', pathname: '/api/funnels/7' }));
+    expect(write.decision).toBe('unauthorized');
+    expect(canEditFrom(write)).toBe(false);
+  });
+
+  it('в проде kill-switch без учёток игнорируется: чтение allow, запись misconfigured (503)', () => {
+    const env: AuthEnv = { NODE_ENV: 'production', ADMIN_AUTH_DISABLED: 'true' };
+    expect(resolveAccess(env, reqOf({ pathname: '/' })).decision).toBe('allow');
+    expect(resolveAccess(env, reqOf({ method: 'POST', pathname: '/api/funnels' })).decision)
+      .toBe('misconfigured');
+  });
+
+  it('в проде kill-switch игнорируется, но редактор по сессии и по Basic всё равно проходит', () => {
+    const env: AuthEnv = { ...PROD, ADMIN_AUTH_DISABLED: 'true' };
+
+    const bySession = resolveAccess(env, reqOf({
+      method: 'PATCH', pathname: '/api/funnels/7', sessionUser: 'sergei',
+    }));
+    expect(bySession.decision).toBe('allow');
+    expect(bySession.user).toBe('sergei');
+
+    const byBasic = resolveAccess(env, reqOf({
+      method: 'PATCH', pathname: '/api/funnels/7', authHeader: basic('sergei', 's3cret'),
+    }));
+    expect(byBasic.decision).toBe('allow');
+    expect(byBasic.user).toBe('sergei');
   });
 
   it('выключает ровно строка "true" — описка админку не открывает', () => {
@@ -400,6 +440,18 @@ describe('resolveAccess — ненастроенное окружение', () =
       expect(resolveAccess({ ...PROD, ADMIN_AUTH_DISABLED: value },
         reqOf({ method: 'DELETE', pathname: '/api/funnels/7' })).decision).toBe('unauthorized');
     }
+  });
+});
+
+describe('isKillSwitchIgnored', () => {
+  it('таблица прод/не-прод × задана/не задана', () => {
+    expect(isKillSwitchIgnored({ NODE_ENV: 'production', ADMIN_AUTH_DISABLED: 'true' })).toBe(true);
+    expect(isKillSwitchIgnored({ NODE_ENV: 'production' })).toBe(false);
+    expect(isKillSwitchIgnored({ NODE_ENV: 'development', ADMIN_AUTH_DISABLED: 'true' })).toBe(false);
+    expect(isKillSwitchIgnored({ NODE_ENV: 'development' })).toBe(false);
+    expect(isKillSwitchIgnored({})).toBe(false);
+    // Не ровно "true" — не считается включённым, даже в проде.
+    expect(isKillSwitchIgnored({ NODE_ENV: 'production', ADMIN_AUTH_DISABLED: '1' })).toBe(false);
   });
 });
 

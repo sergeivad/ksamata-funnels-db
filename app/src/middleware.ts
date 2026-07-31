@@ -3,10 +3,12 @@ import {
   LOGIN_MAX_ATTEMPTS,
   SESSION_COOKIE,
   isAllowed,
+  isKillSwitchIgnored,
   parseBasicHeader,
   resolveAccess,
   resolveSessionUser,
   type AccessDecision,
+  type AuthEnv,
 } from '@/lib/auth';
 import { attemptKey, clearAttempts, isBlocked, registerFailure } from '@/lib/login-attempts';
 
@@ -31,7 +33,9 @@ import { attemptKey, clearAttempts, isBlocked, registerFailure } from '@/lib/log
  *  - `ADMIN_SESSION_SECRET` — ключ подписи сессии, обязателен в проде;
  *  - `ADMIN_BASIC_AUTH` — совместимость: одиночная учётка для curl/скриптов;
  *  - `PUBLIC_READ_ENABLED=false` — закрыть и чтение тоже (возврат к прежней модели);
- *  - `ADMIN_AUTH_DISABLED=true` — kill-switch: авторизации нет вообще.
+ *  - `ADMIN_AUTH_DISABLED=true` — kill-switch: авторизации нет вообще. В проде
+ *    игнорируется (см. `isKillSwitchIgnored` в `@/lib/auth`) — забытая на
+ *    боевом сервере переменная держала прод открытым на запись больше месяца.
  *
  * ⚠️ ЗАМЕРЕНО на `.next/standalone/server.js` (тот же процесс, что и в
  * Docker): счётчик `lib/login-attempts.ts` здесь и в `requireEditor` —
@@ -60,12 +64,12 @@ import { attemptKey, clearAttempts, isBlocked, registerFailure } from '@/lib/log
 // нулевая, но паттерн — ровно тот, что проект запретил, поэтому не повторяем.
 const WARNED_KEY = Symbol.for('ksamata.middleware.warnedOnce');
 type WarnedGlobal = typeof globalThis & {
-  [WARNED_KEY]?: { open: boolean; killed: boolean };
+  [WARNED_KEY]?: { open: boolean; killed: boolean; killIgnored: boolean };
 };
 
-function warnedState(): { open: boolean; killed: boolean } {
+function warnedState(): { open: boolean; killed: boolean; killIgnored: boolean } {
   const g = globalThis as WarnedGlobal;
-  if (!g[WARNED_KEY]) g[WARNED_KEY] = { open: false, killed: false };
+  if (!g[WARNED_KEY]) g[WARNED_KEY] = { open: false, killed: false, killIgnored: false };
   return g[WARNED_KEY];
 }
 
@@ -83,6 +87,31 @@ function warnOnce(decision: AccessDecision): void {
     console.warn(
       '[middleware] ADMIN_USERS не задан — авторизация не настроена, править может кто угодно. ' +
       'Задай ADMIN_USERS="имя:пароль" и ADMIN_SESSION_SECRET, чтобы включить вход.'
+    );
+  }
+}
+
+/**
+ * Отдельная проверка, а не веточка внутри `warnOnce(decision)`: в проде
+ * `resolveAccess` больше не сворачивает решение в `disabled` (см.
+ * `isKillSwitchIgnored`), так что здесь нет никакого decision, по которому
+ * можно было бы это заметить, — переменная стоит, а поведение как будто её
+ * нет вообще. Не предупредить в этом случае значит поменять одно молчание на
+ * другое: человек выставит `ADMIN_AUTH_DISABLED=true`, ничего не изменится, и
+ * он пойдёт искать несуществующий баг вместо того, чтобы прочитать эту строку.
+ */
+function warnIfKillSwitchIgnored(env: AuthEnv): void {
+  const state = warnedState();
+  if (isKillSwitchIgnored(env) && !state.killIgnored) {
+    state.killIgnored = true;
+    console.warn(
+      '[middleware] ADMIN_AUTH_DISABLED=true ПРОИГНОРИРОВАН: в проде эта переменная ' +
+      'ничего не отключает, авторизация работает как обычно. Убери её из окружения, ' +
+      'чтобы конфиг не врал. Чтобы править данные — задай ADMIN_USERS и ' +
+      'ADMIN_SESSION_SECRET и войди на /login. Чтение и так публично; закрыть его ' +
+      'можно через PUBLIC_READ_ENABLED=false. Отключить проверку на запись в проде ' +
+      'нельзя вообще — это и есть смысл правки: забытая тут переменная больше ' +
+      'месяца держала прод открытым на запись.'
     );
   }
 }
@@ -128,6 +157,7 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
   const { decision } = result;
 
   warnOnce(decision);
+  warnIfKillSwitchIgnored(process.env);
 
   if (isAllowed(decision)) {
     // Обнуляем счётчик, только если доступ дал именно этот Basic — не сессия,

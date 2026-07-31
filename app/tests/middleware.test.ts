@@ -7,7 +7,7 @@
  *
  * Переменные окружения мутируются по тесту и восстанавливаются в afterEach.
  */
-import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { middleware } from '../src/middleware';
 import { LOGIN_MAX_ATTEMPTS, SESSION_COOKIE, signSession } from '../src/lib/auth';
@@ -41,6 +41,10 @@ beforeEach(() => {
   // "unknown|sergei" — x-forwarded-for тут нигде не задан) накапливался бы
   // между тестами этого файла.
   (globalThis as Record<symbol, unknown>)[Symbol.for('ksamata.loginAttempts')] = new Map();
+  // То же для флагов «предупредили один раз на процесс» — иначе тест на
+  // конкретное предупреждение зависел бы от того, какие тесты отработали
+  // раньше него в этом же файле.
+  delete (globalThis as Record<symbol, unknown>)[Symbol.for('ksamata.middleware.warnedOnce')];
 });
 
 afterEach(() => {
@@ -197,7 +201,23 @@ describe('ненастроенное окружение', () => {
 });
 
 describe('kill-switch ADMIN_AUTH_DISABLED', () => {
-  it('пропускает всё, включая запись в проде с заданными учётками', async () => {
+  it('в проде игнорируется: аноним по-прежнему получает 307 на /refs и 401 на запись, не 200', async () => {
+    // До фикса эта переменная держала прод открытым на запись больше месяца —
+    // её поставили «на время» и забыли, потому что kill-switch стоял в решении
+    // раньше учёток и раньше fail-closed-503 прода (см. CLAUDE.md, раздел Auth).
+    process.env.ADMIN_AUTH_DISABLED = 'true';
+    expect((await middleware(req('/refs'))).status).toBe(307);
+    expect((await middleware(req('/api/funnels/7', { method: 'DELETE' }))).status).toBe(401);
+  });
+
+  it('в проде игнорируется, но публичное чтение и редактор по сессии продолжают работать', async () => {
+    process.env.ADMIN_AUTH_DISABLED = 'true';
+    expect((await middleware(req('/'))).status).toBe(200);
+    expect((await middleware(req('/refs', { cookie: await session() }))).status).toBe(200);
+  });
+
+  it('вне прода по-прежнему пропускает всё — единственное окружение, где это поведение сохраняется', async () => {
+    setNodeEnv('development');
     process.env.ADMIN_AUTH_DISABLED = 'true';
     expect((await middleware(req('/refs'))).status).toBe(200);
     expect((await middleware(req('/api/funnels/7', { method: 'DELETE' }))).status).toBe(200);
@@ -206,6 +226,22 @@ describe('kill-switch ADMIN_AUTH_DISABLED', () => {
   it('выключает ровно "true" — прочие значения авторизацию сохраняют', async () => {
     process.env.ADMIN_AUTH_DISABLED = '1';
     expect((await middleware(req('/api/funnels/7', { method: 'DELETE' }))).status).toBe(401);
+  });
+
+  it('предупреждает в лог ровно один раз на процесс о том, что переменная проигнорирована', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    process.env.ADMIN_AUTH_DISABLED = 'true';
+    await middleware(req('/'));
+    await middleware(req('/refs'));
+    await middleware(req('/api/funnels/7', { method: 'DELETE' }));
+    // Матчим по имени переменной, а не по фразе из текста: формулировку
+    // предупреждения правят (я уже правил), и тест не должен краснеть от
+    // редактуры — он про «предупредили ровно один раз», а не про копирайтинг.
+    const ignored = warn.mock.calls.filter(
+      ([msg]) => typeof msg === 'string' && msg.includes('ADMIN_AUTH_DISABLED')
+    );
+    expect(ignored.length).toBe(1);
+    warn.mockRestore();
   });
 });
 
