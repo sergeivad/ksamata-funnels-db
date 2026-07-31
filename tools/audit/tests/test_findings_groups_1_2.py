@@ -218,12 +218,16 @@ def test_class_3_collapses_multiple_predpisok_groups_into_one_finding():
 
 
 def test_class_4_reports_contradictory_legacy_direction_tags():
-    raw = AV + '|АВ Этап: Оплата|АВ Время: 19|ВК NR ВК|ВК NR IS'
+    # Пара уточнений намеренно `IS` + `МП`, а не `ВК NR ВК` + `IS`, как было до
+    # 2026-07-31: `ВК NR ВК` признана меткой-корзиной (BUCKET_LEGACY_TAGS) и
+    # противоречия больше не образует. Смысл теста прежний — два РАЗНЫХ
+    # уточнения размещения сразу.
+    raw = AV + '|АВ Этап: Оплата|АВ Время: 19|ВК NR МП|ВК NR IS'
     groups = group_observations([obs(raw, 2)])
     expectations = [exp('time_19', raw)]
     found = find_contradictory_legacy(groups, expectations, INDEX)
     assert [f.cls for f in found] == [4]
-    assert 'ВК NR ВК' in found[0].evidence
+    assert 'ВК NR МП' in found[0].evidence
     assert 'ВК NR IS' in found[0].evidence
 
 
@@ -284,7 +288,9 @@ def test_class_4_does_not_report_a_general_tag_next_to_its_own_refinement():
 
 
 def test_class_4_still_reports_two_different_refinements_under_one_general_tag():
-    raw = AV + '|АВ Этап: Оплата|АВ Время: 19|ВК NR|ВК NR IS|ВК NR ВК'
+    # Третьим уточнением с 2026-07-31 стоит `МП`, а не `ВК NR ВК` — см. коммент
+    # у test_class_4_reports_contradictory_legacy_direction_tags.
+    raw = AV + '|АВ Этап: Оплата|АВ Время: 19|ВК NR|ВК NR IS|ВК NR МП'
     groups = group_observations([obs(raw, 2)])
     expectations = [exp('time_19', raw)]
     found = find_contradictory_legacy(groups, expectations, INDEX)
@@ -401,3 +407,39 @@ def test_class_5_ignores_av_axes_without_any_stage():
     """
     groups = group_observations([obs(AV + '|АВ Время: 20', 2)])
     assert find_unresolved(groups, INDEX) == []
+
+
+# ─── класс 4: `ВК NR ВК` — общая метка, а не третье уточнение ────────────────
+#
+# Владелец 2026-07-31: метка старая, смысла больше не несёт, но чистить её в
+# GetCourse не надо — все 70 несущих её предложений в статусе draft. Значит
+# молчать должен инструмент.
+#
+# Что показал замер (реестр 7704 предложения + выгрузка 26.07, 334 211
+# наблюдений): у 30 предложений направления «Реклама» `ВК NR ВК` — ЕДИНСТВЕННАЯ
+# метка размещения, а у 23 In Stream и 17 Маркетплатформы она стоит рядом с их
+# собственной (`ВК NR IS` / `ВК NR МП`), то есть осталась от копирования. По
+# наблюдениям она встречается на всех трёх направлениях сразу (26 008 / 6 907 /
+# 216) — уточнением размещения быть не может.
+#
+# Прежнее правило её не гасило: исключение работает только когда общий тег —
+# СТРОКОВЫЙ префикс уточнения (`ВК NR` ⊂ `ВК NR IS`), а `ВК NR ВК` им не является.
+
+
+def test_class_4_treats_the_vk_feed_tag_as_a_bucket_not_a_refinement():
+    """`ВК NR ВК` рядом с `ВК NR IS` — не противоречие."""
+    raw = AV + '|АВ Этап: Оплата|АВ Время: 19|ВК NR IS|ВК NR ВК'
+    groups = group_observations([obs(raw, 2)])
+    expectations = [exp('time_19', raw)]
+    assert find_contradictory_legacy(groups, expectations, INDEX) == []
+
+
+def test_class_4_still_reports_two_real_refinements_next_to_the_bucket():
+    """Гашение метки не должно глушить настоящее противоречие рядом с ней."""
+    raw = AV + '|АВ Этап: Оплата|АВ Время: 19|ВК NR IS|ВК NR МП|ВК NR ВК'
+    groups = group_observations([obs(raw, 2)])
+    expectations = [exp('time_19', raw)]
+    found = find_contradictory_legacy(groups, expectations, INDEX)
+    assert [f.cls for f in found] == [4]
+    assert 'ВК NR IS' in found[0].evidence and 'ВК NR МП' in found[0].evidence
+    assert 'ВК NR ВК' not in found[0].evidence
