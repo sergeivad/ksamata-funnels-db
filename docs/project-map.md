@@ -18,24 +18,34 @@ File-level map of the repo. For architecture and conventions see
 - `src/app/tags/page.tsx` - global tag-template editor.
 - `src/app/refs/page.tsx` - lookup/reference tables management.
 - `src/app/monitoring/page.tsx` - landing-availability monitoring dashboard.
+- `src/app/login/page.tsx` - форма входа редактора.
+- `src/app/{refs,tags,monitoring}/layout.tsx` - серверный `EditorGate`:
+  анонима уводит на `/login` (эти страницы читают БД, минуя API).
+- `src/app/robots.ts` - `Disallow: /` для публично читаемого сервиса.
 - `src/app/api/` - Next.js route handlers (funnels, days, blocks, tags,
-  tag-templates, refs, export, monitoring).
+  tag-templates, refs, export, monitoring, auth).
 - `src/db/schema.ts` - Drizzle table definitions.
 - `src/db/client.ts` - DB path resolution (`FUNNELS_DB_PATH` / repo-root default).
 - `src/lib/` - domain helpers: funnels, refs, days, blocks (+ block-fill,
   url-field), the three-layer tags system (`ab-tags`, `tag-templates`,
   `tag-overrides`) plus the identity-layer fifth axis (`funnel-type.ts` -
   `funnel_types` seed values and label, no `db`/network access of its own),
-  status, rooms-grid, funnel-compact, export, validation, plus
+  status, rooms-grid, funnel-compact, export, validation, авторизация
+  (`auth` - чистое Edge-безопасное ядро, `auth-server` - Node-обвязка), plus
   http/errors and client hooks; monitoring (`monitor-status`, `monitor-urls`,
   `monitor-kinds`, `monitor-targets`, `monitor-check`, `monitor-run`,
   `monitor-view`, `monitor-scheduler`). See CLAUDE.md for the full module list.
 - `src/instrumentation.ts` - Next server-start hook; starts the monitoring
   scheduler on the Node runtime.
 - `src/components/` - client UI components and primitives, including
-  `monitoring/` (`MonitorStatusPill`, `MonitorSummary`, `MonitorTable`,
+  `AuthProvider` (`useCanEdit` - режим просмотра), `EditorGate`, `LoginForm`
+  и `monitoring/` (`MonitorStatusPill`, `MonitorSummary`, `MonitorTable`,
   `MonitorEvents`).
-- `src/middleware.ts` - HTTP Basic Auth (`ADMIN_BASIC_AUTH` / `ADMIN_AUTH_DISABLED`).
+- `src/middleware.ts` - первый рубеж доступа: публичное чтение воронок,
+  правка и приватные разделы только по сессии (`ADMIN_USERS` /
+  `ADMIN_SESSION_SECRET`; `PUBLIC_READ_ENABLED`, `ADMIN_BASIC_AUTH`,
+  `ADMIN_AUTH_DISABLED`). Решение — `resolveAccess` из `src/lib/auth.ts`,
+  тот же, что у `requireEditor` в роутах.
 - `next.config.ts` - webpack config; aliases `src/db/client.ts` away for the
   Edge bundle so `instrumentation.ts` compiles under the Edge runtime forced
   by `middleware.ts` (see CLAUDE.md Deployment section).

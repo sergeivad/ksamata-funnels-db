@@ -4,6 +4,7 @@ import { funnelCreateSchema } from '@/lib/validation';
 import { listFunnels, createFunnel } from '@/lib/funnels';
 import { internalError } from '@/lib/http';
 import { ConflictError, ValidationError } from '@/lib/errors';
+import { requireEditor } from '@/lib/auth-server';
 
 export async function GET() {
   try {
@@ -15,6 +16,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
+
   let body: unknown;
   try {
     body = await req.json();

@@ -12,6 +12,7 @@ import RoomsEditor from './RoomsEditor';
 import BlockEditor from './BlockEditor';
 import FunnelCompactView from './FunnelCompactView';
 import Segmented from './Segmented';
+import { useCanEdit } from './AuthProvider';
 
 interface Props {
   funnel: FunnelDetail;
@@ -37,6 +38,7 @@ function isCardMode(v: unknown): v is CardMode {
  */
 export default function FunnelSections({ funnel, funnelId, initialDays, landings, rest }: Props) {
   const router = useRouter();
+  const canEdit = useCanEdit();
   const [dirtyMap, setDirtyMap] = useState<Record<string, boolean>>({});
   const [cardMode, setCardMode] = useState<CardMode>('edit');
 
@@ -88,7 +90,13 @@ export default function FunnelSections({ funnel, funnelId, initialDays, landings
     <>
       <div className="mb-3 flex items-center gap-2.5">
         <Segmented
-          options={[{ value: 'view', label: 'Просмотр' }, { value: 'edit', label: 'Редактирование' }]}
+          options={[
+            { value: 'view', label: 'Просмотр' },
+            // Анониму вторая вкладка показывает те же поля, но заблокированные,
+            // поэтому и называется по содержимому, а не по действию: обещать
+            // «Редактирование» тому, кто не может править, — врать в кнопке.
+            { value: 'edit', label: canEdit ? 'Редактирование' : 'Все поля' },
+          ]}
           value={cardMode}
           onChange={handleCardModeChange}
         />

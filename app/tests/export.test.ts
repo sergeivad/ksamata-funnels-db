@@ -15,6 +15,14 @@ import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import { copyDbForTest } from './helpers/db';
 
+// Роуты теперь принимают запрос (второй рубеж авторизации, requireEditor).
+// В тестовом окружении учётки не заданы, значит доступ открыт — важно лишь
+// передать объект запроса.
+function anonReq(): never {
+  return new Request('http://test') as never;
+}
+
+
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
 const TMP_DB = join(tmpdir(), `ksamata_export_route_test_${Date.now()}.db`);
 
@@ -50,7 +58,7 @@ afterAll(() => {
 
 describe('GET /api/export', () => {
   it('returns a 200 CSV response with BOM, headers, and full funnel coverage', async () => {
-    const res = await exportGET();
+    const res = await exportGET(anonReq());
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type')).toContain('text/csv');
     expect(res.headers.get('Content-Disposition')).toContain('filename=');

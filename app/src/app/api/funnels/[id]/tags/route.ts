@@ -6,10 +6,14 @@ import { internalError } from '@/lib/http';
 import { ValidationError } from '@/lib/errors';
 import { SCENARIOS, type OverrideMap } from '@/lib/ab-tags';
 import { listOverrides } from '@/lib/tag-overrides';
+import { requireEditor } from '@/lib/auth-server';
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: NextRequest, { params }: Params) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
+
   const { id } = await params;
   const funnelId = parseRouteId(id);
   if (funnelId === null) {

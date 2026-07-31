@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ChevronRight, Copy, MoreVertical, Trash2 } from 'lucide-react';
 import CodeChip from './CodeChip';
 import StatusPill from './StatusPill';
+import { useCanEdit } from './AuthProvider';
 import { FUNNEL_STATUSES, STATUS_ACTION_LABELS, type FunnelStatus } from '@/lib/status';
 import { DEFAULT_FUNNEL_TYPE } from '@/lib/funnel-type';
 
@@ -29,13 +30,20 @@ export default function FunnelCard({
   onDuplicate,
   onDelete,
 }: FunnelCardProps) {
+  const canEdit = useCanEdit();
   const [menuOpen, setMenuOpen] = useState(false);
   const href = `/funnels/${funnel.id}`;
   // Вторая колонка была фиксированной 80px под один статус-пилл; с чипом типа
   // воронки рядом контент мог не влезать и наезжать на кнопки действий, поэтому
   // 80px теперь только нижняя граница, а не потолок.
+  //
+  // В режиме просмотра колонка действий не просто пустеет, а исчезает из
+  // сетки: пустая колонка с gap оставила бы на её месте дыру.
+  const columns = canEdit
+    ? 'grid-cols-[minmax(0,1fr)_minmax(80px,auto)_auto_22px]'
+    : 'grid-cols-[minmax(0,1fr)_minmax(80px,auto)_22px]';
   const containerClass =
-    'grid grid-cols-[minmax(0,1fr)_minmax(80px,auto)_auto_22px] items-center gap-3 rounded-[8px] border px-3 py-2.5 text-left transition max-[760px]:grid-cols-[minmax(0,1fr)_auto] border-[var(--color-border-soft)] bg-[rgba(255,255,255,0.38)] hover:bg-white';
+    `grid ${columns} items-center gap-3 rounded-[8px] border px-3 py-2.5 text-left transition max-[760px]:grid-cols-[minmax(0,1fr)_auto] border-[var(--color-border-soft)] bg-[rgba(255,255,255,0.38)] hover:bg-white`;
 
   const actionBtnClass =
     'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] border bg-white transition border-[var(--color-border-soft)] text-[#111111] hover:border-[#111111]';
@@ -72,7 +80,8 @@ export default function FunnelCard({
         )}
       </div>
 
-      {/* Action buttons */}
+      {/* Action buttons — только для редактора: анониму эти запросы вернёт 401 */}
+      {canEdit && (
       <div className="flex items-center justify-end gap-1">
         {/* Status menu */}
         <div className="relative">
@@ -146,6 +155,7 @@ export default function FunnelCard({
           <Trash2 className="h-4 w-4" />
         </button>
       </div>
+      )}
 
       {/* Trailing chevron */}
       <Link

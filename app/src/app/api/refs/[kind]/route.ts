@@ -12,10 +12,14 @@ import {
   FUNNEL_TYPE_AXIS_CONFLICT_MESSAGE,
 } from '@/lib/refs';
 import { internalError } from '@/lib/http';
+import { requireEditor } from '@/lib/auth-server';
 
 type Params = { params: Promise<{ kind: string }> };
 
-export async function GET(_req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, { params }: Params) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
+
   const { kind } = await params;
   if (!isValidKind(kind)) {
     return NextResponse.json(
@@ -33,6 +37,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 export async function POST(req: NextRequest, { params }: Params) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
+
   const { kind } = await params;
 
   // Validate kind against the canonical whitelist from refs.ts

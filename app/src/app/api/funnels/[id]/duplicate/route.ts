@@ -3,10 +3,14 @@ import { db } from '@/db/client';
 import { duplicateFunnel } from '@/lib/funnels';
 import { internalError } from '@/lib/http';
 import { parseRouteId } from '@/lib/validation';
+import { requireEditor } from '@/lib/auth-server';
 
 type Params = { params: Promise<{ id: string }> };
 
-export async function POST(_req: NextRequest, { params }: Params) {
+export async function POST(req: NextRequest, { params }: Params) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
+
   const { id } = await params;
   const numId = parseRouteId(id);
   if (numId === null) {

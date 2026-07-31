@@ -7,6 +7,7 @@ import { copyText } from '@/lib/clipboard';
 import { isAxisTag } from '@/lib/ab-tags';
 import Segmented from './Segmented';
 import RefSelect from './RefSelect';
+import { useCanEdit } from './AuthProvider';
 import { STATUS_META } from '@/lib/status';
 import { FUNNEL_TYPE_KIND, FUNNEL_TYPE_LABEL } from '@/lib/funnel-type';
 
@@ -29,6 +30,7 @@ type IdentitySnapshot = {
 interface Props { funnel: FunnelDetail; onDirtyChange?: (dirty: boolean) => void }
 
 export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
+  const canEdit = useCanEdit();
   const [frontCode, setFrontCode] = useState(funnel.frontCode);
   const [status, setStatus] = useState<string>(funnel.status);
   const [axes, setAxes] = useState(funnel.axes);
@@ -252,7 +254,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
     <div className="rounded-[14px] border border-[var(--line-soft)] bg-[var(--card)] p-4">
       <div className="mb-1 flex flex-wrap items-center gap-2.5">
         <input aria-label="Код" value={frontCode} onChange={(e) => setFrontCode(e.target.value)}
-          placeholder="без кода"
+          placeholder="без кода" readOnly={!canEdit}
           title="F-код воронки. При заведении подставляется следующий свободный — замените на настоящий код ЛИК, когда он появится."
           className="h-[26px] w-[60px] rounded-[6px] border border-[var(--line)] bg-[var(--chip)] px-1.5 text-center font-mono text-[12px] text-[var(--muted)]" />
         <span className={`text-[16px] font-medium ${allEmpty ? 'text-[var(--faint)]' : ''}`}>
@@ -267,6 +269,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
             ]}
             value={status}
             onChange={setStatus}
+            disabled={!canEdit}
           />
         </span>
       </div>
@@ -289,7 +292,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
 
       <label className="mb-3 flex flex-col gap-1">
         <span className="text-[10px] uppercase tracking-wide text-[var(--faint)]">Комментарий</span>
-        <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="заметка по воронке…"
+        <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="заметка по воронке…" readOnly={!canEdit}
           className="min-h-[44px] rounded-[6px] border border-[var(--line-soft)] bg-white p-2 text-[12px] text-[var(--ink)]" />
       </label>
 
@@ -343,7 +346,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
                   {flash && (flash.ok ? <Check size={10} /> : <AlertCircle size={10} />)}
                   {chip.name}
                 </button>
-                {removable && (
+                {removable && canEdit && (
                   <button type="button" aria-label={`Убрать ${chip.name}`} onClick={() => removeTag(chip.name, chip.source)}
                     className="ml-0.5 text-[var(--faint)] hover:text-[#B42318]">
                     <X size={10} />
@@ -352,59 +355,75 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
               </span>
             );
           })}
-          <span className="inline-flex items-center gap-1">
-            <input value={tagInput} onChange={(e) => setTagInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
-              placeholder="+ тег" aria-label="Добавить тег"
-              className="h-[22px] w-[92px] rounded-full border border-dashed border-[var(--line)] bg-white px-2 text-[10px] text-[var(--ink)]" />
-          </span>
+          {canEdit && (
+            <span className="inline-flex items-center gap-1">
+              <input value={tagInput} onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
+                placeholder="+ тег" aria-label="Добавить тег"
+                className="h-[22px] w-[92px] rounded-full border border-dashed border-[var(--line)] bg-white px-2 text-[10px] text-[var(--ink)]" />
+            </span>
+          )}
         </div>
 
         {suppressedNames.length > 0 && (
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <span className="text-[10px] text-[var(--faint)]">Скрытые дефолты:</span>
-            {suppressedNames.map((name) => (
-              <button key={name} type="button" onClick={() => restoreTag(name)} title="Клик — вернуть тег"
-                className="inline-flex items-center gap-1 rounded-full bg-transparent px-2 py-[3px] text-[10px] text-[var(--faint)] line-through hover:text-[var(--ink)] hover:no-underline">
-                <RotateCcw size={10} /> {name}
-              </button>
-            ))}
+            {suppressedNames.map((name) =>
+              canEdit ? (
+                <button key={name} type="button" onClick={() => restoreTag(name)} title="Клик — вернуть тег"
+                  className="inline-flex items-center gap-1 rounded-full bg-transparent px-2 py-[3px] text-[10px] text-[var(--faint)] line-through hover:text-[var(--ink)] hover:no-underline">
+                  <RotateCcw size={10} /> {name}
+                </button>
+              ) : (
+                // В просмотре это факт («этот дефолт на воронке погашен»), а не
+                // кнопка: вернуть тег без прав всё равно нельзя.
+                <span key={name} className="rounded-full px-2 py-[3px] text-[10px] text-[var(--faint)] line-through">
+                  {name}
+                </span>
+              )
+            )}
           </div>
         )}
 
         <div className="mt-2 flex items-center gap-2">
-          <span className="text-[10px] text-[var(--faint)]">Клик по тегу — скопировать · × — убрать</span>
-          <span className="ml-auto flex items-center gap-2">
-            {tagsDirty && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-[var(--orange)]">
-                <span className="h-1.5 w-1.5 rounded-full bg-[var(--orange)]" /> теги изменены
-              </span>
-            )}
-            <button type="button" onClick={saveTags} disabled={savingTags || !tagsDirty}
-              className="rounded-[8px] border border-[var(--line)] bg-white px-3 py-1 text-[11px] font-semibold text-[var(--ink)] disabled:opacity-50">
-              {savingTags ? 'Сохранение…' : 'Сохранить теги'}
-            </button>
+          <span className="text-[10px] text-[var(--faint)]">
+            {canEdit ? 'Клик по тегу — скопировать · × — убрать' : 'Клик по тегу — скопировать'}
           </span>
+          {canEdit && (
+            <span className="ml-auto flex items-center gap-2">
+              {tagsDirty && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-[var(--orange)]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--orange)]" /> теги изменены
+                </span>
+              )}
+              <button type="button" onClick={saveTags} disabled={savingTags || !tagsDirty}
+                className="rounded-[8px] border border-[var(--line)] bg-white px-3 py-1 text-[11px] font-semibold text-[var(--ink)] disabled:opacity-50">
+                {savingTags ? 'Сохранение…' : 'Сохранить теги'}
+              </button>
+            </span>
+          )}
         </div>
         {tagsError && <div role="alert" className="mt-1 text-right text-[11px] font-medium text-[#B42318]">{tagsError}</div>}
       </div>
 
       <div className="mb-1 flex items-center gap-2">
         <span className="text-[10px] uppercase tracking-wide text-[var(--faint)]">Время</span>
-        <input value={ta} onChange={(e) => setTa(e.target.value)} className={`${inp} w-[62px] text-center font-mono`} />
-        <input value={tb} onChange={(e) => setTb(e.target.value)} className={`${inp} w-[62px] text-center font-mono`} />
-        <span className="ml-auto flex items-center gap-2">
-          {dirty && (
-            <span className="inline-flex items-center gap-1 text-[10px] text-[var(--orange)]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--orange)]" />
-              есть несохранённые изменения
-            </span>
-          )}
-          <button type="button" onClick={save} disabled={saving}
-            className="rounded-[8px] bg-[var(--orange)] px-4 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">
-            {saving ? 'Сохранение…' : 'Сохранить идентификацию'}
-          </button>
-        </span>
+        <input value={ta} onChange={(e) => setTa(e.target.value)} readOnly={!canEdit} className={`${inp} w-[62px] text-center font-mono`} />
+        <input value={tb} onChange={(e) => setTb(e.target.value)} readOnly={!canEdit} className={`${inp} w-[62px] text-center font-mono`} />
+        {canEdit && (
+          <span className="ml-auto flex items-center gap-2">
+            {dirty && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-[var(--orange)]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[var(--orange)]" />
+                есть несохранённые изменения
+              </span>
+            )}
+            <button type="button" onClick={save} disabled={saving}
+              className="rounded-[8px] bg-[var(--orange)] px-4 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">
+              {saving ? 'Сохранение…' : 'Сохранить идентификацию'}
+            </button>
+          </span>
+        )}
       </div>
       {error && (
         <div role="alert" className="mt-2 text-right text-[11px] font-medium text-[#B42318]">{error}</div>

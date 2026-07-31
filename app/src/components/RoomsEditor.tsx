@@ -7,6 +7,7 @@ import UrlInput from './UrlInput';
 import type { DayCell } from '@/lib/funnel-days';
 import { webRoomFromGc, mirrorDayUrl } from '@/lib/block-fill';
 import { SLOTS, buildGrid, cellsFromGrid, gridKey as key, type RoomCell as Cell, type RoomGrid as Grid } from '@/lib/rooms-grid';
+import { useCanEdit } from './AuthProvider';
 
 interface Props {
   funnelId: number;
@@ -23,6 +24,7 @@ const MAX_DAYS = 5;
 type SavedSnapshot = { enabled: boolean; replay: boolean; cells: DayCell[] };
 
 export default function RoomsEditor({ funnelId, initialDays, enabled: enabledProp, replayEnabled, timeLabelA, timeLabelB, onDirtyChange }: Props) {
+  const canEdit = useCanEdit();
   const initialDayCount = Math.max(3, ...initialDays.map((d) => d.dayNum), 0) || 3;
   const clampedInitialDayCount = Math.min(MAX_DAYS, initialDayCount);
   const [dayCount, setDayCount] = useState(clampedInitialDayCount);
@@ -194,7 +196,7 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
         <span className="text-[13px] font-medium text-[var(--muted)]">Вебинарные комнаты</span>
         <span className="ml-auto flex items-center gap-3">
           {error && <span role="alert" className="text-[11px] font-medium text-[#B42318]">{error}</span>}
-          <Switch checked={false} onChange={(v) => setEnabledPersist(v)} />
+          <Switch checked={false} onChange={(v) => setEnabledPersist(v)} disabled={!canEdit} />
         </span>
       </div>
     );
@@ -206,8 +208,8 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
         <Tv size={17} className="text-[var(--orange)]" />
         <span className="text-[13px] font-medium">Вебинарные комнаты</span>
         <span className="ml-auto flex items-center gap-3">
-          <Switch checked={replay} onChange={setReplay} label="повтор" />
-          <Switch checked={enabled} onChange={(v) => setEnabledPersist(v)} />
+          <Switch checked={replay} onChange={setReplay} label="повтор" disabled={!canEdit} />
+          <Switch checked={enabled} onChange={(v) => setEnabledPersist(v)} disabled={!canEdit} />
         </span>
       </div>
 
@@ -224,8 +226,8 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
               {Array.from({ length: dayCount }, (_, idx) => idx + 1).map((day) => {
                 const c = grid[key(slot, day)];
                 return (
-                  <FragmentRow key={day} day={day} cell={c} replay={replay}
-                    canRemove={dayCount > 1}
+                  <FragmentRow key={day} day={day} cell={c} replay={replay} canEdit={canEdit}
+                    canRemove={canEdit && dayCount > 1}
                     onRemove={() => removeDay(day)}
                     onChange={(f, v) => set(slot, day, f, v)}
                     onGcBlur={() => autofillWeb(slot, day)} />
@@ -236,6 +238,7 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
         ))}
       </div>
 
+      {canEdit && (
       <div className="mt-2 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button type="button" onClick={addDay} disabled={dayCount >= MAX_DAYS}
@@ -264,13 +267,14 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
           </button>
         </div>
       </div>
+      )}
     </div>
   );
 }
 
-function FragmentRow({ day, cell, replay, canRemove, onRemove, onChange, onGcBlur }: {
+function FragmentRow({ day, cell, replay, canEdit, canRemove, onRemove, onChange, onGcBlur }: {
   day: number; cell: { gcRoom: string; webRoom: string; replayUrl: string };
-  replay: boolean; canRemove: boolean; onRemove: () => void;
+  replay: boolean; canEdit: boolean; canRemove: boolean; onRemove: () => void;
   onChange: (field: 'gcRoom' | 'webRoom' | 'replayUrl', value: string) => void;
   onGcBlur: () => void;
 }) {
@@ -295,14 +299,14 @@ function FragmentRow({ day, cell, replay, canRemove, onRemove, onChange, onGcBlu
           </button>
         )}
       </span>
-      <UrlInput className={inp} value={cell.gcRoom} placeholder="gc…" onChange={(v) => onChange('gcRoom', v)}
+      <UrlInput className={inp} value={cell.gcRoom} placeholder="gc…" readOnly={!canEdit} onChange={(v) => onChange('gcRoom', v)}
         onFocus={() => { gcOnFocus.current = cell.gcRoom; }}
         onBlur={() => {
           if (gcOnFocus.current !== cell.gcRoom) onGcBlur();
           gcOnFocus.current = null;
         }} />
-      <UrlInput className={inp} value={cell.webRoom} placeholder="web…" onChange={(v) => onChange('webRoom', v)} />
-      {replay && <UrlInput className={inp} value={cell.replayUrl} placeholder="повтор…" onChange={(v) => onChange('replayUrl', v)} />}
+      <UrlInput className={inp} value={cell.webRoom} placeholder="web…" readOnly={!canEdit} onChange={(v) => onChange('webRoom', v)} />
+      {replay && <UrlInput className={inp} value={cell.replayUrl} placeholder="повтор…" readOnly={!canEdit} onChange={(v) => onChange('replayUrl', v)} />}
     </>
   );
 }

@@ -13,8 +13,49 @@ Dokploy builds the image directly from the Git repo. Point the build context at 
 |---|---|
 | `FUNNELS_DB_PATH` | `/data/ksamata_funnels.db` |
 | `NODE_ENV` | `production` (set in Dockerfile) |
-| `ADMIN_BASIC_AUTH` | `login:password` — **required in production**: without it every request gets 503 (fail-closed) |
-| `ADMIN_AUTH_DISABLED` | `true` turns auth OFF everywhere (overrides `ADMIN_BASIC_AUTH` and the production fail-closed). ⚠️ makes the admin publicly reachable. Remove to restore auth. |
+| `ADMIN_USERS` | `имя:пароль`, через запятую или перевод строки — учётки редакторов |
+| `ADMIN_SESSION_SECRET` | ключ подписи сессии, **обязателен в проде**, минимум 16 символов (`openssl rand -base64 32`) |
+| `PUBLIC_READ_ENABLED` | `false` закрывает и чтение тоже — возврат к прежней модели без выката кода |
+| `ADMIN_BASIC_AUTH` | совместимость: одиночная учётка на запись для curl и скриптов |
+| `ADMIN_AUTH_DISABLED` | `true` выключает авторизацию целиком. ⚠️ админку сможет **править** любой. Убери переменную, чтобы вернуть вход. |
+
+### Модель доступа
+
+Список воронок и карточки читает кто угодно без входа. Справочники, шаблон
+тегов, мониторинг, CSV-экспорт и любое изменение данных — только после входа
+на `/login`. Сервис отдаёт `X-Robots-Tag: noindex, nofollow` и `robots.txt`
+с `Disallow: /`, но это просьба к поисковикам, а не защита: **всё, что видно
+на карточке воронки — URL лендов, ссылки GetCourse, комментарии — доступно
+любому, кто знает адрес сервиса.**
+
+Без `ADMIN_USERS` и `ADMIN_SESSION_SECRET` прод не падает целиком: чтение
+работает, а любая запись отвечает 503 с именем недостающей переменной. Так
+забытая переменная не превращается в админку, открытую на запись.
+
+### Чек-лист выката этой версии
+
+1. **Убрать `ADMIN_AUTH_DISABLED` из окружения.** Это первый и самый важный
+   пункт: сейчас на проде эта переменная стоит в `true` (наследие прежней
+   модели «авторизации нет вообще»), а `resolveAccess` в `src/lib/auth.ts`
+   проверяет kill-switch **раньше всего остального** — раньше `ADMIN_USERS`,
+   раньше fail-closed-503 прода, раньше вообще любой другой ветки решения.
+   Если переменную не убрать, весь этот выкат — no-op: новая модель доступа
+   не включится ни на грамм, и сервис останется публично **редактируемым**
+   любым, кто знает адрес.
+2. Задать `ADMIN_USERS` и `ADMIN_SESSION_SECRET` до перезапуска — иначе
+   чтение продолжит работать, а любая запись будет отвечать 503, пока
+   переменные не появятся.
+3. Перезапустить сервис.
+4. Проверить результат:
+
+   ```sh
+   curl -s -o /dev/null -w '%{http_code}\n' -X PATCH \
+     -H 'Content-Type: application/json' -d '{}' \
+     https://funnels.ksamata.ru/api/funnels/1
+   ```
+
+   Ожидается `401` (запись без сессии отклонена). Если в ответе `200` —
+   kill-switch всё ещё стоит, и его нужно убрать по пункту 1.
 
 ## Persistent volume
 

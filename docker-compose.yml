@@ -20,7 +20,13 @@ services:
       # macOS bind mounts don't forward fs events — poll for HMR to work.
       WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"
-      # Leave empty to disable Basic Auth locally (set "user:pass" to enable).
+      # Пусто = вход не настроен. Вне прода это значит «открыто всё», включая
+      # правку, — то есть локальный стек работает как раньше. Чтобы проверить
+      # разделение прав, задай ADMIN_USERS вида "имя:пароль" (и, если нужен
+      # прод-режим, ADMIN_SESSION_SECRET длиной от 16 символов).
+      ADMIN_USERS: ""
+      ADMIN_SESSION_SECRET: ""
+      # Совместимость: одиночная учётка на запись для curl и скриптов.
       ADMIN_BASIC_AUTH: ""
       # Этот стек монтирует РЕАЛЬНУЮ базу репозитория (см. volumes ниже), а
       # планировщик пишет результаты проверок прямо в неё — таблицы monitor_*
@@ -30,7 +36,7 @@ services:
       # и тогда восстановите БД перед коммитом.
       MONITOR_ENABLED: "false"
       # Kill-switch: "true" turns auth OFF everywhere, even in production and
-      # even if ADMIN_BASIC_AUTH is set. Uncomment to force-disable auth.
+      # even if ADMIN_USERS is set. Uncomment to force-disable auth.
       # ADMIN_AUTH_DISABLED: "true"
     volumes:
       # Live source for hot-reload.

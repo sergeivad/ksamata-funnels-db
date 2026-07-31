@@ -21,6 +21,14 @@ import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import * as schema from '../src/db/schema';
 import { copyDbForTest } from './helpers/db';
 
+// Роуты теперь принимают запрос (второй рубеж авторизации, requireEditor).
+// В тестовом окружении учётки не заданы, значит доступ открыт — важно лишь
+// передать объект запроса.
+function anonReq(): never {
+  return new Request('http://test') as never;
+}
+
+
 const REAL_DB = path.resolve(process.cwd(), '..', 'ksamata_funnels.db');
 let tmp: string;
 let sqlite: Database.Database;
@@ -171,15 +179,15 @@ describe('GET /api/funnels', () => {
 
 describe('GET /api/funnels/[id]', () => {
   it('returns 400 for a non-numeric id', async () => {
-    const res = await idGET({} as never, params('abc'));
+    const res = await idGET(anonReq(), params('abc'));
     expect(res.status).toBe(400);
   });
   it('returns 404 for a missing funnel', async () => {
-    const res = await idGET({} as never, params(999999));
+    const res = await idGET(anonReq(), params(999999));
     expect(res.status).toBe(404);
   });
   it('returns the funnel for a valid id', async () => {
-    const res = await idGET({} as never, params(existingId));
+    const res = await idGET(anonReq(), params(existingId));
     expect(res.status).toBe(200);
   });
 });
@@ -227,27 +235,27 @@ describe('PATCH /api/funnels/[id]', () => {
 
 describe('DELETE /api/funnels/[id]', () => {
   it('returns 404 for a missing funnel', async () => {
-    const res = await idDELETE({} as never, params(999999));
+    const res = await idDELETE(anonReq(), params(999999));
     expect(res.status).toBe(404);
   });
   it('deletes an existing funnel', async () => {
     const created = await (await listPOST(jsonReq('POST', VALID_CREATE))).json();
-    const res = await idDELETE({} as never, params(created.id));
+    const res = await idDELETE(anonReq(), params(created.id));
     expect(res.status).toBe(200);
   });
 });
 
 describe('POST /api/funnels/[id]/duplicate', () => {
   it('returns 400 for a non-numeric id', async () => {
-    const res = await dupPOST({} as never, params('x'));
+    const res = await dupPOST(anonReq(), params('x'));
     expect(res.status).toBe(400);
   });
   it('returns 404 for a missing funnel', async () => {
-    const res = await dupPOST({} as never, params(999999));
+    const res = await dupPOST(anonReq(), params(999999));
     expect(res.status).toBe(404);
   });
   it('duplicates an existing funnel with 201', async () => {
-    const res = await dupPOST({} as never, params(existingId));
+    const res = await dupPOST(anonReq(), params(existingId));
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.status).toBe('draft');
@@ -256,7 +264,7 @@ describe('POST /api/funnels/[id]/duplicate', () => {
 
 describe('POST /api/funnels/draft', () => {
   it('creates a draft funnel with 201', async () => {
-    const res = await draftPOST();
+    const res = await draftPOST(anonReq());
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.status).toBe('draft');

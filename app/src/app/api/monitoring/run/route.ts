@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { runMonitorCycle, isCycleRunning } from '@/lib/monitor-run';
+import { requireEditor } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +15,10 @@ export const dynamic = 'force-dynamic';
  * покажет «Не удалось запустить проверку», хотя цикл идёт, и оператор нажмёт
  * кнопку ещё раз. Поэтому 202 + опрос GET /api/monitoring на стороне страницы.
  */
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
+
   if (isCycleRunning()) {
     return NextResponse.json({ error: 'Проверка уже идёт' }, { status: 409 });
   }

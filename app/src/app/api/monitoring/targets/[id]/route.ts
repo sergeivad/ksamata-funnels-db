@@ -3,12 +3,16 @@ import { db } from '@/db/client';
 import { setTargetEnabled } from '@/lib/monitor-targets';
 import { monitorTargetPatchSchema, parseRouteId } from '@/lib/validation';
 import { internalError } from '@/lib/http';
+import { requireEditor } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: NextRequest, { params }: Params) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
+
   const { id: rawId } = await params;
   const id = parseRouteId(rawId);
   if (id === null) {
