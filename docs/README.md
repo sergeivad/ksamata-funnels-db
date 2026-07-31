@@ -17,15 +17,29 @@ Navigation for this repo's documentation and planning notes.
 - `docs/plans/` — Codex-authored cleanup and backlog notes.
 - `docs/reviews/` — dated service-wide review reports (findings + action plan).
 
-Planning docs are a **historical record**. The live source of TODOs is the one
-active backlog below, plus Basic Memory.
+Planning docs are a **historical record**. The live source of TODOs is the
+active planning below, plus Basic Memory.
+
+## Basic Memory layout (project `main`)
+
+Consolidated 2026-07-31 — the dossier had grown to 223 KB with three competing
+"latest" snapshots, so a session start had to read the whole archaeology to find
+the current state. Now split by lifetime, not by session:
+
+| Note | Holds |
+|---|---|
+| `projects/ksamata-funnels-db` | **Read this one.** Current state, open questions, standing "do not do" list. Kept short on purpose |
+| `projects/ksamata-funnels-db.lessons` | Durable method lessons (measuring, audit classes, mutation-testing, tooling gotchas) |
+| `projects/ksamata-funnels-db.history` | Dated archive: past snapshots, per-session decisions, spent plans, session log |
+| `projects/ksamata-funnels-db.observations` | Typed observations by date (the `/session-save` stream) |
 
 ## Active planning
 
 | File | Topic | Status |
 |---|---|---|
 | [plans/2026-07-18-ux-improvements-backlog.md](plans/2026-07-18-ux-improvements-backlog.md) | Admin UX-review backlog (P1/P2/P3 + tech debt) | **Active** — most items done; ~10 open (DRY refactors, N+1 in `listFunnels`, legacy schema columns, retiring old monitor targets). URL-field hygiene and the monitoring group counters shipped 2026-07-25 |
-| [reviews/2026-07-26-service-review.md](reviews/2026-07-26-service-review.md) | Service-wide review: 7 dimensions, 48 verified findings + 4-wave action plan | **Active** — nothing fixed yet. Wave 1 is a Dokploy config change (`ADMIN_AUTH_DISABLED`); wave 2 is silent data loss (day deletion in rooms, PATCH tags, `ksamata_funnels_db.py` deleting the live DB, monitoring retirement vs `manual_override`) |
+| [plans/2026-07-25-tag-drift-triage.md](plans/2026-07-25-tag-drift-triage.md) | Живой журнал разбора карты расхождений тегов (16 классов находок) | **Active** — **начинать с него любую сессию по тегам.** Открыт фактически один вопрос: что считать шагом (сценарием) воронки; до него классы 1 и 5 не разбираются |
+| [reviews/2026-07-26-service-review.md](reviews/2026-07-26-service-review.md) | Service-wide review: 7 dimensions, 48 verified findings + 4-wave action plan | **Closed 2026-07-31** — 40 of 48 fixed across seven waves. Wave 1 (the anonymous-write hole) shipped as the auth model «читают все, пишут свои» + an inert prod kill-switch. Of the eight not fixed, none is debt: DNS rebinding and CSRF were deliberate calls, three are informational, the rest are `tools/audit` tails owned by the tag sessions |
 
 ## Shipped — historical record
 
