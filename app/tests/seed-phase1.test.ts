@@ -41,9 +41,10 @@ afterAll(() => {
 // are relative to the pre-seed count instead of a hardcoded total.
 const countBeforeSeed = testDb.select().from(funnels).all().length;
 const seededNums = [33, 34, 35, 36, 37, 38];
-const missingBeforeSeed = seededNums.filter(
+const missingNumsBeforeSeed = seededNums.filter(
   (num) => !testDb.select().from(funnels).where(eq(funnels.num, num)).get()
-).length;
+);
+const missingBeforeSeed = missingNumsBeforeSeed.length;
 
 describe('runSeed (Phase-1)', () => {
   it('inserts exactly the missing seeded funnels (num 33–38)', () => {
@@ -66,15 +67,23 @@ describe('runSeed (Phase-1)', () => {
     expect(row!.name).toBe('ТКМ');
   });
 
-  it('num35 has status=draft and front_code=f34', () => {
+  // Сид ПРОПУСКАЕТ воронку, чей `num` уже есть (он идемпотентен), поэтому
+  // утверждать его значения можно только про строку, которую он и создал.
+  // Пока num 35 жила в базе черновиком, проверка проходила по совпадению —
+  // читалось живое значение, а не результат сида. 2026-08-02 владелец перевёл
+  // f34 в active, и тест упал, ничего не поймав: сид тут ни при чём.
+  it('num35 seeded as status=draft and front_code=f34 — only when actually created', () => {
     const row = testDb
       .select()
       .from(funnels)
       .where(eq(funnels.num, 35))
       .get();
     expect(row).toBeDefined();
-    expect(row!.status).toBe('draft');
     expect(row!.frontCode).toBe('f34');
+
+    if (missingNumsBeforeSeed.includes(35)) {
+      expect(row!.status).toBe('draft');
+    }
   });
 
   it('num36 reg funnelTags include АВ Продукт: ЖИВО and АВ Подрядчик: NR', () => {

@@ -15,7 +15,22 @@ Internal service for collecting, normalizing, and editing Ksamata autofunnel dat
 - `data/generated/` - generated workbook exports.
 - `tools/data-import/` - Python scripts that create or mutate the root SQLite database.
 - `tools/data-export/` - Python scripts that export SQLite data to workbooks.
+- `tools/audit/` - read-only tag drift map (GetCourse registry vs order history vs DB).
 - `docs/` - development notes, project map, and historical plans/specs.
+
+## External Systems
+
+Two systems this database is reconciled against; neither is a dependency of the
+running service.
+
+- **LeakEngine** (`leak.besales.ai`) - attribution system, and the **source of
+  truth for F codes** (`funnels.front_code`). Read and write are both possible
+  through its internal admin API; the write path is gated on the owner's
+  request, because activating a rules pack triggers a recalculation. See
+  [docs/leak-engine.md](docs/leak-engine.md).
+- **GetCourse** - where the AV tags and the offer registry actually live.
+  `tools/audit/` builds the drift map against it; API limits and polling rules
+  matter, so read the audit README before writing anything that calls it.
 
 ## App Commands
 
@@ -62,8 +77,8 @@ A running dev server (local or the Docker dev stack, which live-mounts the same 
 
 Dokploy deployment notes live in [app/DEPLOY.md](app/DEPLOY.md). The production
 Docker image seeds `/data/ksamata_funnels.db` on first start, then on every start
-runs the idempotent migration chain (Phase 2 → 3 → 4 → 5 + legacy tag-override
-backfill) through `app/docker-entrypoint.sh`.
+runs the idempotent migration chain through `app/docker-entrypoint.sh`:
+Phase 2 → 3 (+ data) → 4 → 5 → legacy tag-override backfill → 6 → 7 → 8.
 
 Note: the root `docker-compose.yml` is a **dev** stack (hot-reload, real repo DB)
 and does not run the seed/migration entrypoint — that path is production-only.

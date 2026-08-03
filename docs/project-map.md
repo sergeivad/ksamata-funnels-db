@@ -49,8 +49,10 @@ File-level map of the repo. For architecture and conventions see
 - `next.config.ts` - webpack config; aliases `src/db/client.ts` away for the
   Edge bundle so `instrumentation.ts` compiles under the Edge runtime forced
   by `middleware.ts` (see CLAUDE.md Deployment section).
-- `scripts/` - phased migrations (Phase 2–7), data backfills, and seed/runners
-  used by tests and Docker.
+- `scripts/` - phased migrations (Phase 2–8), data backfills, and seed/runners
+  used by tests and Docker. Also dated one-off sync scripts (e.g.
+  `sync-leak-2026-08-02.ts`) — idempotent, guarded by an axis check, run by
+  hand with `--dry-run` first; not part of any automated path.
 - `tests/` - Vitest suite (routes, lib, migrations, middleware);
   `tests/helpers/` holds fixtures shared between suites (e.g. `monitoring.ts`,
   which wipes the copied DB's `monitor_*` tables before each test).
@@ -67,12 +69,20 @@ File-level map of the repo. For architecture and conventions see
 
 - `tools/data-import/` - Python scripts that build or mutate the SQLite database.
 - `tools/data-export/` - Python scripts that export the database to XLSX reports.
+- `tools/audit/` - tag drift map across the GetCourse offer registry,
+  `deal_export` history and the DB. Read-only; output is an XLSX in
+  `data/generated/`.
 
 ## Docs & planning
 
 - `docs/README.md` - index of plans and specs (shipped vs active).
 - `docs/development.md` - local setup and database contract.
+- `docs/leak-engine.md` - LeakEngine: эталон F-кодов, чтение реестра и путь
+  на запись (заведение воронки + набора правил).
 - `docs/superpowers/specs/` & `docs/superpowers/plans/` - shipped design specs
   and implementation plans (historical record).
-- `docs/plans/` - Codex planning notes; `2026-07-18-ux-improvements-backlog.md`
-  is the one live backlog.
+- `docs/reviews/` - service-wide reviews (закрытый разбор от 2026-07-26).
+- `docs/plans/` - Codex planning notes. Живых четыре:
+  `2026-07-18-ux-improvements-backlog.md` (бэклог),
+  `2026-07-25-tag-drift-triage.md` (теги),
+  `2026-08-02-leak-sync.md` и `2026-08-02-leak-todo.md` (сверка с ЛИК).

@@ -2887,7 +2887,7 @@ set -a && . /Users/sergeielkin/dev/ksamata/getcourse-api/.env && set +a && pytho
 **Эталона нет.** Скрипт ничего не чинит — ни базу, ни GetCourse. На выходе
 карта расхождений; решения принимает человек.
 
-Дизайн: [docs/superpowers/specs/2026-07-24-funnel-tag-drift-map-design.md](../../docs/superpowers/specs/2026-07-24-funnel-tag-drift-map-design.md)
+Дизайн: [docs/superpowers/specs/2026-07-24-funnel-tag-drift-map-design.md](../specs/2026-07-24-funnel-tag-drift-map-design.md)
 
 ## Запуск
 
@@ -2945,7 +2945,7 @@ python3 -m pytest tools/audit/tests -v
 В таблицу «Repository layout» после строки `tools/data-export/` добавить:
 
 ```markdown
-| `tools/audit/` | Сверка тегов: реестр GetCourse ↔ выгрузки ↔ БД. Только чтение, выход — XLSX в `data/generated/`. См. [tools/audit/README.md](tools/audit/README.md). |
+| `tools/audit/` | Сверка тегов: реестр GetCourse ↔ выгрузки ↔ БД. Только чтение, выход — XLSX в `data/generated/`. См. [tools/audit/README.md](../../../tools/audit/README.md). |
 ```
 
 В раздел «Data tools» после абзаца про экспорт добавить:
