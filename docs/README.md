@@ -2,6 +2,9 @@
 
 Navigation for this repo's documentation and planning notes.
 
+- **Открытые вопросы, все и в одном месте:** [OPEN.md](OPEN.md) — указатель на
+  всё нерешённое, сгруппированное по тому, кто должен действовать (мы в базе,
+  мы в коде, владелец в ЛИК / GetCourse / таблице). **Начинать сессию с него.**
 - **Canonical guide:** [../CLAUDE.md](../CLAUDE.md) — architecture, data model,
   migrations, auth, deployment, conventions.
 - **Orientation:** [../README.md](../README.md)
@@ -40,8 +43,9 @@ the current state. Now split by lifetime, not by session:
 | [plans/2026-07-18-ux-improvements-backlog.md](plans/2026-07-18-ux-improvements-backlog.md) | Admin UX-review backlog (P1/P2/P3 + tech debt) | **Active** — most items done; ~10 open (DRY refactors, N+1 in `listFunnels`, legacy schema columns, retiring old monitor targets). URL-field hygiene and the monitoring group counters shipped 2026-07-25 |
 | [plans/2026-07-25-tag-drift-triage.md](plans/2026-07-25-tag-drift-triage.md) | Живой журнал разбора карты расхождений тегов (16 классов находок) | **Active** — **начинать с него любую сессию по тегам.** Открыт фактически один вопрос: что считать шагом (сценарием) воронки; до него классы 1 и 5 не разбираются |
 | [plans/2026-08-02-leak-sync.md](plans/2026-08-02-leak-sync.md) | Сверка базы с LeakEngine, прогон 02.08 | **Active** — правки применены локально и на проде (комнаты `f80` и `f78`, новая `f84`, активация 11 черновиков); в ЛИК заведены `f73`/`f74`/`f78`. Открыты два пункта: судьба мёртвой колонки `room_id_f1` и заблокированная схемой `f42` |
-| [plans/2026-08-02-leak-todo.md](plans/2026-08-02-leak-todo.md) | Заведение `f73`, `f74`, `f78` в ЛИК + что поправить в ЛИК | **Active** — три воронки заведены и активны; открыты три правки на стороне владельца (имя `f83`, выключить семь архивных, донастроить `f84`) |
+| [plans/2026-08-02-leak-todo.md](plans/2026-08-02-leak-todo.md) | Заведение `f73`, `f74`, `f78` в ЛИК + что поправить в ЛИК | **Active** — три воронки заведены и активны; `f84` донастроена владельцем к 04.08. Открыты две правки на стороне владельца: имя `f83` и выключить семь архивных — обе переехали в [leak-tag-filter-audit 04.08](plans/2026-08-04-leak-tag-filter-audit.md) |
 | [plans/2026-08-04-table-sync.md](plans/2026-08-04-table-sync.md) | Сверка с таблицей владельца «Ссылки для сбора статы» | **Active** — применены лендинги и даты (25 воронок), `f28` переведён на нового подрядчика, `f84` активирован. Решено не заводить восемь квизов и прямых продаж. Открыты шесть пунктов: статус `f43`, живая ВК NR «ЖИВО Суставы 490р», комнаты дней 4-5, семь статусов, второй лист (зарубежные), дашборды. **По комнатам таблица не эталон** — она копирует мёртвую `room_id_f1` |
+| [plans/2026-08-04-leak-tag-filter-audit.md](plans/2026-08-04-leak-tag-filter-audit.md) | Сверка ЛИК ↔ база **по множествам заказов**, а не по строкам тегов | **Active** — **начинать с него любую сессию по ЛИК.** Замер на `deal_export_2026-08-01`: выборки совпали у 52 воронок из 60, но наборы тегов — лишь у 37, то есть 15 совпадений сегодняшние и не гарантированы. Сделано: комнаты `f84` (10 шт.) перенесены локально. Открыты три **неизвестных**, без ответа на которые правки правил в ЛИК запрещены: что значит `effectiveFrom = null` (стоит у 43 наборов из 60), есть ли откат активации, снимает ли `INACTIVE` воронку с атрибуции |
 | [reviews/2026-07-26-service-review.md](reviews/2026-07-26-service-review.md) | Service-wide review: 7 dimensions, 48 verified findings + 4-wave action plan | **Closed 2026-07-31** — 40 of 48 fixed across seven waves. Wave 1 (the anonymous-write hole) shipped as the auth model «читают все, пишут свои» + an inert prod kill-switch. Of the eight not fixed, none is debt: DNS rebinding and CSRF were deliberate calls, three are informational, the rest are `tools/audit` tails owned by the tag sessions |
 
 ## Shipped — historical record

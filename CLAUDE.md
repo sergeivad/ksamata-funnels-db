@@ -685,6 +685,8 @@ location), so they run from any working directory.
 
 ## Docs & planning
 
+- **[docs/OPEN.md](docs/OPEN.md) — все нерешённые вопросы в одном месте,
+  сгруппированные по тому, кто должен действовать. Начинать сессию с него.**
 - [README.md](README.md) — high-level orientation.
 - [docs/README.md](docs/README.md) — index of plans and specs (shipped vs active).
 - [docs/development.md](docs/development.md) — local setup and DB contract detail.
@@ -694,8 +696,11 @@ location), so they run from any working directory.
 - Живые планы: [ux-improvements-backlog](docs/plans/2026-07-18-ux-improvements-backlog.md)
   (открытый бэклог), [tag-drift-triage](docs/plans/2026-07-25-tag-drift-triage.md)
   (начинать с него любую сессию по тегам),
+  [leak-tag-filter-audit 04.08](docs/plans/2026-08-04-leak-tag-filter-audit.md)
+  (**начинать с него любую сессию по ЛИК** — там же три открытых неизвестных,
+  без ответа на которые правки правил в ЛИК запрещены),
   [leak-sync 02.08](docs/plans/2026-08-02-leak-sync.md) и
-  [leak-todo 02.08](docs/plans/2026-08-02-leak-todo.md) (последняя сверка с ЛИК),
+  [leak-todo 02.08](docs/plans/2026-08-02-leak-todo.md) (предыдущие сверки с ЛИК),
   [table-sync 04.08](docs/plans/2026-08-04-table-sync.md) — сверка с таблицей
   владельца. **По комнатам эта таблица не эталон:** она копирует мёртвую
   колонку `room_id_f1`, и при расхождении правится таблица, а не база.
