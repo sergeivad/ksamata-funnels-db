@@ -62,10 +62,18 @@ Drizzle SQLite. Core + lookup + content + tags tables:
   **`num` and `frontCode` are two unrelated numberings** — `num` is the internal
   key (unique, never shown to a human), `frontCode` is the F code the funnel is
   called by everywhere else and it comes from LeakEngine, not from here. They
-  coincided on 16 funnels out of 72, so anything that derives one from the other
-  is a bug; see `front-code.ts` below.
+  coincided on 16 funnels out of the 66 that have a code, so anything that
+  derives one from the other is a bug; see `front-code.ts` below.
 - **`funnel_days`** — per-funnel day × time-slot rows (`timeSlot` `19`/`15`,
-  `dayNum`) with room fields and legacy content columns.
+  `dayNum`) with room fields and legacy content columns. The room a row points
+  at is `gc_room` / `web_room`; **`room_id_f1` is dead** — the whole repo
+  touches it in exactly two places, the Drizzle declaration and four Python
+  import scripts that *write* it. Nothing reads it: not the app, not the
+  export, not monitoring, not the UI. `DayCell` has no such field, so
+  `replaceDays` (delete + reinsert) **blanks it on every grid edit** — which is
+  why only 240 of 508 rows still carry a value. Do not build on it, and do not
+  "fix" it in isolation: the drift found in `f25`/`f26` on 2026-08-02 was two
+  years stale and invisible to every consumer.
 - **`funnel_blocks`** / **`funnel_block_items`** — structured content blocks
   (see block kinds below); a block has a `kind`, `enabled`, and `mode`
   (`common` / `by_time`); items carry `slot`, `label`, `url`, `position`.
@@ -607,6 +615,30 @@ location), so they run from any working directory.
   never committed. `--no-api` skips GetCourse (classes 9-12 and 14 stay
   empty). Tests: `python3 -m pytest tools/audit/tests`.
 
+## LeakEngine — эталон F-кодов, и он теперь пишется
+
+Полное описание — [docs/leak-engine.md](docs/leak-engine.md). Что важно знать
+до того, как туда пойти:
+
+- ЛИК — **источник истины по `front_code`**, и только по нему. Оси, комнаты и
+  статусы в спорных случаях решает база (прямое указание владельца).
+- Реестр читается **одним GET** `/app-api/api/admin/funnels` из вкладки уже
+  залогиненного браузера (Chrome MCP), по сессионной куке — токена нет, `curl`
+  не годится. Копию снимка на диск не кладём: она устаревает быстрее, чем
+  успевает пригодиться.
+- **Запись возможна и описана**, но только по прямой просьбе владельца:
+  заведение воронки — два шага (сама воронка, затем набор правил), и активация
+  набора правил **запускает пересчёт заявок** с указанной даты. Дату всегда
+  спрашивать: вызов API идёт мимо окна подтверждения, которое рисует интерфейс.
+- **Проверять живость комнаты надо на `web.ksamatacenter.com/room/<код>`** —
+  это сама комната. `gc.ksamata.ru/<код>` — лишь страница GetCourse, и её
+  отсутствие о комнате не говорит ничего. На этом уже ошиблись однажды, объявив
+  живые комнаты `f25` несуществующими. Оба хоста дают внятный ответ на
+  несуществующий код: `gc` — 404, `web` — 200 с «Веб-комната не найдена».
+- Идиома владельца: **воронка-копия резервирует номер.** Её правила побайтово
+  повторяют чужие, содержимого ещё нет — сверять такую по осям бессмысленно,
+  верно у неё только имя. Так появились `f80` (позже донастроена) и `f84`.
+
 ## Conventions
 
 - Treat `app/` as the production service boundary.
@@ -635,6 +667,20 @@ location), so they run from any working directory.
   everything sitting in `*.db-wal` — which, with a dev server running, is every
   recent write. `VACUUM INTO` gives a consistent snapshot regardless of WAL
   state and is synchronous, which module-level fixtures need.
+- **A test must not assert a mutable business value of the live DB.** The suite
+  copies the real database, so a status or a landing URL that the owner is free
+  to change tomorrow is not a fixture. `seed-phase1.test.ts` asserted
+  `num 35 → status = 'draft'`; the seed *skips* a `num` that already exists, so
+  that line had been reading the live value, not the seed's, and it broke the
+  day f34 went active — catching nothing. Assert seeded values only for rows
+  the seed actually created (the file's `countBeforeSeed` idiom), and pin
+  invariants, not today's data.
+- Mutating **prod** goes through its own HTTP API, not raw SQL on `/data`:
+  creating a funnel pulls in ref rows and tag materialization. The container has
+  no `tsx`, so run a `.cjs` against `127.0.0.1:3000` from inside it — the editor
+  credential is read from the container's own `ADMIN_USERS` and never has to be
+  typed or pasted anywhere. Back up first with `VACUUM INTO` (prod's WAL is
+  large and live).
 - For non-trivial or resumable work, use Basic Memory (see [AGENTS.md](AGENTS.md)).
 
 ## Docs & planning
@@ -643,5 +689,13 @@ location), so they run from any working directory.
 - [docs/README.md](docs/README.md) — index of plans and specs (shipped vs active).
 - [docs/development.md](docs/development.md) — local setup and DB contract detail.
 - [docs/project-map.md](docs/project-map.md) — file-level map.
-- [docs/plans/2026-07-18-ux-improvements-backlog.md](docs/plans/2026-07-18-ux-improvements-backlog.md)
-  — the current open backlog (the one live planning doc).
+- [docs/leak-engine.md](docs/leak-engine.md) — LeakEngine: эталон F-кодов,
+  чтение и запись реестра.
+- Живые планы: [ux-improvements-backlog](docs/plans/2026-07-18-ux-improvements-backlog.md)
+  (открытый бэклог), [tag-drift-triage](docs/plans/2026-07-25-tag-drift-triage.md)
+  (начинать с него любую сессию по тегам),
+  [leak-sync 02.08](docs/plans/2026-08-02-leak-sync.md) и
+  [leak-todo 02.08](docs/plans/2026-08-02-leak-todo.md) (последняя сверка с ЛИК),
+  [table-sync 04.08](docs/plans/2026-08-04-table-sync.md) — сверка с таблицей
+  владельца. **По комнатам эта таблица не эталон:** она копирует мёртвую
+  колонку `room_id_f1`, и при расхождении правится таблица, а не база.
