@@ -10,13 +10,22 @@
 (в tools/audit она нужна по существу — там есть класс дрейфа).
 """
 
-import glob
 import os
+import re
 from dataclasses import dataclass, field
 
 import openpyxl
 
 import combo
+
+# Только каноническое имя, которое даёт сам GetCourse. Всё, что человек
+# переименовал или дополнил руками, — не полная выгрузка счетов.
+EXPORT_NAME = re.compile(
+    r'^deal_export_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.xlsx$')
+
+# Полная выгрузка этого аккаунта — сотни тысяч строк. Всё, что кратно
+# меньше, — выборка по фильтру, и отчёт по ней недостоверен.
+MIN_EXPORT_ORDERS = 10_000
 
 TAGS_COLUMN = 'Теги предложений'
 CREATED_COLUMN = 'Дата создания'
@@ -61,17 +70,44 @@ def effective_date(created, paid):
 
 
 def newest_export(directory):
-    """Самая свежая выгрузка deal_export_* по имени файла.
+    """Самая свежая выгрузка по дате В ИМЕНИ, а не по mtime: mtime сбивается
+    копированием.
 
-    Имя несёт дату в сортируемом виде (deal_export_ГГГГ-ММ-ДД_ЧЧ-ММ-СС),
-    поэтому сортировка строкой корректна и не зависит от mtime, который
-    сбивается копированием.
+    Имя должно быть ровно тем, что даёт GetCourse. Маска `deal_export_*`
+    здесь не годится: в ~/Downloads лежат `deal_export_with_utm_2026-04-23`,
+    `deal_export_2026-07-28_воронки`, `..._utm` и копии `(1)`. Сортировка
+    строкой ставит букву ПОСЛЕ цифры, поэтому `with_utm` от апреля
+    обыгрывал августовскую выгрузку — а колонки «Теги предложений» в нём
+    нет вовсе, и разбор 04.08 упёрся в ValueError на ровном месте.
     """
-    found = sorted(glob.glob(os.path.join(directory, 'deal_export_*.xlsx')))
-    if not found:
+    dated = []
+    for name in os.listdir(directory):
+        match = EXPORT_NAME.match(name)
+        if match:
+            dated.append((match.group(1), match.group(2), name))
+    if not dated:
         raise FileNotFoundError(
-            f'В {directory} нет ни одной выгрузки deal_export_*.xlsx')
-    return found[-1]
+            f'В {directory} нет ни одной выгрузки вида '
+            f'deal_export_ГГГГ-ММ-ДД_ЧЧ-ММ-СС.xlsx')
+    return os.path.join(directory, max(dated)[2])
+
+
+def check_full_export(total_orders, path):
+    """Отбить выборку, притворяющуюся полной выгрузкой.
+
+    Имя каноническое, дата свежая, колонки на месте — а строк 523: так
+    выглядит экспорт, отфильтрованный в интерфейсе GetCourse. Отчёт по
+    такому файлу молча объявляет мёртвыми почти все воронки, и это не
+    видно ни по одной цифре в самом отчёте. Проверять надо содержимое:
+    по имени такой файл неотличим от настоящего.
+    """
+    if total_orders < MIN_EXPORT_ORDERS:
+        raise ValueError(
+            f'В выгрузке {os.path.basename(path)} всего {total_orders} '
+            f'заказов — это выборка по фильтру, а не полный экспорт '
+            f'(ожидается от {MIN_EXPORT_ORDERS}). Отчёт по ней объявит '
+            f'мёртвыми почти все воронки. Возьмите полную выгрузку или '
+            f'укажите файл явно через --export.')
 
 
 def load_combos(path):

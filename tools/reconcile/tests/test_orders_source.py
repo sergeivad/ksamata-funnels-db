@@ -94,6 +94,38 @@ def test_newest_export_берёт_самый_свежий(tmp_path):
         'deal_export_2026-08-01_00-00-00.xlsx')
 
 
+def test_newest_export_не_берёт_файл_с_чужим_именем(tmp_path):
+    """`deal_export_with_utm_2026-04-23.xlsx` сортируется ПОСЛЕ всех
+    датированных имён — буква больше цифры. Он выигрывал у августовской
+    выгрузки, а колонки «Теги предложений» в нём нет вовсе."""
+    for name in ('deal_export_2026-08-01_01-48-36.xlsx',
+                 'deal_export_with_utm_2026-04-23.xlsx',
+                 'deal_export_2026-07-28_воронки.xlsx',
+                 'deal_export_2026-05-21_11-13-43_utm.xlsx',
+                 'deal_export_2026-08-01_01-48-36 (1).xlsx'):
+        (tmp_path / name).write_bytes(b'')
+    assert orders_source.newest_export(str(tmp_path)).endswith(
+        'deal_export_2026-08-01_01-48-36.xlsx')
+
+
 def test_newest_export_падает_когда_выгрузок_нет(tmp_path):
     with pytest.raises(FileNotFoundError):
         orders_source.newest_export(str(tmp_path))
+
+
+def test_newest_export_падает_когда_есть_только_чужие_имена(tmp_path):
+    (tmp_path / 'deal_export_with_utm_2026-04-23.xlsx').write_bytes(b'')
+    with pytest.raises(FileNotFoundError):
+        orders_source.newest_export(str(tmp_path))
+
+
+def test_check_full_export_пропускает_полную_выгрузку():
+    orders_source.check_full_export(200_000, 'deal_export.xlsx')
+
+
+def test_check_full_export_отбивает_выборку():
+    """Имя каноническое, дата свежая, колонки на месте — а строк 523.
+    Отчёт по такой выгрузке объявил бы мёртвыми почти все воронки."""
+    with pytest.raises(ValueError) as err:
+        orders_source.check_full_export(523, 'deal_export.xlsx')
+    assert '523' in str(err.value)

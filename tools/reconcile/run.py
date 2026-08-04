@@ -51,7 +51,17 @@ def main(argv=None):
 
     print(f'Заказы:  {export_path}')
     combos, blind = orders_source.load_combos(export_path)
-    print(f'  связок: {len(combos)}, заказов без осей: {blind["orders"]}')
+    total_orders = sum(stat.orders for stat in combos.values()) + blind['orders']
+    if args.export:
+        # Файл назвал человек — это осознанное решение, не молчаливый выбор.
+        try:
+            orders_source.check_full_export(total_orders, export_path)
+        except ValueError as small:
+            print(f'  ВНИМАНИЕ: {small}')
+    else:
+        orders_source.check_full_export(total_orders, export_path)
+    print(f'  заказов: {total_orders}, связок: {len(combos)}, '
+          f'без осей: {blind["orders"]}')
 
     print(f'Таблица: {sheet_path}')
     sheet_rows = sheet_source.load_rows(sheet_path)
