@@ -225,6 +225,9 @@ describe('isPublicReadPath', () => {
       '/', '/funnels/12', '/funnels/12/',
       '/api/funnels', '/api/funnels/12',
       '/api/funnels/12/days', '/api/funnels/12/blocks/landings',
+      // Справка: статический текст, и её кидают ссылкой тому, у кого учётки
+      // ещё нет — за формой входа она бесполезна ровно для адресата.
+      '/help', '/help/',
       '/robots.txt',
     ]) {
       expect(isPublicReadPath(p), p).toBe(true);

@@ -297,6 +297,10 @@ export function isAuthEndpoint(pathname: string): boolean {
 const PUBLIC_GET_PATTERNS: RegExp[] = [
   /^\/$/,
   /^\/funnels\/\d+$/,
+  // Справка — статический текст без единого обращения к БД. Открыта анониму
+  // намеренно: инструкцию кидают ссылкой тому, у кого учётки ещё нет, и
+  // редирект на форму входа сделал бы её бесполезной ровно для адресата.
+  /^\/help$/,
   /^\/api\/funnels$/,
   /^\/api\/funnels\/\d+$/,
   /^\/api\/funnels\/\d+\/days$/,

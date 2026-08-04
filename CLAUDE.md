@@ -322,8 +322,17 @@ funnel `PATCH` and the days `PUT`.
 Pages (`app/src/app/`): `page.tsx` (funnel list), `funnels/[id]/page.tsx`
 (edit), `tags/page.tsx` (global template editor), `refs/page.tsx` (lookup
 tables), `monitoring/page.tsx` (landing-availability dashboard),
-`login/page.tsx` (вход редактора). Последние три закрыты серверным
-`EditorGate` через свои `layout.tsx`.
+`login/page.tsx` (вход редактора), `help/page.tsx` (справка по сервису).
+`/refs`, `/tags` и `/monitoring` закрыты серверным `EditorGate` через свои
+`layout.tsx`.
+
+`help/page.tsx` — статический серверный компонент: ни клиентского JS, ни
+обращений к БД, ни `EditorGate`, а сам путь занесён в `PUBLIC_GET_PATTERNS`.
+Всё это одно решение: справку кидают ссылкой тому, у кого учётки ещё нет.
+Правило по содержанию — **интерфейс и правила, но не текущие данные**: числа
+вроде «73 воронки» устаревают за неделю и делают недостоверной всю страницу
+(ровно судьба `docs/OPEN.md`). Спека —
+[2026-08-04-help-page-design.md](docs/superpowers/specs/2026-08-04-help-page-design.md).
 
 Components (`app/src/components/`): `AppHeader`, `FunnelCard`,
 `FunnelCompactView`, `FunnelIdentity`, `FunnelSections`, `BlockEditor`,
@@ -531,8 +540,8 @@ Basic реально предъявлен и решение принял име�
   вернул бы HTML вместо JSON).
 
 `isPublicReadPath` — **белый список**, не «всё, кроме»: новый роут по умолчанию
-закрыт. В нём `/`, `/funnels/<id>` и только те GET-и API, без которых они не
-отрисуются. `/api/export` там нет сознательно — один GET отдаёт всю базу.
+закрыт. В нём `/`, `/funnels/<id>`, `/help` и только те GET-и API, без которых
+они не отрисуются. `/api/export` там нет сознательно — один GET отдаёт всю базу.
 
 **Сессия** — stateless: cookie `kf_session` вида `v1.<payload>.<hmac>`,
 HMAC-SHA256 через Web Crypto (одна реализация на Edge и Node), `HttpOnly` +

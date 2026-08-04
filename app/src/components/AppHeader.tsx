@@ -97,6 +97,10 @@ export default function AppHeader() {
 
         <nav className="ml-1 flex items-center gap-1 sm:ml-4">
           {navLink('/', 'Воронки')}
+          {/* Справка — единственный раздел без `canEdit`: она объясняет в том
+              числе, как получить права, и прятать её от того, у кого их пока
+              нет, значит прятать ровно от адресата. */}
+          {navLink('/help', 'Справка')}
           {canEdit && navLink('/refs', 'Справочники')}
           {canEdit && navLink('/tags', 'Теги')}
           {canEdit && navLink('/monitoring', 'Мониторинг')}
