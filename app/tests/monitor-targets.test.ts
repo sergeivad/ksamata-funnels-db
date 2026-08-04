@@ -89,7 +89,7 @@ describe('syncMonitorTargets', () => {
     expect(targetRow('https://gc.example.ru/dash')?.enabled).toBe(0);
   });
 
-  it('берёт landing_url воронки, у которой нет блока landings', () => {
+  it('берёт landing_url воронки в ту же группу «Лендинги», что и блок', () => {
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
     sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`)
@@ -98,7 +98,7 @@ describe('syncMonitorTargets', () => {
     syncMonitorTargets(db);
 
     const row = targetRow('https://t.zdorovy-zkt.ru/jivo/rsya/a');
-    expect(row?.source_kind).toBe('funnel_landing_url');
+    expect(row?.source_kind).toBe('landings');
     expect(row?.enabled).toBe(1);
   });
 
@@ -414,7 +414,7 @@ describe('manual_override: фиксируется только на отклон
     expect(targetRow(url)?.manual_override).toBe(0);
 
     // Клик по групповому чипу «ленды» с тем же состоянием — no-op по смыслу.
-    expect(setSourceKindEnabled(db, 'funnel_landing_url', true)).toBe(1);
+    expect(setSourceKindEnabled(db, 'landings', true)).toBe(1);
     expect(targetRow(url)?.manual_override).toBe(0);
 
     // URL пропал и вернулся — авто-оживление должно сработать, override не мешает.
@@ -492,7 +492,7 @@ describe('manual_override: фиксируется только на отклон
     syncMonitorTargets(db);
     expect(targetRow(url)?.enabled).toBe(1);
 
-    setSourceKindEnabled(db, 'funnel_landing_url', false);
+    setSourceKindEnabled(db, 'landings', false);
 
     syncMonitorTargets(db);
     syncMonitorTargets(db);

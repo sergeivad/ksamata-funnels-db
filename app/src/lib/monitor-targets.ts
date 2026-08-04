@@ -17,10 +17,16 @@ import { normalizeUrl, splitUrlField } from './monitor-urls';
  */
 export const MONITORED_FUNNEL_STATUS = 'active';
 
-/** Виды источников, которые проверяются, пока по группе не было решения человека. */
-export const LANDING_SOURCE_KINDS = ['landings', 'funnel_landing_url'] as const;
-
-const LANDING_SET = new Set<string>(LANDING_SOURCE_KINDS);
+/**
+ * Группа лендингов — единственная, которая проверяется, пока по ней не было
+ * решения человека.
+ *
+ * Страница воронки лежит в двух местах: в блоке «Лендинги» и в поле landing_url
+ * в шапке карточки. Для человека это одна сущность, поэтому и группа одна —
+ * до Phase-9 поле давало отдельный вид `funnel_landing_url`, свой чип и своё
+ * решение «проверять или нет», и одна и та же страница считалась дважды.
+ */
+export const LANDING_SOURCE_KIND = 'landings';
 
 /**
  * Решения по группам, снятые одним запросом: синк спрашивает дефолт для каждой
@@ -44,7 +50,7 @@ function loadGroupPrefs(db: AnyDB): Map<string, boolean> {
 function groupDefault(prefs: Map<string, boolean>, sourceKind: string): 0 | 1 {
   const pref = prefs.get(sourceKind);
   if (pref !== undefined) return pref ? 1 : 0;
-  return LANDING_SET.has(sourceKind) ? 1 : 0;
+  return sourceKind === LANDING_SOURCE_KIND ? 1 : 0;
 }
 
 /**
@@ -52,9 +58,7 @@ function groupDefault(prefs: Map<string, boolean>, sourceKind: string): 0 | 1 {
  * нескольких мест — цель заводится одна, вид источника берётся у главного.
  */
 function sourceRank(kind: string): number {
-  if (kind === 'landings') return 0;
-  if (kind === 'funnel_landing_url') return 1;
-  return 2;
+  return kind === LANDING_SOURCE_KIND ? 0 : 1;
 }
 
 interface Collected {
@@ -120,7 +124,8 @@ function collectTargets(
 
   for (const row of funnelRows) {
     for (const url of splitUrlField(row.landingUrl)) {
-      add(url, 'funnel_landing_url', row.id);
+      // Тот же вид, что и у блока «Лендинги»: место хранения разное, сущность одна.
+      add(url, LANDING_SOURCE_KIND, row.id);
     }
   }
 

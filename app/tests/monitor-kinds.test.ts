@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sourceKindLabel, sourceKindTone } from '../src/lib/monitor-kinds';
+import { sourceKindLabel, sourceKindTone, isKnownSourceKind } from '../src/lib/monitor-kinds';
 import { BLOCK_KINDS, getBlockDef } from '../src/lib/blocks';
 
 describe('sourceKindLabel', () => {
@@ -9,8 +9,9 @@ describe('sourceKindLabel', () => {
     }
   });
 
-  it('знает про поле landing_url самой воронки — это не блок', () => {
-    expect(sourceKindLabel('funnel_landing_url')).toBe('Лендинг воронки');
+  it('не знает отдельной группы для поля landing_url — она слита с «Лендингами»', () => {
+    expect(sourceKindLabel('funnel_landing_url')).toBe('funnel_landing_url');
+    expect(isKnownSourceKind('funnel_landing_url')).toBe(false);
   });
 
   it('отдаёт неизвестный вид как есть, а не пустую строку', () => {

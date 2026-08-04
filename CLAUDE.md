@@ -93,7 +93,9 @@ Drizzle SQLite. Core + lookup + content + tags tables:
   `monitor_source_kind_prefs` (the human's decision for a whole `source_kind`,
   written by `setSourceKindEnabled` — this is what makes a URL added to a
   block **later** inherit the group and start being checked without anyone
-  clicking; no row = fall back to "landings on, everything else off". A group
+  clicking; no row = fall back to "landings on, everything else off" — and
+  «Лендинги» is one group, holding both the block and the card's `landing_url`
+  field (`LANDING_SOURCE_KIND`, Phase 9). A group
   click also clears `manual_override` across the group: the group decision
   beats per-target toggles inside it),
   `monitor_target_funnels` (which funnels use the URL),
@@ -452,9 +454,19 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
   what the database already asserted (the marker was already hardcoded into
   every `tag_templates` scenario), so `funnel_tags` does not change by a
   single row; only where the marker comes from changes.
+- **Phase 9** — merges the monitoring group `funnel_landing_url` into `landings`:
+  a funnel's landing page is one thing whether its URL sits in the «Лендинги»
+  block or in the card's `landing_url` field, and two chips counted the same
+  page twice. Rewrites `monitor_targets.source_kind` and folds the two rows of
+  `monitor_source_kind_prefs` into one — **"off" wins** when the two decisions
+  disagree, because both groups are on by default, so "on" is usually just the
+  default while "off" is a human deliberately removing pages from the board.
+  The sync alone would not do it: it never writes `monitor_source_kind_prefs`,
+  and with `MONITOR_ENABLED=false` it never runs at all. `updated_at` is left
+  untouched — renaming a group says nothing about the target itself.
 
 **Docker runs, in order** (`app/docker-entrypoint.sh`): Phase 2 → 3 (+data) →
-4 → 5 → legacy-tag-override backfill → 6 → 7 → 8.
+4 → 5 → legacy-tag-override backfill → 6 → 7 → 8 → 9.
 
 **Running a migration by hand** resolves its DB through `scripts/cli-db-path.ts`:
 the default is the repo-root DB **relative to the script**, not to `cwd`, and a

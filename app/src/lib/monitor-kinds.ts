@@ -9,19 +9,18 @@ import { BLOCK_KINDS } from './blocks';
  */
 const BLOCK_TITLES = new Map<string, string>(BLOCK_KINDS.map((d) => [d.kind, d.title]));
 
-/** Источники, которых нет среди видов блоков. */
-const EXTRA_TITLES: Record<string, string> = {
-  // Поле landing_url самой воронки, а не блок.
-  funnel_landing_url: 'Лендинг воронки',
-};
-
 /** Неизвестный вид отдаёт сам себя: UI не должен ломаться на данных из будущего. */
 export function sourceKindLabel(sourceKind: string): string {
-  return BLOCK_TITLES.get(sourceKind) ?? EXTRA_TITLES[sourceKind] ?? sourceKind;
+  return BLOCK_TITLES.get(sourceKind) ?? sourceKind;
 }
 
 /**
  * Виды источников, которые вообще могут появиться у цели.
+ *
+ * Ровно виды блоков, без добавок: адрес из поля landing_url в шапке карточки
+ * попадает в ту же группу «Лендинги», что и блок (см. LANDING_SOURCE_KIND).
+ * Отдельный вид `funnel_landing_url` был до Phase-9 — она же перевела и то,
+ * что успело записаться в базу.
  *
  * Читать неизвестный вид (sourceKindLabel) — нормально, а вот записывать по
  * нему решение человека нельзя: monitor_source_kind_prefs хранится вечно и
@@ -29,7 +28,7 @@ export function sourceKindLabel(sourceKind: string): string {
  * навсегда как предпочтение для группы, которой не существует.
  */
 export function isKnownSourceKind(sourceKind: string): boolean {
-  return BLOCK_TITLES.has(sourceKind) || sourceKind in EXTRA_TITLES;
+  return BLOCK_TITLES.has(sourceKind);
 }
 
 /**

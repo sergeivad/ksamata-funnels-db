@@ -81,4 +81,13 @@ if [ -n "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] Phase-8 migration done."
 fi
 
+# Apply Phase-9 migration (idempotent: UPDATE по виду источника, которого больше
+# нет). Сливает группу мониторинга «Лендинг воронки» с «Лендингами»: страница
+# воронки — одна сущность, где бы её адрес ни лежал.
+if [ -n "$FUNNELS_DB_PATH" ]; then
+  echo "[entrypoint] Running Phase-9 migration against $FUNNELS_DB_PATH"
+  node /app/migrate-phase9.cjs
+  echo "[entrypoint] Phase-9 migration done."
+fi
+
 exec node server.js
