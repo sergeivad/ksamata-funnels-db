@@ -80,6 +80,7 @@ class Report:
     sheet_only: list = field(default_factory=list)
     status_drift: list = field(default_factory=list)
     sheet_stale: list = field(default_factory=list)
+    sheet_status_off: object = None
     settled: list = field(default_factory=list)
     waiting: list = field(default_factory=list)
     blind: dict = field(default_factory=dict)
@@ -112,6 +113,8 @@ def _too_young(start_date, today):
 def build(combos, blind, funnels, sheet_rows, rules, today):
     report = Report(blind=dict(blind))
     report.waiting = [rule for rule in rules if rule.waiting_for]
+    report.sheet_status_off = decisions_module.scoped(
+        decisions_module.SHEET_STATUS, rules)
 
     by_key = {funnel.key: funnel for funnel in funnels}
 
@@ -164,6 +167,12 @@ def build(combos, blind, funnels, sheet_rows, rules, today):
         # Пустая ячейка статуса — «маркетолог не заполнил», а не «Стоп».
         # Без этой проверки f24, f25 и f26 попадали в расхождения статуса
         # только потому, что в таблице у них пусто.
+        # Решение владельца может снять сверку статуса целиком — тогда
+        # таблица остаётся источником лендингов и самого факта существования
+        # воронки, но не её живости. Строки без воронки этим НЕ гасятся:
+        # там вопрос не про статус.
+        if report.sheet_status_off is not None:
+            continue
         if not row.status:
             continue
         funnel_is_active = match.funnel.status == 'active'

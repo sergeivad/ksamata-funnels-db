@@ -25,6 +25,47 @@ def _table(header, rows):
     return '\n'.join(lines)
 
 
+def _status_sections(report):
+    """Раздел про статусы — либо сверка, либо одна строка про решение.
+
+    Печатать погашенную сверку «для полноты» нельзя: это ровно тот случай,
+    когда решение принято, а отчёт всё равно каждый раз выкладывает его на
+    стол. Достаточно сказать, что сверки нет и почему.
+    """
+    rule = report.sheet_status_off
+    if rule is not None:
+        return [
+            '## Этап 2. Статус: таблица против базы',
+            '',
+            f'**Не сверяется** — решение `{rule.id}` от {rule.since}: '
+            f'{rule.verdict}.',
+            '',
+            rule.why.strip(),
+            '',
+        ]
+    return [
+        '## Этап 2. Статус: таблица против базы',
+        '',
+        'Здесь только то, что заказы **не** рассудили: третий источник '
+        'согласен с таблицей, а не с базой. Решает человек.',
+        '',
+        _table(['Воронка', 'В базе', 'В таблице', 'Строка таблицы'],
+               [(item.funnel.label, item.funnel.status, item.row.status,
+                 item.row.row_num) for item in report.status_drift]),
+        '',
+        '## Этап 2. Устарела таблица, не база',
+        '',
+        'Таблица расходится с базой, но заказы подтверждают базу. '
+        'Правится ячейка в таблице; статус воронки не трогаем.',
+        '',
+        _table(['Воронка', 'В базе', 'В таблице', 'Строка', 'Последний заказ'],
+               [(item.funnel.label, item.funnel.status, item.row.status,
+                 item.row.row_num, item.last_activity[:10] or 'никогда')
+                for item in report.sheet_stale]),
+        '',
+    ]
+
+
 def render(report, meta):
     parts = [
         '# Сверка источников',
@@ -53,25 +94,7 @@ def render(report, meta):
                [(item.funnel.label, item.last_activity[:10] or 'никогда',
                  combo.label(item.funnel.key)) for item in report.dead]),
         '',
-        '## Этап 2. Статус: таблица против базы',
-        '',
-        'Здесь только то, что заказы **не** рассудили: третий источник '
-        'согласен с таблицей, а не с базой. Решает человек.',
-        '',
-        _table(['Воронка', 'В базе', 'В таблице', 'Строка таблицы'],
-               [(item.funnel.label, item.funnel.status, item.row.status,
-                 item.row.row_num) for item in report.status_drift]),
-        '',
-        '## Этап 2. Устарела таблица, не база',
-        '',
-        'Таблица расходится с базой, но заказы подтверждают базу. '
-        'Правится ячейка в таблице; статус воронки не трогаем.',
-        '',
-        _table(['Воронка', 'В базе', 'В таблице', 'Строка', 'Последний заказ'],
-               [(item.funnel.label, item.funnel.status, item.row.status,
-                 item.row.row_num, item.last_activity[:10] or 'никогда')
-                for item in report.sheet_stale]),
-        '',
+        *_status_sections(report),
         '## Этап 2. Живые строки таблицы без воронки',
         '',
         _table(['Строка', 'Подрядчик', 'Воронка', 'Лендинг'],

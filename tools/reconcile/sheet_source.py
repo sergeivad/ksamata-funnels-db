@@ -38,6 +38,45 @@ class SheetRow:
     landings: tuple
 
 
+def apply_landing_rules(rows, rules):
+    """Подставить лендинг в строки, где ячейка «Посадочная» пуста.
+
+    Владелец таблицу не правит (решение 04.08), но недостающие адреса
+    присылает. Без подстановки такая строка навсегда остаётся «живой
+    строкой без воронки»: лендинг — первая и единственная надёжная ступень
+    сопоставления, а по «подрядчик + продукт» строка вроде «ВК NR / ДБО
+    AdBlogger (посевы)» не сходится ни с чем — у базы там «NR» и «ДБО».
+
+    Дополняем, а не переписываем: заполненная ячейка таблицы главнее.
+    Это подстановка данных, а не глушение находки — исчезнет воронка,
+    и строка снова всплывёт как надо.
+    """
+    from decisions import SHEET_LANDING  # локально: избегаем кольца импортов
+
+    supplements = [r for r in rules
+                   if r.scope == SHEET_LANDING and r.landing and not r.waiting_for]
+    if not supplements:
+        return list(rows)
+
+    result = []
+    for row in rows:
+        if not row.landings:
+            for rule in supplements:
+                same = (row.contractor.strip().casefold()
+                        == rule.row_contractor.strip().casefold()
+                        and row.funnel.strip().casefold()
+                        == rule.row_funnel.strip().casefold())
+                if same:
+                    row = SheetRow(
+                        row_num=row.row_num, front_code=row.front_code,
+                        contractor=row.contractor, funnel=row.funnel,
+                        status=row.status,
+                        landings=tuple(urls.split_field(rule.landing)))
+                    break
+        result.append(row)
+    return result
+
+
 def is_live(status):
     """«Работает» против «Стоп». Пустой статус живым не считается."""
     return str(status or '').strip() == LIVE_STATUS

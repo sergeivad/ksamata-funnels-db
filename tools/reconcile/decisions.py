@@ -26,6 +26,11 @@ AXIS_ALIASES = {
 }
 
 
+SHEET_STATUS = 'sheet_status'
+SHEET_LANDING = 'sheet_landing'
+VALID_SCOPES = {SHEET_STATUS, SHEET_LANDING}
+
+
 @dataclass(frozen=True)
 class Decision:
     id: str
@@ -34,6 +39,14 @@ class Decision:
     why: str
     since: str
     waiting_for: str = ''
+    scope: str = ''
+    # Только для scope: sheet_landing — чем опознать строку и что подставить.
+    # Строка опознаётся по подрядчику и названию воронки, а НЕ по номеру:
+    # номер съезжает от одной вставки в таблицу, и правило молча перестало
+    # бы срабатывать либо, хуже, сработало бы на чужой строке.
+    row_contractor: str = ''
+    row_funnel: str = ''
+    landing: str = ''
     _positions: dict = field(default_factory=dict, compare=False)
 
 
@@ -46,6 +59,11 @@ def load(path):
 
     rules = []
     for item in raw:
+        scope = str(item.get('scope', '') or '')
+        if scope and scope not in VALID_SCOPES:
+            raise ValueError(
+                f'Правило {item.get("id")}: неизвестная область «{scope}». '
+                f'Допустимы: {", ".join(sorted(VALID_SCOPES))}')
         match = item.get('match') or {}
         positions = {}
         for alias, values in match.items():
@@ -66,9 +84,30 @@ def load(path):
             why=str(item.get('why', '')),
             since=str(item.get('since', '')),
             waiting_for=str(item.get('waiting_for', '')),
+            scope=scope,
+            row_contractor=str((item.get('row') or {}).get('подрядчик', '')),
+            row_funnel=str((item.get('row') or {}).get('воронка', '')),
+            landing=str(item.get('landing', '')),
             _positions=positions,
         ))
     return rules
+
+
+def scoped(scope, rules):
+    """Первое решение, гасящее целую СВЕРКУ, а не отдельную связку.
+
+    Такое решение выражает «этот источник по этому полю не эталон» —
+    например, статус в таблице маркетологов после решения владельца 04.08.
+    Гасить его перечислением воронок нельзя: список пришлось бы дописывать
+    после каждой новой воронки, а забытая строка вернула бы вопрос.
+
+    Правила с waiting_for пропускаются здесь по той же причине, что и в
+    covering: вопрос без ответа не гасит ничего.
+    """
+    for rule in rules:
+        if rule.scope == scope and not rule.waiting_for:
+            return rule
+    return None
 
 
 def covering(key, rules):

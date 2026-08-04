@@ -1,3 +1,4 @@
+import decisions
 import openpyxl
 import pytest
 
@@ -47,3 +48,37 @@ def test_is_live_различает_работает_и_стоп():
     assert sheet_source.is_live('Работает')
     assert not sheet_source.is_live('Стоп')
     assert not sheet_source.is_live('')
+
+
+def _landing_rule():
+    return decisions.Decision(
+        id='sheet-row-adbloggers-landing', match={}, scope='sheet_landing',
+        row_contractor='ВК NR', row_funnel='ДБО AdBlogger (посевы)',
+        landing='https://t.ksamata.ru/nrab/dbo/a',
+        verdict='лендинг из письма владельца', why='в таблице ячейка пуста',
+        since='2026-08-04')
+
+
+def test_решение_дополняет_пустой_лендинг_строки():
+    """Владелец прислал лендинг 04.08, а таблицу править не будет. Без
+    подстановки строка 47 навсегда осталась бы «живой строкой без воронки»,
+    хотя воронка заведена в тот же день."""
+    row = sheet_source.SheetRow(47, '', 'ВК NR', 'ДБО AdBlogger (посевы)',
+                                'Работает', ())
+    out = sheet_source.apply_landing_rules([row], [_landing_rule()])
+    assert out[0].landings == ('t.ksamata.ru/nrab/dbo/a',)
+
+
+def test_решение_не_затирает_лендинг_который_в_таблице_есть():
+    """Таблица — источник лендингов. Подстановка закрывает дырку, а не
+    спорит с заполненной ячейкой."""
+    row = sheet_source.SheetRow(47, '', 'ВК NR', 'ДБО AdBlogger (посевы)',
+                                'Работает', ('t.ksamata.ru/old/a',))
+    out = sheet_source.apply_landing_rules([row], [_landing_rule()])
+    assert out[0].landings == ('t.ksamata.ru/old/a',)
+
+
+def test_решение_не_трогает_чужие_строки():
+    row = sheet_source.SheetRow(12, 'f8', 'НИМБ', 'ЖКТ', 'Стоп', ())
+    out = sheet_source.apply_landing_rules([row], [_landing_rule()])
+    assert out[0].landings == ()

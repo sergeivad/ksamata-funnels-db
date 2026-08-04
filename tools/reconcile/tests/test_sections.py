@@ -174,6 +174,49 @@ def test_заказы_на_стороне_таблицы_оставляют_во
     assert [item.funnel.label for item in report.status_drift] == ['f9']
 
 
+def _sheet_status_off():
+    return decisions.Decision(
+        id='sheet-status-not-authoritative', match={}, scope='sheet_status',
+        verdict='статус из таблицы не сверяем', why='решение владельца 04.08',
+        since='2026-08-04')
+
+
+def test_решение_гасит_сверку_статусов_целиком():
+    """04.08 владелец сказал: «в таблице я ничего не правлю, эти воронки
+    рабочие». Значит колонка статуса там не эталон, и спрашивать по ней
+    нечего — ни там, где заказы рассудили, ни там, где не смогли."""
+    live = funnel('f9', ('БОО', 'НИМБ', 'Яндекс', 'РСЯ', 'АВ Автоворонка'),
+                  landings=['t.ksamata.ru/boo/a'])
+    row = sheet_source.SheetRow(7, 'f9', 'НИМБ', 'БОО', 'Стоп',
+                                ('t.ksamata.ru/boo/a',))
+    report = sections.build({}, {'orders': 0, 'paid': 0}, [live], [row],
+                            [_sheet_status_off()], TODAY)
+    assert report.status_drift == []
+    assert report.sheet_stale == []
+    assert report.sheet_status_off is not None
+
+
+def test_без_решения_сверка_статусов_работает_как_раньше():
+    live = funnel('f9', ('БОО', 'НИМБ', 'Яндекс', 'РСЯ', 'АВ Автоворонка'),
+                  landings=['t.ksamata.ru/boo/a'])
+    row = sheet_source.SheetRow(7, 'f9', 'НИМБ', 'БОО', 'Стоп',
+                                ('t.ksamata.ru/boo/a',))
+    report = sections.build({}, {'orders': 0, 'paid': 0}, [live], [row], [],
+                            TODAY)
+    assert report.sheet_status_off is None
+    assert [item.funnel.label for item in report.status_drift] == ['f9']
+
+
+def test_решение_по_статусам_не_гасит_строки_без_воронки():
+    """Гасится сверка СТАТУСА, а не вся таблица: живая строка, которой в
+    базе нет вовсе, — по-прежнему находка."""
+    row = sheet_source.SheetRow(43, '', 'ВК NR', 'ЖИВО Суставы', 'Работает',
+                                ('t.ksamata.ru/jivo/trial/nr/a',))
+    report = sections.build({}, {'orders': 0, 'paid': 0}, [], [row],
+                            [_sheet_status_off()], TODAY)
+    assert [item.row.row_num for item in report.sheet_only] == [43]
+
+
 def test_у_молодой_воронки_заказы_рассудить_не_могут():
     """Воронке два дня — молчание заказов о ней ничего не говорит, и
     списывать расхождение на устаревшую таблицу нельзя."""

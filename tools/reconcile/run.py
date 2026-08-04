@@ -63,15 +63,17 @@ def main(argv=None):
     print(f'  заказов: {total_orders}, связок: {len(combos)}, '
           f'без осей: {blind["orders"]}')
 
+    rules = decisions.load(settings.DECISIONS_PATH)
+
     print(f'Таблица: {sheet_path}')
-    sheet_rows = sheet_source.load_rows(sheet_path)
+    sheet_rows = sheet_source.apply_landing_rules(
+        sheet_source.load_rows(sheet_path), rules)
     print(f'  строк: {len(sheet_rows)}')
 
     print(f'База:    {args.db}')
     funnels = funnels_source.load_funnels(args.db)
     print(f'  воронок: {len(funnels)}')
 
-    rules = decisions.load(settings.DECISIONS_PATH)
     report = sections.build(combos, blind, funnels, sheet_rows, rules, today)
 
     text = report_md.render(report, {
