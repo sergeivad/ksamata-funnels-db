@@ -227,7 +227,10 @@ describe('isPublicReadPath', () => {
       '/api/funnels/12/days', '/api/funnels/12/blocks/landings',
       // Справка: статический текст, и её кидают ссылкой тому, у кого учётки
       // ещё нет — за формой входа она бесполезна ровно для адресата.
-      '/help', '/help/',
+      // Скриншоты — вместе со страницей: `matcher` мидлвары исключает только
+      // `_next/static`, поэтому картинка из `public/` без этой строки отвечает
+      // анониму редиректом на вход, и инструкция открывается битой.
+      '/help', '/help/', '/help/01-list.webp', '/help/06-monitoring.webp',
       '/robots.txt',
     ]) {
       expect(isPublicReadPath(p), p).toBe(true);
@@ -243,6 +246,8 @@ describe('isPublicReadPath', () => {
       '/api/monitoring', '/api/monitoring/events',
       '/api/funnels/draft', '/api/funnels/12/duplicate', '/api/funnels/12/tags',
       '/funnels/abc', '/api/funnels/abc',
+      // Открыт ровно каталог справки и ровно webp — не «всё, что под /help».
+      '/help/../ksamata_funnels.db', '/help/sub/shot.webp', '/helpdesk',
     ]) {
       expect(isPublicReadPath(p), p).toBe(false);
     }

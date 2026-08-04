@@ -108,6 +108,11 @@ COPY --from=builder /build/.next/standalone ./
 # Copy static assets into the right place inside standalone
 COPY --from=builder /build/.next/static ./.next/static
 
+# public/ standalone-сборка не переносит сама — его нужно копировать явно, иначе
+# всё оттуда отдаёт 404 в проде, а локально работает. Сейчас это скриншоты
+# справки (/help/*.webp); заметить пропажу было бы некому, кроме читателя.
+COPY --from=builder /build/public ./public
+
 # better-sqlite3 native module: Next.js standalone tracing usually includes
 # the JS wrapper but may miss the compiled .node binary. Copy the full
 # better-sqlite3 build directory explicitly so it is always present.
