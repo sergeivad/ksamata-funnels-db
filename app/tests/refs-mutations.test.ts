@@ -52,7 +52,6 @@ function makeFunnel(overrides: Partial<Parameters<typeof createFunnel>[1]> = {})
     status: 'active',
     productName: 'Тест продукт',
     variant: 'А',
-    landingUrl: '',
     startDate: '',
     blockName: '',
     product: 'RefMutProduct',

@@ -63,7 +63,6 @@ export type FunnelDetail = FunnelListItem & {
   productId: number;
   contractorId: number;
   variant: string;
-  landingUrl: string;
   startDate: string;
   blockName: string;
   comment: string;
@@ -293,7 +292,6 @@ export function getFunnel(db: DB, id: number): FunnelDetail | null {
     productId:    row.productId,
     contractorId: row.contractorId,
     variant:      row.variant      ?? '',
-    landingUrl:   row.landingUrl   ?? '',
     startDate:    row.startDate    ?? '',
     blockName:    row.blockName    ?? '',
     comment:      row.comment      ?? '',
@@ -350,7 +348,6 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
         status:             data.status,
         productName:        data.productName,
         variant:            data.variant,
-        landingUrl:         data.landingUrl,
         startDate:          data.startDate,
         blockName:          data.blockName,
         productId:          productRow.id,
@@ -433,7 +430,6 @@ export function createDraftFunnel(db: DB): FunnelListItem {
         status:       'draft',
         productName:  '',
         variant:      '',
-        landingUrl:   '',
         startDate:    '',
         blockName:    '',
         productId,
@@ -511,7 +507,6 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
     if (data.status       !== undefined) scalarUpdate.status       = data.status;
     if (data.productName  !== undefined) scalarUpdate.productName  = data.productName;
     if (data.variant      !== undefined) scalarUpdate.variant      = data.variant;
-    if (data.landingUrl   !== undefined) scalarUpdate.landingUrl   = data.landingUrl;
     if (data.startDate    !== undefined) scalarUpdate.startDate    = data.startDate;
     if (data.blockName    !== undefined) scalarUpdate.blockName    = data.blockName;
     if (data.comment            !== undefined) scalarUpdate.comment            = data.comment;
@@ -791,7 +786,6 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
         status:             'draft',
         productName:        source.productName,
         variant:            source.variant,
-        landingUrl:         source.landingUrl ?? '',
         startDate:          source.startDate ?? '',
         blockName:          source.blockName ?? '',
         productId:          source.productId,

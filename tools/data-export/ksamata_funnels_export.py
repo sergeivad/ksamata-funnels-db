@@ -44,6 +44,21 @@ def load_all(db_path):
         fid = f['id']
         fnum = f['num']
 
+        # Лендинг воронки — строки блока «Лендинги». Колонка funnels.landing_url
+        # больше не источник: после Phase-10 адрес живёт только в блоке, а сама
+        # колонка стоит пустой. Раньше отчёт читал её и после переезда показал
+        # бы пустую колонку «Лендинг» по всем воронкам.
+        landing = ' / '.join(
+            r['url'] for r in conn.execute("""
+                SELECT i.url
+                  FROM funnel_block_items i
+                  JOIN funnel_blocks b ON b.id = i.block_id
+                 WHERE b.funnel_id = ? AND b.kind = 'landings'
+                 ORDER BY i.position
+            """, (fid,)).fetchall()
+            if (r['url'] or '').strip()
+        )
+
         # Tags grouped by type, ordered by position
         tags = {}
         for tag_type in ('time_19', 'time_15', 'reg'):
@@ -105,7 +120,7 @@ def load_all(db_path):
             'product_code': f['product_code'],
             'contractor': f['contractor_name'],
             'variant': f['variant'] or '',
-            'landing': f['landing_url'] or '',
+            'landing': landing,
             'start_date': sd,
             'block_name': f['block_name'] or '',
             'sheet': f['sheet_name'] or '',

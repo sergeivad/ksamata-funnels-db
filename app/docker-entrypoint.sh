@@ -90,4 +90,14 @@ if [ -n "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] Phase-9 migration done."
 fi
 
+# Apply Phase-10 migration (idempotent: переносит адреса из колонки в блок и
+# чистит колонку). Лендинг воронки живёт только в блоке «Лендинги»; колонку
+# ещё пишут Python-скрипты импорта, поэтому фаза остаётся в цепочке навсегда —
+# она подберёт то, что попало туда в обход приложения.
+if [ -n "$FUNNELS_DB_PATH" ]; then
+  echo "[entrypoint] Running Phase-10 migration against $FUNNELS_DB_PATH"
+  node /app/migrate-phase10.cjs
+  echo "[entrypoint] Phase-10 migration done."
+fi
+
 exec node server.js

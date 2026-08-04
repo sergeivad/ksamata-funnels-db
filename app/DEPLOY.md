@@ -79,6 +79,7 @@ After the seed check, the entrypoint runs the idempotent migration chain on
 7. `migrate-phase7.cjs` — normalizes `funnels.front_code` and makes it unique
 8. `migrate-phase8.cjs` — `funnel_types` lookup + backfill of the funnel-type marker
 9. `migrate-phase9.cjs` — merges the monitoring group `funnel_landing_url` into `landings`
+10. `migrate-phase10.cjs` — moves `funnels.landing_url` into the «Лендинги» block and blanks the column
 
 All steps are marker-gated or `IF NOT EXISTS`, so re-running them is safe.
 

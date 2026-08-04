@@ -35,8 +35,7 @@ const nextNum = () => (sqlite.prepare(`SELECT COALESCE(MAX(num),0)+1 AS n FROM f
 
 function makeFunnel(product: string) {
   return createFunnel(db, {
-    num: nextNum(), frontCode: '', status: 'active', productName: '', variant: '',
-    landingUrl: '', startDate: '', blockName: '',
+    num: nextNum(), frontCode: '', status: 'active', productName: '', variant: '', startDate: '', blockName: '',
     product, contractor: 'НИМБ', channel: 'Яндекс', direction: 'РСЯ',
   } as any);
 }
@@ -101,8 +100,7 @@ function listFunnelTagNames(dbh: typeof db, funnelId: number, tagType: string): 
 describe('тип воронки участвует в материализации', () => {
   it('смена типа без осей перематериализует теги', () => {
     const created = createFunnel(db, {
-      num: 9001, frontCode: 'ftest', status: 'draft', productName: '', variant: '',
-      landingUrl: '', startDate: '', product: 'ЖИВО', contractor: 'НИМБ',
+      num: 9001, frontCode: 'ftest', status: 'draft', productName: '', variant: '', startDate: '', product: 'ЖИВО', contractor: 'НИМБ',
       channel: 'Яндекс', direction: 'РСЯ',
     } as any);
 
@@ -115,8 +113,7 @@ describe('тип воронки участвует в материализаци
 
   it('неизвестный тип отвергается, а не заводится молча', () => {
     const created = createFunnel(db, {
-      num: 9002, frontCode: 'ftest2', status: 'draft', productName: '', variant: '',
-      landingUrl: '', startDate: '', product: 'ЖИВО', contractor: 'НИМБ',
+      num: 9002, frontCode: 'ftest2', status: 'draft', productName: '', variant: '', startDate: '', product: 'ЖИВО', contractor: 'НИМБ',
       channel: 'Яндекс', direction: 'РСЯ',
     } as any);
 
@@ -136,8 +133,7 @@ describe('тип воронки участвует в материализаци
     // (минуя applyTagOverrides) — ровно то бездействие, о которое рецензент
     // проверял: строка в funnel_tag_overrides есть, а тега — нет.
     const created = createFunnel(db, {
-      num: 9004, frontCode: 'ftest4', status: 'draft', productName: '', variant: '',
-      landingUrl: '', startDate: '', product: 'ЖИВО', contractor: 'НИМБ',
+      num: 9004, frontCode: 'ftest4', status: 'draft', productName: '', variant: '', startDate: '', product: 'ЖИВО', contractor: 'НИМБ',
       channel: 'Яндекс', direction: 'РСЯ',
     } as any); // funnelType не задан — identity-слой этой воронки 'АВ Квиз' не содержит
 

@@ -9,7 +9,7 @@ import {
   monitorState,
   monitorSourceKindPrefs,
 } from '../db/schema';
-import { normalizeUrl, splitUrlField } from './monitor-urls';
+import { normalizeUrl } from './monitor-urls';
 
 /**
  * Мониторим только страницы воронок в этом статусе. Черновики и архив не
@@ -21,10 +21,9 @@ export const MONITORED_FUNNEL_STATUS = 'active';
  * Группа лендингов — единственная, которая проверяется, пока по ней не было
  * решения человека.
  *
- * Страница воронки лежит в двух местах: в блоке «Лендинги» и в поле landing_url
- * в шапке карточки. Для человека это одна сущность, поэтому и группа одна —
- * до Phase-9 поле давало отдельный вид `funnel_landing_url`, свой чип и своё
- * решение «проверять или нет», и одна и та же страница считалась дважды.
+ * Страница воронки хранится ровно в одном месте — в блоке «Лендинги». Раньше
+ * мест было два (ещё колонка funnels.landing_url), и они давали два вида
+ * источника: Phase-9 свела их в одну группу, Phase-10 — в одно хранилище.
  */
 export const LANDING_SOURCE_KIND = 'landings';
 
@@ -116,19 +115,9 @@ function collectTargets(
     if (url) add(url, row.kind, row.funnelId);
   }
 
-  const funnelRows = db
-    .select({ id: funnels.id, landingUrl: funnels.landingUrl })
-    .from(funnels)
-    .where(inArray(funnels.status, [...statuses]))
-    .all() as { id: number; landingUrl: string | null }[];
-
-  for (const row of funnelRows) {
-    for (const url of splitUrlField(row.landingUrl)) {
-      // Тот же вид, что и у блока «Лендинги»: место хранения разное, сущность одна.
-      add(url, LANDING_SOURCE_KIND, row.id);
-    }
-  }
-
+  // Второго источника нет: до Phase-10 адрес лендинга приходил ещё и из колонки
+  // funnels.landing_url, и одна и та же страница жила в двух местах сразу.
+  // Теперь у неё одно место — блок «Лендинги», колонка пуста и не читается.
   return out;
 }
 

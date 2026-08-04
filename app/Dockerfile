@@ -91,6 +91,13 @@ RUN npx esbuild scripts/migrate-phase9-runner.ts \
       --external:better-sqlite3 \
       --outfile=migrate-phase9.cjs
 
+# Compile the Phase-10 migration to a self-contained CJS bundle.
+RUN npx esbuild scripts/migrate-phase10-runner.ts \
+      --bundle \
+      --platform=node \
+      --external:better-sqlite3 \
+      --outfile=migrate-phase10.cjs
+
 # Compile the legacy tag-override backfill to a self-contained CJS bundle.
 # better-sqlite3 is kept external so the runner's native .node binary is used.
 RUN npx esbuild scripts/backfill-legacy-tag-overrides-runner.ts \
@@ -152,6 +159,7 @@ COPY --from=builder /build/migrate-phase6.cjs /app/migrate-phase6.cjs
 COPY --from=builder /build/migrate-phase7.cjs /app/migrate-phase7.cjs
 COPY --from=builder /build/migrate-phase8.cjs /app/migrate-phase8.cjs
 COPY --from=builder /build/migrate-phase9.cjs /app/migrate-phase9.cjs
+COPY --from=builder /build/migrate-phase10.cjs /app/migrate-phase10.cjs
 
 # Copy and make the entrypoint executable
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh

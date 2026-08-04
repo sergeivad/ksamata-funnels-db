@@ -56,7 +56,7 @@ Drizzle SQLite. Core + lookup + content + tags tables:
 - **`funnels`** — one row per funnel: identity FKs (source/product/contractor),
   nullable `funnelTypeId` FK into `funnel_types` (`NULL` = type not chosen, no
   marker emitted at all — same rule as an empty axis), `variant`, `productName`,
-  landing/dashboard URLs, raw tag strings (`tag19Raw`/`tag15Raw`/`regTagsRaw`),
+  dashboard URLs, raw tag strings (`tag19Raw`/`tag15Raw`/`regTagsRaw`),
   `roomIdsJson`, `bothelpCondition`, `status` (`active`/`draft`/`archive`),
   `frontCode`, `comment`, `timeLabelA`/`timeLabelB`, and room toggles
   `roomsEnabled` / `roomsReplayEnabled`.
@@ -93,9 +93,8 @@ Drizzle SQLite. Core + lookup + content + tags tables:
   `monitor_source_kind_prefs` (the human's decision for a whole `source_kind`,
   written by `setSourceKindEnabled` — this is what makes a URL added to a
   block **later** inherit the group and start being checked without anyone
-  clicking; no row = fall back to "landings on, everything else off" — and
-  «Лендинги» is one group, holding both the block and the card's `landing_url`
-  field (`LANDING_SOURCE_KIND`, Phase 9). A group
+  clicking; no row = fall back to "landings on, everything else off"
+  (`LANDING_SOURCE_KIND`). A group
   click also clears `manual_override` across the group: the group decision
   beats per-target toggles inside it),
   `monitor_target_funnels` (which funnels use the URL),
@@ -464,9 +463,23 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
   The sync alone would not do it: it never writes `monitor_source_kind_prefs`,
   and with `MONITOR_ENABLED=false` it never runs at all. `updated_at` is left
   untouched — renaming a group says nothing about the target itself.
+- **Phase 10** — the landing page of a funnel lives **only** in the «Лендинги»
+  block. It used to sit in two places at once — `funnels.landing_url` and the
+  block — and which one was true depended on who edited last: 25 active funnels
+  held it only in the column, 20 in both. Only the block is editable in the UI;
+  the column never had a field at all. The phase appends the column's addresses
+  to the block (those not already there, comparing case- and trailing-slash-
+  insensitively), enables the block it wrote into, then blanks the column — in
+  one transaction, move first, so an interrupted run cannot lose an address. A
+  column holding text rather than a URL is blanked too. **The phase stays in the
+  chain forever**: the Python import tools still write `landing_url`, and every
+  container start sweeps whatever landed there back into the block.
+  `funnels.landing_url` is gone from `schema.ts`, from `FunnelDetail`, and from
+  the create/update schemas — the column survives in SQLite, empty, and nothing
+  in the app reads it.
 
 **Docker runs, in order** (`app/docker-entrypoint.sh`): Phase 2 → 3 (+data) →
-4 → 5 → legacy-tag-override backfill → 6 → 7 → 8 → 9.
+4 → 5 → legacy-tag-override backfill → 6 → 7 → 8 → 9 → 10.
 
 **A migration script must never run itself.** esbuild bundles the runner and the
 migration into one file, and inside that bundle `require.main === module` is
@@ -495,9 +508,17 @@ foreign keys on DML. Docker and tests are unaffected: they always pass the path
 explicitly.
 
 One-off / local-only scripts (NOT in any automated path): `seed-phase1.ts`,
-`apply_phase2b.ts`, `apply_phase2c_boo.ts` (both operate on a scratchpad copy,
-never the real DB), `migrate-messenger-tagtype.ts`, `backfill-messenger-tags.ts`,
+`apply_phase2c_boo.ts` (operates on a scratchpad copy, never the real DB),
+`migrate-messenger-tagtype.ts`, `backfill-messenger-tags.ts`,
 `backfill-status.ts`.
+
+`app/scripts/archive/` holds one-off scripts that have already run on the live
+DB and never will again — the record of where the data came from. The directory
+is **excluded from `tsc`** ([app/tsconfig.json](app/tsconfig.json)): a script is
+written against the domain model of the day it was applied, and rewriting
+seventeen finished files to satisfy today's types would misrepresent what was
+actually done. Phase-10 moved every `landing_url` script there. Write new one-off
+scripts in `scripts/`, then move them here once applied.
 
 ## Auth (`app/src/lib/auth.ts`, `auth-server.ts`, `middleware.ts`)
 
@@ -634,6 +655,13 @@ Env vars: `FUNNELS_DB_PATH`, `ADMIN_USERS`, `ADMIN_SESSION_SECRET`,
 
 Python scripts resolve paths from the **repo root** (via their own file
 location), so they run from any working directory.
+
+**Python tools still write `funnels.landing_url`**, a column the app no longer
+reads (Phase 10). Nothing breaks: the phase runs on every container start and
+sweeps whatever lands there into the «Лендинги» block. But after running an
+import against a local DB, run the phase by hand
+(`npx tsx scripts/migrate-phase10-runner.ts` from `app/`) or the addresses stay
+invisible until the next container start.
 
 - **Import** (`tools/data-import/`): `add_av_tags.py`, `add_durations.py`,
   `add_dih_funnel.py`, `add_pereliv_funnels.py`, `add_quiz_funnels.py` — all

@@ -41,15 +41,35 @@ afterEach(() => {
 });
 
 /**
- * Все URL воронки — и из блоков, и из landing_url — очищаем, чтобы собрать чистый кейс.
- * Блоки удаляем целиком (не только url), а не оставляем пустыми: в реальной БД у
- * воронок уже есть блоки вида landings/links/... с уникальностью (funnel_id, kind),
- * и тестам ниже нужно свободно заводить свои блоки тех же видов под тот же funnel_id.
+ * Все URL воронки очищаем, чтобы собрать чистый кейс. Блоки удаляем целиком (не
+ * только url), а не оставляем пустыми: в реальной БД у воронок уже есть блоки
+ * вида landings/links/... с уникальностью (funnel_id, kind), и тестам ниже нужно
+ * свободно заводить свои блоки тех же видов под тот же funnel_id.
  */
 function wipeFunnelUrls() {
   sqlite.prepare(`DELETE FROM funnel_block_items`).run();
   sqlite.prepare(`DELETE FROM funnel_blocks`).run();
-  sqlite.prepare(`UPDATE funnels SET landing_url = ''`).run();
+}
+
+/**
+ * Кладёт лендинг(и) воронки — то есть строки блока «Лендинги», единственного
+ * места, где адрес посадочной живёт после Phase-10. Пустой список очищает блок.
+ */
+function setLanding(funnelId: number, ...urls: string[]) {
+  const existing = sqlite
+    .prepare(`SELECT id FROM funnel_blocks WHERE funnel_id = ? AND kind = 'landings'`)
+    .get(funnelId) as { id: number } | undefined;
+  const blockId =
+    existing?.id ??
+    (sqlite
+      .prepare(`INSERT INTO funnel_blocks (funnel_id, kind, enabled, mode) VALUES (?, 'landings', 1, 'common')`)
+      .run(funnelId).lastInsertRowid as number);
+  sqlite.prepare(`DELETE FROM funnel_block_items WHERE block_id = ?`).run(blockId);
+  urls.forEach((url, i) => {
+    sqlite
+      .prepare(`INSERT INTO funnel_block_items (block_id, slot, label, url, position) VALUES (?, NULL, '', ?, ?)`)
+      .run(blockId, url, i);
+  });
 }
 
 /** Очищаем состояние мониторинга (см. tests/helpers/monitoring.ts) для текущей копии БД. */
@@ -89,11 +109,10 @@ describe('syncMonitorTargets', () => {
     expect(targetRow('https://gc.example.ru/dash')?.enabled).toBe(0);
   });
 
-  it('берёт landing_url воронки в ту же группу «Лендинги», что и блок', () => {
+  it('заводит цель из блока «Лендинги» с видом landings', () => {
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
-    sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`)
-      .run('https://t.zdorovy-zkt.ru/jivo/rsya/a', f1);
+    setLanding(f1, 'https://t.zdorovy-zkt.ru/jivo/rsya/a');
 
     syncMonitorTargets(db);
 
@@ -102,11 +121,10 @@ describe('syncMonitorTargets', () => {
     expect(row?.enabled).toBe(1);
   });
 
-  it('разбирает многоссылочный landing_url в отдельные цели', () => {
+  it('делает отдельную цель на каждую строку блока', () => {
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
-    sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`)
-      .run('https://a.example.ru / https://b.example.ru/boo"', f1);
+    setLanding(f1, 'https://a.example.ru', 'https://b.example.ru/boo');
 
     syncMonitorTargets(db);
 
@@ -158,7 +176,7 @@ describe('syncMonitorTargets', () => {
   it('заводит строку состояния со статусом unknown', () => {
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
-    sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`).run('https://s.example.ru/x', f1);
+    setLanding(f1, 'https://s.example.ru/x');
 
     syncMonitorTargets(db);
 
@@ -190,14 +208,14 @@ describe('syncMonitorTargets', () => {
     clearMonitoringState();
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
-    sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`).run('https://gone.example.ru/x', f1);
+    setLanding(f1, 'https://gone.example.ru/x');
     syncMonitorTargets(db);
     const target = targetRow('https://gone.example.ru/x')!;
     sqlite.prepare(
       `INSERT INTO monitor_events (target_id, from_status, to_status) VALUES (?, 'up', 'down')`
     ).run(target.id);
 
-    sqlite.prepare(`UPDATE funnels SET landing_url = '' WHERE id = ?`).run(f1);
+    setLanding(f1);
     const stats = syncMonitorTargets(db);
 
     expect(stats.retired).toBe(1);
@@ -223,8 +241,7 @@ describe('syncMonitorTargets', () => {
       .run(f1).lastInsertRowid as number;
     sqlite.prepare(`INSERT INTO funnel_block_items (block_id, url) VALUES (?, ?)`)
       .run(landingBlock, 'https://lp1.example.ru/retire-all');
-    sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`)
-      .run('https://lp2.example.ru/retire-all', f2);
+    setLanding(f2, 'https://lp2.example.ru/retire-all');
 
     const firstStats = syncMonitorTargets(db);
     expect(firstStats.total).toBe(2);
@@ -257,28 +274,23 @@ describe('syncMonitorTargets', () => {
  * навсегда. Разводит эти смыслы колонка manual_override.
  */
 describe('manual_override: ручной тумблер против авто-ретайрмента', () => {
-  /** Записывает URL в landing_url первой воронки (пусто — стирает). */
-  function setLandingUrl(funnelId: number, url: string) {
-    sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`).run(url, funnelId);
-  }
-
   it('снова включает ленд, который пропадал из данных и вернулся', () => {
     clearMonitoringState();
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
     const url = 'https://lp.example.ru/resurrect';
 
-    setLandingUrl(f1, url);
+    setLanding(f1, url);
     syncMonitorTargets(db);
     expect(targetRow(url)?.enabled).toBe(1);
 
     // URL исчез на один синк — цель гаснет, но остаётся в базе.
-    setLandingUrl(f1, '');
+    setLanding(f1, '');
     syncMonitorTargets(db);
     expect(targetRow(url)?.enabled).toBe(0);
 
     // URL вернулся — цель обязана ожить сама, без ручного вмешательства.
-    setLandingUrl(f1, url);
+    setLanding(f1, url);
     syncMonitorTargets(db);
     expect(targetRow(url)?.enabled).toBe(1);
     expect(targetRow(url)?.manual_override).toBe(0);
@@ -290,7 +302,7 @@ describe('manual_override: ручной тумблер против авто-р�
     const [f1] = funnelIds(1);
     const url = 'https://lp.example.ru/muted';
 
-    setLandingUrl(f1, url);
+    setLanding(f1, url);
     syncMonitorTargets(db);
     const target = targetRow(url)!;
 
@@ -399,16 +411,12 @@ describe('manual_override: ручной тумблер против авто-р�
  * дефолта вида источника (лендам положено enabled=1, остальным — 0).
  */
 describe('manual_override: фиксируется только на отклонение от дефолта', () => {
-  function setLandingUrl(funnelId: number, url: string) {
-    sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`).run(url, funnelId);
-  }
-
   it('включение группы лендов (совпадает с дефолтом) не ставит override — авто-оживление продолжает работать', () => {
     clearMonitoringState();
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
     const url = 'https://lp.example.ru/group-noop';
-    setLandingUrl(f1, url);
+    setLanding(f1, url);
     syncMonitorTargets(db);
     expect(targetRow(url)?.enabled).toBe(1);
     expect(targetRow(url)?.manual_override).toBe(0);
@@ -418,11 +426,11 @@ describe('manual_override: фиксируется только на отклон
     expect(targetRow(url)?.manual_override).toBe(0);
 
     // URL пропал и вернулся — авто-оживление должно сработать, override не мешает.
-    setLandingUrl(f1, '');
+    setLanding(f1, '');
     syncMonitorTargets(db);
     expect(targetRow(url)?.enabled).toBe(0);
 
-    setLandingUrl(f1, url);
+    setLanding(f1, url);
     syncMonitorTargets(db);
     expect(targetRow(url)?.enabled).toBe(1);
     expect(targetRow(url)?.manual_override).toBe(0);
@@ -433,7 +441,7 @@ describe('manual_override: фиксируется только на отклон
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
     const url = 'https://lp.example.ru/disable-then-survive';
-    setLandingUrl(f1, url);
+    setLanding(f1, url);
     syncMonitorTargets(db);
     const target = targetRow(url)!;
 
@@ -451,7 +459,7 @@ describe('manual_override: фиксируется только на отклон
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
     const url = 'https://lp.example.ru/re-enable-clears-override';
-    setLandingUrl(f1, url);
+    setLanding(f1, url);
     syncMonitorTargets(db);
     const target = targetRow(url)!;
 
@@ -488,7 +496,7 @@ describe('manual_override: фиксируется только на отклон
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
     const url = 'https://lp.example.ru/group-off';
-    sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`).run(url, f1);
+    setLanding(f1, url);
     syncMonitorTargets(db);
     expect(targetRow(url)?.enabled).toBe(1);
 
@@ -542,13 +550,12 @@ describe('в мониторинг попадают только активные
     expect(targetRow('https://lp.example.ru/archived')).toBeUndefined();
   });
 
-  it('не берёт landing_url неактивной воронки', () => {
+  it('не берёт лендинг неактивной воронки', () => {
     clearMonitoringState();
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
     setStatus(f1, 'archive');
-    sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`)
-      .run('https://lp.example.ru/archived-field', f1);
+    setLanding(f1, 'https://lp.example.ru/archived-field');
 
     syncMonitorTargets(db);
 
@@ -726,11 +733,10 @@ describe('счётчик retired', () => {
     clearMonitoringState();
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
-    sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`)
-      .run('https://retired-once.example.ru/x', f1);
+    setLanding(f1, 'https://retired-once.example.ru/x');
     syncMonitorTargets(db);
 
-    sqlite.prepare(`UPDATE funnels SET landing_url = '' WHERE id = ?`).run(f1);
+    setLanding(f1);
     expect(syncMonitorTargets(db).retired, 'первый синк действительно списывает').toBe(1);
 
     // Цель уже погашена — второй синк не списывает её заново.
@@ -741,10 +747,9 @@ describe('счётчик retired', () => {
     clearMonitoringState();
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
-    sqlite.prepare(`UPDATE funnels SET landing_url = ? WHERE id = ?`)
-      .run('https://stale-stamp.example.ru/x', f1);
+    setLanding(f1, 'https://stale-stamp.example.ru/x');
     syncMonitorTargets(db);
-    sqlite.prepare(`UPDATE funnels SET landing_url = '' WHERE id = ?`).run(f1);
+    setLanding(f1);
     syncMonitorTargets(db);
 
     const id = targetRow('https://stale-stamp.example.ru/x')!.id;

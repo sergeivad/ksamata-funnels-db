@@ -14,7 +14,6 @@ const validFunnel = {
   status: 'active' as const,
   productName: 'Суставы',
   variant: '',
-  landingUrl: 'https://example.com',
   startDate: '2026-05-05',
   blockName: '',
   product: 'ТКМ',
@@ -105,51 +104,6 @@ describe('funnelCreateSchema', () => {
     expect(
       funnelCreateSchema.safeParse({ ...validFunnel, startDate: '2026-13-99' }).success
     ).toBe(false);
-  });
-
-  test('landingUrl="" passes', () => {
-    expect(
-      funnelCreateSchema.safeParse({ ...validFunnel, landingUrl: '' }).success
-    ).toBe(true);
-  });
-
-  test('landingUrl="not a url" is rejected', () => {
-    expect(
-      funnelCreateSchema.safeParse({ ...validFunnel, landingUrl: 'not a url' }).success
-    ).toBe(false);
-  });
-
-  test('landingUrl="https://example.com" passes', () => {
-    expect(
-      funnelCreateSchema.safeParse({ ...validFunnel, landingUrl: 'https://example.com' }).success
-    ).toBe(true);
-  });
-
-  test('landingUrl с не-http схемой отвергается', () => {
-    // new URL() принимает javascript:, data:, file: — для поля посадочной
-    // страницы это не адрес, а способ подсунуть ссылку, по которой кто-то кликнет.
-    for (const bad of ['javascript:alert(1)', 'data:text/html,<b>x', 'file:///etc/passwd']) {
-      expect(
-        funnelCreateSchema.safeParse({ ...validFunnel, landingUrl: bad }).success,
-        bad
-      ).toBe(false);
-    }
-  });
-
-  test('landingUrl длиннее 4096 символов отвергается', () => {
-    const long = 'https://ksamata.ru/?q=' + 'a'.repeat(4096);
-    expect(
-      funnelCreateSchema.safeParse({ ...validFunnel, landingUrl: long }).success
-    ).toBe(false);
-  });
-
-  test('длинная, но настоящая ссылка на сегмент GetCourse проходит', () => {
-    // В живой базе есть ссылка в 2019 символов — лимит не должен её отвергать.
-    const real = 'https://gc.ksamata.ru/pl/user/user/index?uc%5Brule_string%5D=' + 'x'.repeat(1950);
-    expect(real.length).toBeGreaterThan(2000);
-    expect(
-      funnelCreateSchema.safeParse({ ...validFunnel, landingUrl: real }).success
-    ).toBe(true);
   });
 
   test('num=0 is rejected', () => {

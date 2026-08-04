@@ -49,7 +49,12 @@ export const funnels = sqliteTable(
     contractorId:     integer('contractor_id').notNull().references(() => contractors.id),
     variant:          text('variant').notNull().default(''),
     productName:      text('product_name').notNull().default(''),
-    landingUrl:       text('landing_url').default(''),
+    // landing_url в схеме больше нет: после Phase-10 адрес посадочной живёт
+    // только в блоке «Лендинги» (funnel_blocks/kind='landings'). Колонка в
+    // SQLite осталась и стоит пустой — её пишут ещё Python-скрипты импорта,
+    // и Phase-10 при каждом старте переносит попавшее туда в блок. Читать её
+    // из приложения нельзя: это ровно то второе место, ради устранения
+    // которого всё и делалось.
     startDate:        text('start_date').default(''),
     blockName:        text('block_name').default(''),
     sheetName:        text('sheet_name').default(''),

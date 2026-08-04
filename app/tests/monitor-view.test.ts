@@ -46,8 +46,9 @@ function linkToFunnel(targetId: number, funnelId: number) {
 }
 
 /**
- * Делает воронку неактивной и вешает на неё URL через landing_url — так проще,
- * чем через блок: у воронок фикстуры блок `landings` уже занят.
+ * Делает воронку неактивной и вешает на неё URL — через блок «Лендинги»,
+ * единственное место, где живёт адрес посадочной. Блок воронки, если он уже
+ * есть в фикстуре, переиспользуется: (funnel_id, kind) уникальна.
  */
 function holdUrlByFunnel(
   status: 'draft' | 'archive',
@@ -56,7 +57,19 @@ function holdUrlByFunnel(
   const f = sqlite
     .prepare(`SELECT id, num, front_code AS frontCode FROM funnels ORDER BY id DESC LIMIT 1 OFFSET ?`)
     .get(status === 'draft' ? 0 : 1) as { id: number; num: number; frontCode: string };
-  sqlite.prepare(`UPDATE funnels SET status = ?, landing_url = ? WHERE id = ?`).run(status, url, f.id);
+  sqlite.prepare(`UPDATE funnels SET status = ? WHERE id = ?`).run(status, f.id);
+  const existing = sqlite
+    .prepare(`SELECT id FROM funnel_blocks WHERE funnel_id = ? AND kind = 'landings'`)
+    .get(f.id) as { id: number } | undefined;
+  const blockId =
+    existing?.id ??
+    (sqlite
+      .prepare(`INSERT INTO funnel_blocks (funnel_id, kind, enabled, mode) VALUES (?, 'landings', 1, 'common')`)
+      .run(f.id).lastInsertRowid as number);
+  sqlite.prepare(`DELETE FROM funnel_block_items WHERE block_id = ?`).run(blockId);
+  sqlite
+    .prepare(`INSERT INTO funnel_block_items (block_id, slot, label, url, position) VALUES (?, NULL, '', ?, 0)`)
+    .run(blockId, url);
   return f;
 }
 

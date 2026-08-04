@@ -148,12 +148,12 @@ describe('PATCH /api/monitoring/targets', () => {
     expect(rows).toEqual([]);
   });
 
-  it('отвергает старую группу лендинга воронки — она слита с «Лендингами»', async () => {
+  it('отвергает старую группу лендинга воронки — теперь есть только «Лендинги»', async () => {
     const res = await PATCH_BULK(jsonReq('PATCH', { sourceKind: 'funnel_landing_url', enabled: true }));
     expect(res.status).toBe(400);
   });
 
-  it('принимает группу лендингов — в ней и блок, и поле landing_url', async () => {
+  it('принимает группу лендингов', async () => {
     const res = await PATCH_BULK(jsonReq('PATCH', { sourceKind: 'landings', enabled: true }));
     expect(res.status).toBe(200);
   });

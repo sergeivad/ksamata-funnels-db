@@ -91,8 +91,7 @@ function rawReq(method: string, raw: string) {
 const params = (id: string | number) => ({ params: Promise.resolve({ id: String(id) }) });
 
 const VALID_CREATE = {
-  num: 9700, frontCode: '', status: 'active', productName: 'Route Test', variant: 'А',
-  landingUrl: '', startDate: '', product: 'ТКМ', contractor: 'НИМБ', channel: 'Яндекс', direction: 'РСЯ',
+  num: 9700, frontCode: '', status: 'active', productName: 'Route Test', variant: 'А', startDate: '', product: 'ТКМ', contractor: 'НИМБ', channel: 'Яндекс', direction: 'РСЯ',
 };
 
 describe('POST /api/funnels', () => {
