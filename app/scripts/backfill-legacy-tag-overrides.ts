@@ -5,7 +5,13 @@
  * marker-gated. Run AFTER runMigratePhase5 (needs the seeded template).
  *
  *   cd app/
- *   FUNNELS_DB_PATH=../ksamata_funnels.db npx tsx scripts/backfill-legacy-tag-overrides.ts
+ *   npx tsx scripts/backfill-legacy-tag-overrides-runner.ts
+ *
+ * Запускается только через свой раннер — он единственная точка входа и в
+ * Docker, и вручную. Своего CLI-блока у файла нет сознательно: esbuild
+ * бандлит раннер вместе с этим файлом, и внутри бандла
+ * `require.main === module` истинно, так что блок сработал бы на импорте
+ * и миграция выполнялась бы дважды за старт контейнера.
  */
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { eq } from 'drizzle-orm';
@@ -51,17 +57,4 @@ export function backfillLegacyTagOverrides(sqlite: import('better-sqlite3').Data
     sqlite.prepare(`INSERT INTO schema_migrations (name) VALUES ('phase5_legacy_overrides_backfill')`).run();
   });
   tx();
-}
-
-if (require.main === module) {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const Database = require('better-sqlite3');
-  // Путь резолвится от расположения скрипта, а не от cwd (см. cli-db-path.ts).
-  const { resolveCliDbPath } = require('./cli-db-path') as typeof import('./cli-db-path');
-  const dbPath = resolveCliDbPath();
-  const sqlite = new Database(dbPath);
-  console.log(`Legacy tag-override backfill on: ${dbPath}`);
-  backfillLegacyTagOverrides(sqlite);
-  sqlite.close();
-  console.log('Legacy tag-override backfill done.');
 }

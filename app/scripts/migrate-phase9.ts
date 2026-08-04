@@ -3,7 +3,13 @@
  * Идемпотентно.
  *
  *   cd app/
- *   FUNNELS_DB_PATH=../ksamata_funnels.db npx tsx scripts/migrate-phase9.ts
+ *   npx tsx scripts/migrate-phase9-runner.ts
+ *
+ * Запускается только через свой раннер — он единственная точка входа и в
+ * Docker, и вручную. Своего CLI-блока у файла нет сознательно: esbuild
+ * бандлит раннер вместе с этим файлом, и внутри бандла
+ * `require.main === module` истинно, так что блок сработал бы на импорте
+ * и миграция выполнялась бы дважды за старт контейнера.
  *
  * До Phase-9 адрес лендинга давал два вида источника: `landings` (блок
  * «Лендинги» в карточке) и `funnel_landing_url` (поле landing_url в шапке).
@@ -89,20 +95,4 @@ export function runMigratePhase9(sqlite: import('better-sqlite3').Database): Pha
     .get(LANDING_SOURCE_KIND) as { enabled: number } | undefined;
 
   return { retargeted, landingPref: pref ? pref.enabled : null };
-}
-
-if (require.main === module) {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const Database = require('better-sqlite3');
-  // Путь резолвится от расположения скрипта, а не от cwd (см. cli-db-path.ts).
-  const { resolveCliDbPath } = require('./cli-db-path') as typeof import('./cli-db-path');
-  const dbPath = resolveCliDbPath();
-  const sqlite = new Database(dbPath);
-  console.log(`Phase-9 schema migration on: ${dbPath}`);
-  const result = runMigratePhase9(sqlite);
-  sqlite.close();
-  console.log(
-    `Phase-9 migration done (целей переведено в «Лендинги»: ${result.retargeted}; ` +
-      `решение по группе: ${result.landingPref === null ? 'по умолчанию' : result.landingPref}).`
-  );
 }

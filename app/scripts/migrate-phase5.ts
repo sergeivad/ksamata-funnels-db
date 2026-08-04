@@ -3,7 +3,13 @@
  * Idempotent. Run AFTER Phase-3.
  *
  *   cd app/
- *   FUNNELS_DB_PATH=../ksamata_funnels.db npx tsx scripts/migrate-phase5.ts
+ *   npx tsx scripts/migrate-phase5-runner.ts
+ *
+ * Запускается только через свой раннер — он единственная точка входа и в
+ * Docker, и вручную. Своего CLI-блока у файла нет сознательно: esbuild
+ * бандлит раннер вместе с этим файлом, и внутри бандла
+ * `require.main === module` истинно, так что блок сработал бы на импорте
+ * и миграция выполнялась бы дважды за старт контейнера.
  */
 import { PHASE5_DDL, seedTagTemplates } from './migrate-phase5-data';
 
@@ -11,17 +17,4 @@ export function runMigratePhase5(sqlite: import('better-sqlite3').Database): voi
   sqlite.pragma('foreign_keys = ON');
   sqlite.exec(PHASE5_DDL);
   seedTagTemplates(sqlite);
-}
-
-if (require.main === module) {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const Database = require('better-sqlite3');
-  // Путь резолвится от расположения скрипта, а не от cwd (см. cli-db-path.ts).
-  const { resolveCliDbPath } = require('./cli-db-path') as typeof import('./cli-db-path');
-  const dbPath = resolveCliDbPath();
-  const sqlite = new Database(dbPath);
-  console.log(`Phase-5 schema migration on: ${dbPath}`);
-  runMigratePhase5(sqlite);
-  sqlite.close();
-  console.log('Phase-5 schema migration done.');
 }

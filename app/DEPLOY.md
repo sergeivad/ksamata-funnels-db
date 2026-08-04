@@ -82,12 +82,12 @@ After the seed check, the entrypoint runs the idempotent migration chain on
 
 All steps are marker-gated or `IF NOT EXISTS`, so re-running them is safe.
 
-Each step logs twice — once from the migration script's own CLI block and once
-from its Docker runner. That is how esbuild bundles them (`require.main === module`
-stays true inside the bundle), so the migration body runs twice per start. It is
-harmless precisely because every phase is idempotent, and it has been that way
-since Phase 3 — but it is the reason a non-idempotent migration would corrupt
-data here rather than merely being slow.
+Each step runs exactly once per start, and its runner is the only entry point.
+That is not automatic: esbuild bundles the runner together with the phase file,
+`require.main === module` is true inside the bundle, so a CLI block in any
+bundled file would fire on import and run the phase a second time — as happened
+from Phase 3 until 2026-08-04. Phase files therefore export a function and
+nothing else; `app/tests/migration-runners.test.ts` guards it.
 
 > This seed + migration flow runs only for the **production** image
 > (`app/Dockerfile` → `docker-entrypoint.sh`). The root `docker-compose.yml` dev

@@ -2,7 +2,13 @@
  * Phase-6: таблицы мониторинга доступности лендов. Идемпотентно.
  *
  *   cd app/
- *   FUNNELS_DB_PATH=../ksamata_funnels.db npx tsx scripts/migrate-phase6.ts
+ *   npx tsx scripts/migrate-phase6-runner.ts
+ *
+ * Запускается только через свой раннер — он единственная точка входа и в
+ * Docker, и вручную. Своего CLI-блока у файла нет сознательно: esbuild
+ * бандлит раннер вместе с этим файлом, и внутри бандла
+ * `require.main === module` истинно, так что блок сработал бы на импорте
+ * и миграция выполнялась бы дважды за старт контейнера.
  */
 import { PHASE6_DDL, PHASE6_TARGET_COLUMNS } from './migrate-phase6-data';
 import { addColumnIfMissing } from './migrate-phase3-data';
@@ -14,17 +20,4 @@ export function runMigratePhase6(sqlite: import('better-sqlite3').Database): voi
   for (const col of PHASE6_TARGET_COLUMNS) {
     addColumnIfMissing(sqlite, 'monitor_targets', col.name, col.ddl);
   }
-}
-
-if (require.main === module) {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const Database = require('better-sqlite3');
-  // Путь резолвится от расположения скрипта, а не от cwd (см. cli-db-path.ts).
-  const { resolveCliDbPath } = require('./cli-db-path') as typeof import('./cli-db-path');
-  const dbPath = resolveCliDbPath();
-  const sqlite = new Database(dbPath);
-  console.log(`Phase-6 schema migration on: ${dbPath}`);
-  runMigratePhase6(sqlite);
-  sqlite.close();
-  console.log('Phase-6 schema migration done.');
 }

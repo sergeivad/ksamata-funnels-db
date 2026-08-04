@@ -7,13 +7,13 @@
  */
 
 import Database from 'better-sqlite3';
+import { resolveCliDbPath } from './cli-db-path';
 import { runMigratePhase5 } from './migrate-phase5';
 
-const dbPath = process.env.FUNNELS_DB_PATH;
-if (!dbPath) {
-  console.error('[migrate-phase5] FUNNELS_DB_PATH is not set — skipping.');
-  process.exit(0);
-}
+// Путь: FUNNELS_DB_PATH, иначе дефолт от расположения скрипта (см. cli-db-path.ts).
+// Несуществующая база — отказ, а не тихий пропуск: стартовать на
+// непромигрированной базе хуже, чем не стартовать вовсе.
+const dbPath = resolveCliDbPath();
 
 console.log(`[migrate-phase5] Running Phase-5 migration on: ${dbPath}`);
 const sqlite = new Database(dbPath);

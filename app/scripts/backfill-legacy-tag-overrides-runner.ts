@@ -8,13 +8,13 @@
  */
 
 import Database from 'better-sqlite3';
+import { resolveCliDbPath } from './cli-db-path';
 import { backfillLegacyTagOverrides } from './backfill-legacy-tag-overrides';
 
-const dbPath = process.env.FUNNELS_DB_PATH;
-if (!dbPath) {
-  console.error('[backfill-legacy-tag-overrides] FUNNELS_DB_PATH is not set — skipping.');
-  process.exit(0);
-}
+// Путь: FUNNELS_DB_PATH, иначе дефолт от расположения скрипта (см. cli-db-path.ts).
+// Несуществующая база — отказ, а не тихий пропуск: стартовать на
+// непромигрированной базе хуже, чем не стартовать вовсе.
+const dbPath = resolveCliDbPath();
 
 console.log(`[backfill-legacy-tag-overrides] Running backfill on: ${dbPath}`);
 const sqlite = new Database(dbPath);

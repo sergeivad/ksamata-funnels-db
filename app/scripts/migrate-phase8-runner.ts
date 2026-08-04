@@ -4,13 +4,13 @@
  * Вызывается из docker-entrypoint.sh как: node /app/migrate-phase8.cjs
  */
 import Database from 'better-sqlite3';
+import { resolveCliDbPath } from './cli-db-path';
 import { runMigratePhase8 } from './migrate-phase8';
 
-const dbPath = process.env.FUNNELS_DB_PATH;
-if (!dbPath) {
-  console.error('[migrate-phase8] FUNNELS_DB_PATH is not set — skipping.');
-  process.exit(0);
-}
+// Путь: FUNNELS_DB_PATH, иначе дефолт от расположения скрипта (см. cli-db-path.ts).
+// Несуществующая база — отказ, а не тихий пропуск: стартовать на
+// непромигрированной базе хуже, чем не стартовать вовсе.
+const dbPath = resolveCliDbPath();
 
 console.log(`[migrate-phase8] Running Phase-8 migration on: ${dbPath}`);
 const sqlite = new Database(dbPath);

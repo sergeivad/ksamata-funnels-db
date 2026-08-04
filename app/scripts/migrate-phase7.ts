@@ -2,7 +2,13 @@
  * Phase-7: F-код воронки становится уникальным. Идемпотентно.
  *
  *   cd app/
- *   FUNNELS_DB_PATH=../ksamata_funnels.db npx tsx scripts/migrate-phase7.ts
+ *   npx tsx scripts/migrate-phase7-runner.ts
+ *
+ * Запускается только через свой раннер — он единственная точка входа и в
+ * Docker, и вручную. Своего CLI-блока у файла нет сознательно: esbuild
+ * бандлит раннер вместе с этим файлом, и внутри бандла
+ * `require.main === module` истинно, так что блок сработал бы на импорте
+ * и миграция выполнялась бы дважды за старт контейнера.
  *
  * До Phase-7 у `front_code` не было ни уникального индекса, ни проверки в API,
  * а черновик получал код как `f${num}` — из чужой последовательности. При
@@ -53,20 +59,4 @@ export function runMigratePhase7(sqlite: import('better-sqlite3').Database): Pha
   sqlite.exec(PHASE7_DDL);
 
   return { normalized, clearedDuplicates: dupes };
-}
-
-if (require.main === module) {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const Database = require('better-sqlite3');
-  // Путь резолвится от расположения скрипта, а не от cwd (см. cli-db-path.ts).
-  const { resolveCliDbPath } = require('./cli-db-path') as typeof import('./cli-db-path');
-  const dbPath = resolveCliDbPath();
-  const sqlite = new Database(dbPath);
-  console.log(`Phase-7 schema migration on: ${dbPath}`);
-  const result = runMigratePhase7(sqlite);
-  sqlite.close();
-  for (const d of result.clearedDuplicates) {
-    console.warn(`  ! воронка #${d.id}: код ${d.code} был дубликатом, обнулён — проставьте настоящий код ЛИК`);
-  }
-  console.log(`Phase-7 schema migration done (нормализовано кодов: ${result.normalized}).`);
 }

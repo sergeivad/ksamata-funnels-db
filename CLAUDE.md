@@ -468,18 +468,26 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
 **Docker runs, in order** (`app/docker-entrypoint.sh`): Phase 2 → 3 (+data) →
 4 → 5 → legacy-tag-override backfill → 6 → 7 → 8 → 9.
 
-**Every phase runs twice per container start.** esbuild bundles the runner and
-the migration into one file, `require.main === module` stays true there, so the
-script's own CLI block fires on import and the runner then calls the same
-function again. The prod log shows both (`Phase-9 schema migration on: …`
-followed by `[migrate-phase9] Running …`). It has been this way since Phase 3
-and is harmless **only** because every phase is idempotent — which makes
-idempotence a hard requirement here, not a nicety: a phase that appends,
-increments, or allocates would do it twice on every start.
+**A migration script must never run itself.** esbuild bundles the runner and the
+migration into one file, and inside that bundle `require.main === module` is
+true — so a CLI block in *any* bundled file fires on import and the phase body
+executes twice per container start (once from the stray block, once from the
+runner). That was the case from Phase 3 until 2026-08-04 and went unnoticed only
+because every phase is idempotent. The runner is now the single entry point, in
+Docker and by hand alike; the phase files carry no CLI block, and
+[app/tests/migration-runners.test.ts](app/tests/migration-runners.test.ts) walks
+each runner's imports and fails if one reappears. Idempotence is still required
+of every phase — it is what makes a retried start safe — but it is no longer
+what keeps a normal start correct.
 
-**Running a migration by hand** resolves its DB through `scripts/cli-db-path.ts`:
-the default is the repo-root DB **relative to the script**, not to `cwd`, and a
-path that does not exist is a hard error. Before this, running from the repo
+**Running a migration by hand** means running its **runner**
+(`npx tsx scripts/migrate-phase9-runner.ts` from `app/`), not the phase file —
+the phase file only exports the function. The runner resolves its DB through
+`scripts/cli-db-path.ts`: the default is the repo-root DB **relative to the
+script**, not to `cwd`, and a path that does not exist is a hard error. A
+missing `FUNNELS_DB_PATH` used to make the runner print a notice and exit 0;
+now it falls back to that default, because a migration that silently skips
+leaves the app serving a database it was never migrated for. Before this, running from the repo
 root instead of `app/` pointed at nothing, better-sqlite3 created an empty file
 next to the repo, and phases 5/6 reported success without touching the real
 database — their DDL is all `CREATE TABLE IF NOT EXISTS`, and SQLite only checks

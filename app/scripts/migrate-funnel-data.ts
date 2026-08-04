@@ -10,7 +10,13 @@
  * into UI-created funnels and resurrect blocks a user deleted through the admin.
  *
  * Run AFTER runMigratePhase3 (needs the new tables/columns).
- *   FUNNELS_DB_PATH=../ksamata_funnels.db npx tsx scripts/migrate-funnel-data.ts
+ *   npx tsx scripts/migrate-phase3-runner.ts
+ *
+ * Запускается только через свой раннер — он единственная точка входа и в
+ * Docker, и вручную. Своего CLI-блока у файла нет сознательно: esbuild
+ * бандлит раннер вместе с этим файлом, и внутри бандла
+ * `require.main === module` истинно, так что блок сработал бы на импорте
+ * и миграция выполнялась бы дважды за старт контейнера.
  */
 
 type DB = import('better-sqlite3').Database;
@@ -129,17 +135,4 @@ export function migrateFunnelData(sqlite: DB): void {
     sqlite.prepare(`INSERT INTO schema_migrations (name) VALUES (?)`).run(FUNNEL_DATA_MIGRATION);
   });
   run();
-}
-
-if (require.main === module) {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const Database = require('better-sqlite3');
-  // Путь резолвится от расположения скрипта, а не от cwd (см. cli-db-path.ts).
-  const { resolveCliDbPath } = require('./cli-db-path') as typeof import('./cli-db-path');
-  const dbPath = resolveCliDbPath();
-  const sqlite = new Database(dbPath);
-  console.log(`Phase-3 data migration on: ${dbPath}`);
-  migrateFunnelData(sqlite);
-  sqlite.close();
-  console.log('Phase-3 data migration done.');
 }

@@ -2,7 +2,13 @@
  * Phase-8: справочник типов воронки + FK у funnels. Идемпотентно.
  *
  *   cd app/
- *   FUNNELS_DB_PATH=../ksamata_funnels.db npx tsx scripts/migrate-phase8.ts
+ *   npx tsx scripts/migrate-phase8-runner.ts
+ *
+ * Запускается только через свой раннер — он единственная точка входа и в
+ * Docker, и вручную. Своего CLI-блока у файла нет сознательно: esbuild
+ * бандлит раннер вместе с этим файлом, и внутри бандла
+ * `require.main === module` истинно, так что блок сработал бы на импорте
+ * и миграция выполнялась бы дважды за старт контейнера.
  *
  * Бэкфилл ставит всем воронкам «АВ Автоворонка» — это не решение о типе,
  * а сохранение того, что база утверждает и без пятой оси: маркер стоит
@@ -28,16 +34,4 @@ export function runMigratePhase8(sqlite: import('better-sqlite3').Database): voi
        SET funnel_type_id = (SELECT id FROM funnel_types WHERE name = ?)
      WHERE funnel_type_id IS NULL
   `).run(DEFAULT_FUNNEL_TYPE);
-}
-
-if (require.main === module) {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const Database = require('better-sqlite3');
-  const { resolveCliDbPath } = require('./cli-db-path') as typeof import('./cli-db-path');
-  const dbPath = resolveCliDbPath();
-  const sqlite = new Database(dbPath);
-  console.log(`Phase-8 schema migration on: ${dbPath}`);
-  runMigratePhase8(sqlite);
-  sqlite.close();
-  console.log('Phase-8 schema migration done.');
 }
