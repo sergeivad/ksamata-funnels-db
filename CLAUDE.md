@@ -184,8 +184,10 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   `f44`, `f49`) are numbers LeakEngine can hand out at any moment. It is also
   not derived from `num`: `createDraftFunnel` used to write `f${num}`, and with
   `max(num)=75` against `max(F)=79` the next two drafts would have taken `f76`
-  and the **already-occupied** `f77`. A suggested code is editable — the real
-  one comes from LeakEngine (see [docs/leak-engine.md](docs/leak-engine.md)).
+  and the **already-occupied** `f77`. Since 2026-08-04 this base **allocates**
+  the code rather than borrowing it — the owner then carries it into LeakEngine
+  (see [docs/leak-engine.md](docs/leak-engine.md)). The suggestion stays
+  editable: LeakEngine may already hold a higher number.
 - `funnel-sort.ts` — list order by F (`compareByFrontCodeDesc`) plus
   `compareByFrontCodeAsc` for the monitoring chip rows. Codeless funnels go
   **last in both**: that is a property of having no code, not of the direction,
@@ -628,13 +630,18 @@ location), so they run from any working directory.
   never committed. `--no-api` skips GetCourse (classes 9-12 and 14 stay
   empty). Tests: `python3 -m pytest tools/audit/tests`.
 
-## LeakEngine — эталон F-кодов, и он теперь пишется
+## LeakEngine — приёмник F-кодов, и он пишется
 
 Полное описание — [docs/leak-engine.md](docs/leak-engine.md). Что важно знать
 до того, как туда пойти:
 
-- ЛИК — **источник истины по `front_code`**, и только по нему. Оси, комнаты и
-  статусы в спорных случаях решает база (прямое указание владельца).
+- **F-код назначает база, ЛИК его принимает** (решение владельца 2026-08-04).
+  Новая воронка заводится сначала здесь и сразу получает `max(F) + 1`; владелец
+  переносит её в ЛИК под тем же кодом. Пустой код при заведении — больше не
+  норма. Максимум считается по обеим сторонам: если в ЛИК номер выше нашего,
+  берём выше него. Оси, комнаты и статусы в спорных случаях тоже решает база.
+- **Воронки в ЛИК не выключаем — никогда.** Расхождение «у нас `archive`, в ЛИК
+  `ACTIVE`» расхождением не считается.
 - Реестр читается **одним GET** `/app-api/api/admin/funnels` из вкладки уже
   залогиненного браузера (Chrome MCP), по сессионной куке — токена нет, `curl`
   не годится. Копию снимка на диск не кладём: она устаревает быстрее, чем
