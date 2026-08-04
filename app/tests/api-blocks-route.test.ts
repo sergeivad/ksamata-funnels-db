@@ -114,6 +114,41 @@ describe('blocks route', () => {
 
   // Пометки без ссылки («сайты», «геткурс») живут в блоках годами и мониторингу
   // не мешают: запрет на них сломал бы сохранение таких воронок.
+  it('принимает настоящую сегментную ссылку GetCourse в 2019 символов', async () => {
+    // Не гипотетический предел: такие ссылки лежат в блоке «Ссылки» живой базы.
+    // Пока лимит был 2000 на любое поле, свой же блок нельзя было сохранить —
+    // PUT отвечал 400, и правка любой другой строки блока упиралась в неё.
+    const long = 'https://gc.ksamata.ru/pl/user/user/index?uc%5Brule_string%5D=' + 'x'.repeat(1958);
+    expect(long.length).toBe(2019);
+    const params = Promise.resolve({ id: String(funnelId), kind: 'links' });
+    const res = await PUT(
+      req({ enabled: true, mode: 'common', items: [{ slot: null, label: 'сегмент', url: long }] }),
+      { params }
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it('отвергает ссылку длиннее 4096 символов', async () => {
+    const tooLong = 'https://gc.ksamata.ru/?q=' + 'x'.repeat(4090);
+    const params = Promise.resolve({ id: String(funnelId), kind: 'links' });
+    const res = await PUT(
+      req({ enabled: true, mode: 'common', items: [{ slot: null, label: '', url: tooLong }] }),
+      { params }
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('подпись остаётся короткой: 2001 символ отвергается', async () => {
+    // Лимит подняли ссылке, а не подписи: подпись — это несколько слов рядом
+    // со ссылкой, и мегабайт текста в ней означал бы ошибку ввода.
+    const params = Promise.resolve({ id: String(funnelId), kind: 'links' });
+    const res = await PUT(
+      req({ enabled: true, mode: 'common', items: [{ slot: null, label: 'x'.repeat(2001), url: 'https://a.ru' }] }),
+      { params }
+    );
+    expect(res.status).toBe(400);
+  });
+
   it('still accepts a plain-text note in the url field', async () => {
     const params = Promise.resolve({ id: String(funnelId), kind: 'processes' });
     const res = await PUT(

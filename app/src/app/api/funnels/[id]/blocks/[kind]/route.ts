@@ -11,7 +11,15 @@ import { requireEditor } from '@/lib/auth-server';
 // Upper bound on items per block — guards against insert-amplification from a
 // pathological payload. A real block has at most a handful of links.
 const MAX_ITEMS = 100;
-const MAX_STR = 2000;
+// Подпись — несколько слов рядом со ссылкой; мегабайт текста в ней означал бы
+// ошибку ввода.
+const MAX_LABEL = 2000;
+// У ссылки предел свой и заметно больше: в блоке «Ссылки» живой базы лежат
+// сегментные ссылки GetCourse длиной 2007–2019 символов. Пока на оба поля
+// стоял общий предел 2000, такой блок нельзя было сохранить вообще — PUT
+// отвечал 400 на строку, которая уже была в базе, и правка любой другой
+// строки того же блока упиралась в неё.
+const MAX_URL = 4096;
 
 type Params = { params: Promise<{ id: string; kind: string }> };
 
@@ -58,8 +66,11 @@ export async function PUT(req: NextRequest, { params }: Params) {
     if (typeof it?.label !== 'string' || typeof it?.url !== 'string') {
       return NextResponse.json({ error: `items[${i}] needs string label and url` }, { status: 400 });
     }
-    if (it.label.length > MAX_STR || it.url.length > MAX_STR) {
-      return NextResponse.json({ error: `items[${i}] label/url too long (max ${MAX_STR})` }, { status: 400 });
+    if (it.label.length > MAX_LABEL) {
+      return NextResponse.json({ error: `items[${i}] label too long (max ${MAX_LABEL})` }, { status: 400 });
+    }
+    if (it.url.length > MAX_URL) {
+      return NextResponse.json({ error: `items[${i}] url too long (max ${MAX_URL})` }, { status: 400 });
     }
     // Ссылка со слипшейся подписью (`…/a (ADS)`) не отбрасывается нормализацией,
     // а кодируется в %20 и заводит в мониторинге отдельную вечно падающую цель.
