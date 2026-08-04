@@ -66,6 +66,27 @@ def test_waiting_for_отделяет_ждущие_от_решённых(rules_f
     assert [r.waiting_for for r in waiting] == ['besales']
 
 
+def test_null_в_правиле_означает_ось_не_размечена(tmp_path):
+    """Продления подписки размечены только продуктом. Правило «продукт:
+    [ЖИВО]» без null погасило бы заодно все настоящие ЖИВО-воронки."""
+    path = tmp_path / 'd.yaml'
+    path.write_text(
+        '- id: renewals\n'
+        '  match:\n'
+        '    продукт: [ЖИВО]\n'
+        '    подрядчик: [null]\n'
+        '    тип: [null]\n'
+        '  verdict: не воронка\n'
+        '  why: продления подписки\n'
+        '  since: 2026-08-04\n', encoding='utf-8')
+    rules = decisions.load(str(path))
+    assert decisions.covering(('ЖИВО', None, None, None, None), rules).id == \
+        'renewals'
+    # настоящая ЖИВО-воронка гаснуть не должна
+    assert decisions.covering(
+        ('ЖИВО', 'НИМБ', 'Яндекс', 'РСЯ', 'АВ Автоворонка'), rules) is None
+
+
 def test_load_на_отсутствующем_файле_даёт_пустой_список(tmp_path):
     assert decisions.load(str(tmp_path / 'нет.yaml')) == []
 

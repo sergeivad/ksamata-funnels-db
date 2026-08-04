@@ -46,7 +46,8 @@ def render(report, meta):
         '',
         '## Этап 1. Кандидаты в archive',
         '',
-        f'Воронка `active`, но заказов нет дольше порога живости.',
+        'Воронка `active`, но заказов нет дольше порога живости. '
+        'Только что заведённые сюда не попадают — им нечего было накопить.',
         '',
         _table(['Воронка', 'Последний заказ', 'Связка'],
                [(item.funnel.label, item.last_created[:10] or 'никогда',
@@ -79,6 +80,16 @@ def render(report, meta):
                  '; '.join(f'{axis}: {was or "—"} → {became or "—"}'
                            for axis, was, became in item.near.diff))
                 for item in report.mislabelled]),
+        '',
+        '### Связки, которые нечем опознать',
+        '',
+        'Осей так мало, что сказать, какой воронке принадлежит заказ, '
+        'нельзя. Это тоже разметка, а не пропавшие воронки.',
+        '',
+        _table(['Заказов', 'Оплат', 'Последний', 'Что размечено'],
+               [(_thousands(item.stat.orders), item.stat.paid,
+                 item.stat.last_created[:10], combo.label(item.key))
+                for item in report.incomplete]),
         '',
         f'## Ждёт ответа ({len(report.waiting)})',
         '',

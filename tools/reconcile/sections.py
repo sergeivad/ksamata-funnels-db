@@ -14,6 +14,7 @@
 import datetime
 from dataclasses import dataclass, field
 
+import combo
 import decisions as decisions_module
 import matching
 import settings
@@ -22,6 +23,12 @@ import sheet_source
 
 @dataclass
 class MissingCombo:
+    key: tuple
+    stat: object
+
+
+@dataclass
+class IncompleteCombo:
     key: tuple
     stat: object
 
@@ -60,6 +67,7 @@ class Settled:
 @dataclass
 class Report:
     missing: list = field(default_factory=list)
+    incomplete: list = field(default_factory=list)
     mislabelled: list = field(default_factory=list)
     dead: list = field(default_factory=list)
     sheet_only: list = field(default_factory=list)
@@ -75,6 +83,22 @@ def _is_live(last_created, today):
         return False
     stamp = datetime.date.fromisoformat(last_created[:10])
     return (today - stamp).days <= settings.LIVE_SINCE_DAYS
+
+
+def _too_young(start_date, today):
+    """Воронка ещё не прожила окно живости — судить её рано.
+
+    Пустая дата старта молодостью не считается: у большинства старых воронок
+    её просто не заполнили, и такое допущение вывело бы их всех из-под
+    проверки.
+    """
+    if not start_date:
+        return False
+    try:
+        stamp = datetime.date.fromisoformat(start_date[:10])
+    except ValueError:
+        return False
+    return (today - stamp).days < settings.LIVE_SINCE_DAYS
 
 
 def build(combos, blind, funnels, sheet_rows, rules, today):
@@ -95,14 +119,28 @@ def build(combos, blind, funnels, sheet_rows, rules, today):
             continue
 
         near = matching.nearest(key, funnels)
-        if near is None:
-            report.missing.append(MissingCombo(key=key, stat=stat))
-        else:
+        if near is not None:
             report.mislabelled.append(
                 MislabelledCombo(key=key, stat=stat, near=near))
+        elif combo.is_complete(key):
+            report.missing.append(MissingCombo(key=key, stat=stat))
+        else:
+            # Похожей воронки нет И связка неполна — опознать нечем.
+            # «ЖИВО» из одной оси не говорит, какой воронки не хватает;
+            # это дырка разметки в ГК, а не пропавшая воронка. Разбор
+            # 04.08: три такие связки из четырёх лежали в «не хватает
+            # воронок» и уводили не туда.
+            report.incomplete.append(IncompleteCombo(key=key, stat=stat))
 
     for funnel in funnels:
         if funnel.status != 'active':
+            continue
+        # Воронка, заведённая только что, заказов ещё не накопила — молчание
+        # про неё ничего не значит. Разбор 04.08: f73, f74 и f78 со стартом
+        # 2026-08-01 попали в кандидаты на архив, хотя выгрузка заказов
+        # заканчивается 2026-08-01 01:48 и они физически не могли в неё
+        # попасть.
+        if _too_young(funnel.start_date, today):
             continue
         stat = combos.get(funnel.key)
         last = stat.last_created if stat else ''

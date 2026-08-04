@@ -32,6 +32,7 @@ class Funnel:
     landings: tuple
     contractor: str
     product: str
+    start_date: str = ''
 
 
 def connect(db_path):
@@ -45,7 +46,8 @@ def load_funnels(db_path):
         base = con.execute("""
             SELECT f.id, COALESCE(f.front_code, ''), COALESCE(f.status, ''),
                    COALESCE(f.landing_url, ''),
-                   COALESCE(c.name, ''), COALESCE(p.name, '')
+                   COALESCE(c.name, ''), COALESCE(p.name, ''),
+                   COALESCE(f.start_date, '')
             FROM funnels f
             LEFT JOIN contractors c ON c.id = f.contractor_id
             LEFT JOIN products p ON p.id = f.product_id
@@ -75,7 +77,8 @@ def load_funnels(db_path):
         extra_landings[funnel_id].extend(urls.split_field(url))
 
     result = []
-    for funnel_id, code, status, landing_url, contractor, product in base:
+    for (funnel_id, code, status, landing_url, contractor, product,
+         start_date) in base:
         collected = urls.split_field(landing_url)
         for address in extra_landings.get(funnel_id, ()):
             if address not in collected:
@@ -89,5 +92,6 @@ def load_funnels(db_path):
             landings=tuple(collected),
             contractor=contractor,
             product=product,
+            start_date=str(start_date)[:10],
         ))
     return result

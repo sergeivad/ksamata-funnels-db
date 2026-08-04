@@ -9,11 +9,12 @@ import sheet_source
 TODAY = datetime.date(2026, 8, 1)
 
 
-def funnel(label, key, status='active', landings=(), contractor='', product=''):
+def funnel(label, key, status='active', landings=(), contractor='', product='',
+           start_date='2024-01-01'):
     return funnels_source.Funnel(
         funnel_id=abs(hash(label)) % 1000, front_code=label, status=status,
         label=label, key=key, landings=tuple(landings),
-        contractor=contractor, product=product)
+        contractor=contractor, product=product, start_date=start_date)
 
 
 def stat(key, orders=10, paid=1, last='2026-07-31 10:00:00'):
@@ -50,6 +51,37 @@ def test_решённая_связка_уходит_в_settled_и_не_в_missin
                             [], [], rules, TODAY)
     assert report.missing == [] and report.mislabelled == []
     assert [item.key for item in report.settled] == [key]
+
+
+def test_неполная_связка_без_похожей_воронки_идёт_в_incomplete():
+    """«ЖИВО» из одной оси не говорит, какой воронки не хватает — это дырка
+    разметки в ГК. Разбор 04.08: три такие связки лежали в «не хватает
+    воронок» и уводили разбор не туда."""
+    key = ('ЖИВО', None, None, None, None)
+    report = sections.build({key: stat(key)}, {'orders': 0, 'paid': 0},
+                            [F8], [], [], TODAY)
+    assert report.missing == []
+    assert [item.key for item in report.incomplete] == [key]
+
+
+def test_только_что_заведённая_воронка_в_кандидаты_на_архив_не_идёт():
+    """f73, f74, f78 со стартом 2026-08-01 попали в кандидаты на архив,
+    хотя выгрузка заканчивается 2026-08-01 01:48 и заказов у них быть
+    ещё не могло."""
+    fresh = funnel('f73', ('ЖИВО-суставы-триал', 'NR', 'ВК', 'Реклама',
+                           'АВ Прямые'), start_date='2026-08-01')
+    report = sections.build({}, {'orders': 0, 'paid': 0}, [fresh], [], [],
+                            datetime.date(2026, 8, 4))
+    assert report.dead == []
+
+
+def test_пустая_дата_старта_молодостью_не_считается():
+    """У большинства старых воронок дата не заполнена — иначе проверка
+    перестала бы работать для них всех."""
+    old = funnel('f70', ('ГП', 'НИМБ', 'Сайт', 'СЕО', 'АВ Автоворонка'),
+                 start_date='')
+    report = sections.build({}, {'orders': 0, 'paid': 0}, [old], [], [], TODAY)
+    assert [item.funnel.label for item in report.dead] == ['f70']
 
 
 def test_воронка_active_без_свежих_заказов_идёт_в_dead():

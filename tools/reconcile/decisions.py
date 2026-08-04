@@ -53,7 +53,12 @@ def load(path):
                 raise ValueError(
                     f'Правило {item.get("id")}: неизвестная ось «{alias}». '
                     f'Допустимы: {", ".join(sorted(AXIS_ALIASES))}')
-            positions[AXIS_ALIASES[alias]] = [str(v) for v in values]
+            # null в списке значит «ось не размечена». Без этого нельзя
+            # выразить связку вроде продлений подписки («АВ Продукт: ЖИВО»
+            # и больше ничего): правило «продукт: [ЖИВО]» погасило бы заодно
+            # все настоящие ЖИВО-воронки.
+            positions[AXIS_ALIASES[alias]] = [
+                None if v is None else str(v) for v in values]
         rules.append(Decision(
             id=str(item.get('id', '')),
             match=match,

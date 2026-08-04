@@ -7,7 +7,8 @@ import funnels_source
 SCHEMA = """
     CREATE TABLE funnels (id INTEGER PRIMARY KEY, num INTEGER,
         front_code TEXT, status TEXT, landing_url TEXT,
-        source_id INT, product_id INT, contractor_id INT);
+        source_id INT, product_id INT, contractor_id INT,
+        start_date TEXT);
     CREATE TABLE tags (id INTEGER PRIMARY KEY, name TEXT);
     CREATE TABLE funnel_tags (funnel_id INT, tag_id INT, tag_type TEXT,
         position INT);
@@ -31,7 +32,7 @@ def db(tmp_path):
         INSERT INTO sources VALUES (1, 'Яндекс РСЯ');
         INSERT INTO funnels VALUES (1, 56, 'f56', 'active',
             'https://t.zdravo-telo.ru/a / https://gc.zdravo-telo.ru/b',
-            1, 1, 1);
+            1, 1, 1, '2026-05-01');
         INSERT INTO tags VALUES (1, 'АВ Продукт: ЖИВО-суставы'),
             (2, 'АВ Подрядчик: ИНХАУЗ'), (3, 'АВ Канал: Яндекс'),
             (4, 'АВ Направление: РСЯ'), (5, 'АВ Прямые');
@@ -65,11 +66,18 @@ def test_load_funnels_метка_падает_на_id_без_кода(tmp_path):
     path = tmp_path / 'x.db'
     con = sqlite3.connect(path)
     con.executescript(SCHEMA + """
-        INSERT INTO funnels VALUES (7, 7, '', 'draft', '', NULL, NULL, NULL);
+        INSERT INTO funnels VALUES (7, 7, '', 'draft', '', NULL, NULL, NULL,
+            NULL);
     """)
     con.commit()
     con.close()
     assert funnels_source.load_funnels(str(path))[0].label == '#7'
+
+
+def test_load_funnels_читает_дату_старта(db):
+    """Дата старта нужна, чтобы не звать в архив только что заведённую
+    воронку: у f73/f74/f78 она 2026-08-01, заказов быть ещё не могло."""
+    assert funnels_source.load_funnels(db)[0].start_date == '2026-05-01'
 
 
 def test_load_funnels_открывает_базу_только_на_чтение(db):
