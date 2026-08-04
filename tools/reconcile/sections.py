@@ -58,6 +58,13 @@ class StatusDrift:
 
 
 @dataclass
+class SheetStale:
+    funnel: object
+    row: object
+    last_activity: str
+
+
+@dataclass
 class Settled:
     key: tuple
     stat: object
@@ -72,6 +79,7 @@ class Report:
     dead: list = field(default_factory=list)
     sheet_only: list = field(default_factory=list)
     status_drift: list = field(default_factory=list)
+    sheet_stale: list = field(default_factory=list)
     settled: list = field(default_factory=list)
     waiting: list = field(default_factory=list)
     blind: dict = field(default_factory=dict)
@@ -159,8 +167,29 @@ def build(combos, blind, funnels, sheet_rows, rules, today):
         if not row.status:
             continue
         funnel_is_active = match.funnel.status == 'active'
-        if sheet_source.is_live(row.status) != funnel_is_active:
-            report.status_drift.append(
-                StatusDrift(funnel=match.funnel, row=row))
+        if sheet_source.is_live(row.status) == funnel_is_active:
+            continue
+
+        # Расхождение таблицы с базой рассуживают ЗАКАЗЫ — третий источник,
+        # независимый от обоих. Если заказы согласны с базой, расхождения
+        # нет: устарела ячейка в таблице, и правится таблица, а не статус.
+        #
+        # Разбор 04.08: все шесть «расхождений статуса» оказались этим
+        # случаем — в таблице «Стоп», а за июль по ним 9022, 8124, 11003,
+        # 442, 1288 и 9 заказов. Без этой проверки отчёт каждый раз выносил
+        # человеку шесть вопросов, ответ на которые лежал в тех же данных.
+        #
+        # Молодая воронка сюда не попадает: заказов у неё ещё нет ни при
+        # каком статусе, и молчание заказов о ней ничего не доказывает.
+        stat = combos.get(match.funnel.key)
+        last = stat.last_activity if stat else ''
+        orders_say_live = _is_live(last, today)
+        if (not _too_young(match.funnel.start_date, today)
+                and orders_say_live == funnel_is_active):
+            report.sheet_stale.append(SheetStale(
+                funnel=match.funnel, row=row, last_activity=last))
+            continue
+
+        report.status_drift.append(StatusDrift(funnel=match.funnel, row=row))
 
     return report

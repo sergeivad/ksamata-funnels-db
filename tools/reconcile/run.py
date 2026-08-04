@@ -94,6 +94,7 @@ def main(argv=None):
     print(f'  ошибок разметки в ГК: {len(report.mislabelled)}')
     print(f'  кандидатов в archive: {len(report.dead)}')
     print(f'  расхождений статуса:  {len(report.status_drift)}')
+    print(f'  устарела таблица:     {len(report.sheet_stale)}')
     print(f'  строк таблицы без воронки: {len(report.sheet_only)}')
     print(f'  решено ранее (молчим):     {len(report.settled)}')
     return 0

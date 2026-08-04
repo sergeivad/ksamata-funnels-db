@@ -133,3 +133,56 @@ def test_расхождение_статуса_попадает_в_status_drift(
     report = sections.build({}, {'orders': 0, 'paid': 0}, [live], [row], [],
                             TODAY)
     assert [item.funnel.label for item in report.status_drift] == ['f9']
+
+
+def test_таблица_стоп_против_живых_заказов_это_устаревшая_таблица():
+    """Разбор 04.08: все шесть «расхождений статуса» оказались одним и тем
+    же — в таблице «Стоп», а заказы идут. У f31 5027 заказов за июль.
+    Спрашивать по такому человека нечего: заказы подтверждают базу."""
+    live = funnel('f31', ('ДЫХАНИЕ', 'НИМБ', 'Яндекс', 'РСЯ',
+                          'АВ Автоворонка'),
+                  landings=['t.ksamata.ru/dih/rsya/a'])
+    row = sheet_source.SheetRow(15, 'f31', 'НИМБ', 'ДЫХАНИЕ', 'Стоп',
+                                ('t.ksamata.ru/dih/rsya/a',))
+    report = sections.build({live.key: stat(live.key)}, {'orders': 0, 'paid': 0},
+                            [live], [row], [], TODAY)
+    assert report.status_drift == []
+    assert [item.funnel.label for item in report.sheet_stale] == ['f31']
+
+
+def test_таблица_работает_против_мёртвых_заказов_это_устаревшая_таблица():
+    """Обратная сторона того же правила: заказы согласны с базой."""
+    shelved = funnel('f19', ('БОО', 'HT', 'ВК', 'Реклама', 'АВ Автоворонка'),
+                     status='archive', landings=['t.ksamata.ru/ht/boo/a'])
+    row = sheet_source.SheetRow(52, 'f19', 'HT', 'БОО', 'Работает',
+                                ('t.ksamata.ru/ht/boo/a',))
+    report = sections.build({}, {'orders': 0, 'paid': 0}, [shelved], [row], [],
+                            TODAY)
+    assert report.status_drift == []
+    assert [item.funnel.label for item in report.sheet_stale] == ['f19']
+
+
+def test_заказы_на_стороне_таблицы_оставляют_вопрос_к_базе():
+    """Заказов нет, а в базе active — вот это настоящее расхождение."""
+    live = funnel('f9', ('БОО', 'НИМБ', 'Яндекс', 'РСЯ', 'АВ Автоворонка'),
+                  landings=['t.ksamata.ru/boo/a'])
+    row = sheet_source.SheetRow(7, 'f9', 'НИМБ', 'БОО', 'Стоп',
+                                ('t.ksamata.ru/boo/a',))
+    report = sections.build({}, {'orders': 0, 'paid': 0}, [live], [row], [],
+                            TODAY)
+    assert report.sheet_stale == []
+    assert [item.funnel.label for item in report.status_drift] == ['f9']
+
+
+def test_у_молодой_воронки_заказы_рассудить_не_могут():
+    """Воронке два дня — молчание заказов о ней ничего не говорит, и
+    списывать расхождение на устаревшую таблицу нельзя."""
+    fresh = funnel('f73', ('ЖИВО-суставы-триал', 'NR', 'ВК', 'Реклама',
+                           'АВ Прямые'), start_date='2026-08-01',
+                   landings=['t.ksamata.ru/trial/nr/a'])
+    row = sheet_source.SheetRow(44, 'f73', 'NR', 'Трайл', 'Стоп',
+                                ('t.ksamata.ru/trial/nr/a',))
+    report = sections.build({}, {'orders': 0, 'paid': 0}, [fresh], [row], [],
+                            datetime.date(2026, 8, 3))
+    assert report.sheet_stale == []
+    assert [item.funnel.label for item in report.status_drift] == ['f73']
