@@ -17,17 +17,17 @@ import os
 import sys
 
 _BASE = os.path.dirname(os.path.abspath(__file__))
-# Наш каталог первым, audit — в конец: db_source есть и здесь, и там.
+# Свой каталог первым, audit — в конец.
 sys.path.insert(0, _BASE)
 sys.path.append(os.path.abspath(os.path.join(_BASE, '..', 'audit')))
 
-import db_source          # noqa: E402
-import decisions          # noqa: E402
-import orders_source      # noqa: E402
-import paths              # noqa: E402
-import report_md          # noqa: E402
-import sections           # noqa: E402
-import sheet_source       # noqa: E402
+import decisions        # noqa: E402
+import funnels_source   # noqa: E402
+import orders_source    # noqa: E402
+import report_md        # noqa: E402
+import sections         # noqa: E402
+import settings         # noqa: E402
+import sheet_source     # noqa: E402
 
 DEFAULT_SHEET = 'Ссылки для сбора статы-2.xlsx'
 
@@ -38,14 +38,14 @@ def main(argv=None):
     parser.add_argument('--export', help='выгрузка заказов (по умолчанию — '
                                          'самая свежая в ~/Downloads)')
     parser.add_argument('--sheet', help='таблица маркетологов')
-    parser.add_argument('--db', default=paths.DB_PATH)
+    parser.add_argument('--db', default=settings.DB_PATH)
     parser.add_argument('--out', help='куда положить отчёт '
                                       '(по умолчанию data/generated/)')
     parser.add_argument('--today', help='дата прогона ГГГГ-ММ-ДД, для тестов')
     args = parser.parse_args(argv)
 
-    export_path = args.export or orders_source.newest_export(paths.DOWNLOADS_DIR)
-    sheet_path = args.sheet or os.path.join(paths.DOWNLOADS_DIR, DEFAULT_SHEET)
+    export_path = args.export or orders_source.newest_export(settings.DOWNLOADS_DIR)
+    sheet_path = args.sheet or os.path.join(settings.DOWNLOADS_DIR, DEFAULT_SHEET)
     today = (datetime.date.fromisoformat(args.today) if args.today
              else datetime.date.today())
 
@@ -58,10 +58,10 @@ def main(argv=None):
     print(f'  строк: {len(sheet_rows)}')
 
     print(f'База:    {args.db}')
-    funnels = db_source.load_funnels(args.db)
+    funnels = funnels_source.load_funnels(args.db)
     print(f'  воронок: {len(funnels)}')
 
-    rules = decisions.load(paths.DECISIONS_PATH)
+    rules = decisions.load(settings.DECISIONS_PATH)
     report = sections.build(combos, blind, funnels, sheet_rows, rules, today)
 
     text = report_md.render(report, {
@@ -72,7 +72,7 @@ def main(argv=None):
         'combos': len(combos),
     })
 
-    out_dir = args.out or paths.OUT_DIR
+    out_dir = args.out or settings.OUT_DIR
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, f'reconcile-{today.isoformat()}.md')
     with open(out_path, 'w', encoding='utf-8') as handle:

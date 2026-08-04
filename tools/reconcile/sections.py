@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 import decisions as decisions_module
 import matching
-import paths
+import settings
 import sheet_source
 
 
@@ -74,7 +74,7 @@ def _is_live(last_created, today):
     if not last_created:
         return False
     stamp = datetime.date.fromisoformat(last_created[:10])
-    return (today - stamp).days <= paths.LIVE_SINCE_DAYS
+    return (today - stamp).days <= settings.LIVE_SINCE_DAYS
 
 
 def build(combos, blind, funnels, sheet_rows, rules, today):

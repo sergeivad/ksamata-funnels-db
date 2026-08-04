@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-import db_source
+import funnels_source
 
 SCHEMA = """
     CREATE TABLE funnels (id INTEGER PRIMARY KEY, num INTEGER,
@@ -46,19 +46,19 @@ def db(tmp_path):
 
 
 def test_load_funnels_собирает_связку_из_funnel_tags(db):
-    funnel = db_source.load_funnels(db)[0]
+    funnel = funnels_source.load_funnels(db)[0]
     assert funnel.key == ('ЖИВО-суставы', 'ИНХАУЗ', 'Яндекс', 'РСЯ', 'АВ Прямые')
 
 
 def test_load_funnels_берёт_лендинги_из_обоих_мест(db):
     """Второй адрес живёт в блоке landings — терять его нельзя."""
-    assert set(db_source.load_funnels(db)[0].landings) == {
+    assert set(funnels_source.load_funnels(db)[0].landings) == {
         't.zdravo-telo.ru/a', 'gc.zdravo-telo.ru/b', 'land.ksamata.ru/c'}
 
 
 def test_load_funnels_метка_по_коду_а_не_по_num(db):
     """num человеку не показывают никогда (CLAUDE.md)."""
-    assert db_source.load_funnels(db)[0].label == 'f56'
+    assert funnels_source.load_funnels(db)[0].label == 'f56'
 
 
 def test_load_funnels_метка_падает_на_id_без_кода(tmp_path):
@@ -69,12 +69,12 @@ def test_load_funnels_метка_падает_на_id_без_кода(tmp_path):
     """)
     con.commit()
     con.close()
-    assert db_source.load_funnels(str(path))[0].label == '#7'
+    assert funnels_source.load_funnels(str(path))[0].label == '#7'
 
 
 def test_load_funnels_открывает_базу_только_на_чтение(db):
     """Инструмент ничего не чинит: запись должна быть невозможна физически."""
-    con = db_source.connect(db)
+    con = funnels_source.connect(db)
     with pytest.raises(sqlite3.OperationalError):
         con.execute("UPDATE funnels SET status='archive'")
     con.close()

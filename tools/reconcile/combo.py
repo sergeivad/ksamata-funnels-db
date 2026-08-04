@@ -16,10 +16,10 @@ normalize.av_value при нескольких значениях одной о�
 import os
 import sys
 
-# В КОНЕЦ sys.path, не в начало. В tools/audit есть свой db_source, и
-# вставка в начало отправляла бы `import db_source` в чужой модуль — у него
-# нет поля landings, и сверка по лендингам молча ломалась бы. Свой каталог
-# обязан оставаться первым.
+# В КОНЕЦ sys.path, не в начало: свой каталог обязан оставаться первым.
+# Имена модулей здесь и в tools/audit не пересекаются намеренно, но полагаться
+# на одно лишь отсутствие совпадений нельзя — порядок должен быть верным сам
+# по себе.
 _AUDIT_DIR = os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'audit'))
 if _AUDIT_DIR not in sys.path:

@@ -1,6 +1,6 @@
 import datetime
 
-import db_source
+import funnels_source
 import decisions
 import orders_source
 import sections
@@ -10,7 +10,7 @@ TODAY = datetime.date(2026, 8, 1)
 
 
 def funnel(label, key, status='active', landings=(), contractor='', product=''):
-    return db_source.Funnel(
+    return funnels_source.Funnel(
         funnel_id=abs(hash(label)) % 1000, front_code=label, status=status,
         label=label, key=key, landings=tuple(landings),
         contractor=contractor, product=product)

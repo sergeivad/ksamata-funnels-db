@@ -1,11 +1,11 @@
-import db_source
+import funnels_source
 import matching
 import sheet_source
 
 
 def make_funnel(label, key, landings=(), contractor='', product='',
                 status='active'):
-    return db_source.Funnel(
+    return funnels_source.Funnel(
         funnel_id=abs(hash(label)) % 1000, front_code=label, status=status,
         label=label, key=key, landings=tuple(landings),
         contractor=contractor, product=product)
