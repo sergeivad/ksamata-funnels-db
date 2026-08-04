@@ -13,7 +13,7 @@ def test_render_ставит_разделы_в_порядке_этапов():
         missing=[sections.MissingCombo(
             key=key,
             stat=orders_source.ComboStat(key=key, orders=1, paid=1,
-                                         last_created='2026-07-13 10:00:00'))],
+                                         last_activity='2026-07-13 10:00:00'))],
         blind={'orders': 46557, 'paid': 26133})
     text = report_md.render(report, META)
     assert text.index('Этап 1') < text.index('Трек Р')
@@ -23,7 +23,7 @@ def test_render_показывает_связку_читаемо():
     key = ('ДБО', 'RedBananas', 'ТГ', 'Реклама', 'АВ Автоворонка')
     report = sections.Report(missing=[sections.MissingCombo(
         key=key, stat=orders_source.ComboStat(key=key, orders=1, paid=1,
-                                              last_created='2026-07-13'))])
+                                              last_activity='2026-07-13'))])
     assert 'ДБО / RedBananas / ТГ / Реклама / АВ Автоворонка' in \
         report_md.render(report, META)
 

@@ -43,7 +43,7 @@ class MislabelledCombo:
 @dataclass
 class DeadFunnel:
     funnel: object
-    last_created: str
+    last_activity: str
 
 
 @dataclass
@@ -77,11 +77,11 @@ class Report:
     blind: dict = field(default_factory=dict)
 
 
-def _is_live(last_created, today):
+def _is_live(last_activity, today):
     """Связка жива, если последний заказ не старше LIVE_SINCE_DAYS."""
-    if not last_created:
+    if not last_activity:
         return False
-    stamp = datetime.date.fromisoformat(last_created[:10])
+    stamp = datetime.date.fromisoformat(last_activity[:10])
     return (today - stamp).days <= settings.LIVE_SINCE_DAYS
 
 
@@ -108,7 +108,7 @@ def build(combos, blind, funnels, sheet_rows, rules, today):
     by_key = {funnel.key: funnel for funnel in funnels}
 
     for key, stat in sorted(combos.items(), key=lambda kv: -kv[1].orders):
-        if not _is_live(stat.last_created, today):
+        if not _is_live(stat.last_activity, today):
             continue
         if key in by_key:
             continue
@@ -143,9 +143,9 @@ def build(combos, blind, funnels, sheet_rows, rules, today):
         if _too_young(funnel.start_date, today):
             continue
         stat = combos.get(funnel.key)
-        last = stat.last_created if stat else ''
+        last = stat.last_activity if stat else ''
         if not _is_live(last, today):
-            report.dead.append(DeadFunnel(funnel=funnel, last_created=last))
+            report.dead.append(DeadFunnel(funnel=funnel, last_activity=last))
 
     for row in sheet_rows:
         match = matching.match_sheet_row(row, funnels)

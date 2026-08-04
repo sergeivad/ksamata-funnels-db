@@ -41,7 +41,7 @@ def render(report, meta):
         '',
         _table(['Заказов', 'Оплат', 'Последний', 'Связка'],
                [(_thousands(item.stat.orders), item.stat.paid,
-                 item.stat.last_created[:10], combo.label(item.key))
+                 item.stat.last_activity[:10], combo.label(item.key))
                 for item in report.missing]),
         '',
         '## Этап 1. Кандидаты в archive',
@@ -50,7 +50,7 @@ def render(report, meta):
         'Только что заведённые сюда не попадают — им нечего было накопить.',
         '',
         _table(['Воронка', 'Последний заказ', 'Связка'],
-               [(item.funnel.label, item.last_created[:10] or 'никогда',
+               [(item.funnel.label, item.last_activity[:10] or 'никогда',
                  combo.label(item.funnel.key)) for item in report.dead]),
         '',
         '## Этап 2. Статус: таблица против базы',
@@ -88,7 +88,7 @@ def render(report, meta):
         '',
         _table(['Заказов', 'Оплат', 'Последний', 'Что размечено'],
                [(_thousands(item.stat.orders), item.stat.paid,
-                 item.stat.last_created[:10], combo.label(item.key))
+                 item.stat.last_activity[:10], combo.label(item.key))
                 for item in report.incomplete]),
         '',
         f'## Ждёт ответа ({len(report.waiting)})',

@@ -19,7 +19,7 @@ def funnel(label, key, status='active', landings=(), contractor='', product='',
 
 def stat(key, orders=10, paid=1, last='2026-07-31 10:00:00'):
     return orders_source.ComboStat(key=key, orders=orders, paid=paid,
-                                   last_created=last)
+                                   last_activity=last)
 
 
 F8 = funnel('f8', ('ЖКТ', 'НИМБ', 'Яндекс', 'РСЯ', 'АВ Автоворонка'))
