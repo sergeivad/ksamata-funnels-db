@@ -468,6 +468,15 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
 **Docker runs, in order** (`app/docker-entrypoint.sh`): Phase 2 → 3 (+data) →
 4 → 5 → legacy-tag-override backfill → 6 → 7 → 8 → 9.
 
+**Every phase runs twice per container start.** esbuild bundles the runner and
+the migration into one file, `require.main === module` stays true there, so the
+script's own CLI block fires on import and the runner then calls the same
+function again. The prod log shows both (`Phase-9 schema migration on: …`
+followed by `[migrate-phase9] Running …`). It has been this way since Phase 3
+and is harmless **only** because every phase is idempotent — which makes
+idempotence a hard requirement here, not a nicety: a phase that appends,
+increments, or allocates would do it twice on every start.
+
 **Running a migration by hand** resolves its DB through `scripts/cli-db-path.ts`:
 the default is the repo-root DB **relative to the script**, not to `cwd`, and a
 path that does not exist is a hard error. Before this, running from the repo

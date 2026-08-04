@@ -75,8 +75,19 @@ After the seed check, the entrypoint runs the idempotent migration chain on
 3. `migrate-phase4.cjs` — `funnels.rooms_enabled` + backfill
 4. `migrate-phase5.cjs` — `tag_templates` + `funnel_tag_overrides` + template seed
 5. `backfill-legacy-tag-overrides.cjs` — preserves legacy non-AV tags as overrides
+6. `migrate-phase6.cjs` — monitoring tables (`monitor_targets`, `monitor_state`, …)
+7. `migrate-phase7.cjs` — normalizes `funnels.front_code` and makes it unique
+8. `migrate-phase8.cjs` — `funnel_types` lookup + backfill of the funnel-type marker
+9. `migrate-phase9.cjs` — merges the monitoring group `funnel_landing_url` into `landings`
 
 All steps are marker-gated or `IF NOT EXISTS`, so re-running them is safe.
+
+Each step logs twice — once from the migration script's own CLI block and once
+from its Docker runner. That is how esbuild bundles them (`require.main === module`
+stays true inside the bundle), so the migration body runs twice per start. It is
+harmless precisely because every phase is idempotent, and it has been that way
+since Phase 3 — but it is the reason a non-idempotent migration would corrupt
+data here rather than merely being slow.
 
 > This seed + migration flow runs only for the **production** image
 > (`app/Dockerfile` → `docker-entrypoint.sh`). The root `docker-compose.yml` dev

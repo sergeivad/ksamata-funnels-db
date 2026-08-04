@@ -49,7 +49,7 @@ File-level map of the repo. For architecture and conventions see
 - `next.config.ts` - webpack config; aliases `src/db/client.ts` away for the
   Edge bundle so `instrumentation.ts` compiles under the Edge runtime forced
   by `middleware.ts` (see CLAUDE.md Deployment section).
-- `scripts/` - phased migrations (Phase 2–8), data backfills, and seed/runners
+- `scripts/` - phased migrations (Phase 2–9), data backfills, and seed/runners
   used by tests and Docker. Also dated one-off sync scripts (e.g.
   `sync-leak-2026-08-02.ts`) — idempotent, guarded by an axis check, run by
   hand with `--dry-run` first; not part of any automated path.
