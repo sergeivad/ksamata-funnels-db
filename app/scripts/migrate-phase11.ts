@@ -23,6 +23,16 @@
  * выглядит как «этого адреса в блоке нет» и дописывается вторым пунктом.
  * Ничего не теряется, а лишний пункт человек снимает в админке.
  *
+ * Блок `links` (в отличие от `landings`, который фаза 10 переносила туда же)
+ * умеет режим «по времени»: пункт со slot = NULL в нём не рисует ни редактор,
+ * ни карточка — он есть в базе, но человеку не виден и не доступен для
+ * правки, а колонка при этом уже пуста. Фаза читает режим существующего
+ * блока и в `by_time` кладёт пункт в слот 15:00, а не в оба сразу: адрес не
+ * привязан ко времени, и один видимый пункт, который человек может
+ * перетащить, лучше двух, которые придётся сверять между собой. Вновь
+ * созданный блок фаза всегда делает `common`, так что для него slot остаётся
+ * NULL, как и раньше.
+ *
  * Фаза остаётся в цепочке навсегда: колонки продолжают писать Python-скрипты
  * импорта (tools/data-import/), и каждый старт контейнера подметает то, что
  * попало туда в обход приложения.
@@ -65,7 +75,7 @@ export function runMigratePhase11(sqlite: import('better-sqlite3').Database): Ph
   if (rows.length === 0) return { moved: 0, cleared: 0 };
 
   const selectBlock = sqlite.prepare(
-    `SELECT id FROM funnel_blocks WHERE funnel_id = ? AND kind = 'links'`
+    `SELECT id, mode FROM funnel_blocks WHERE funnel_id = ? AND kind = 'links'`
   );
   const insertBlock = sqlite.prepare(
     `INSERT INTO funnel_blocks (funnel_id, kind, enabled, mode) VALUES (?, 'links', 1, 'common')`
@@ -75,7 +85,7 @@ export function runMigratePhase11(sqlite: import('better-sqlite3').Database): Ph
     `SELECT url, position FROM funnel_block_items WHERE block_id = ? ORDER BY position`
   );
   const insertItem = sqlite.prepare(
-    `INSERT INTO funnel_block_items (block_id, slot, label, url, position) VALUES (?, NULL, ?, ?, ?)`
+    `INSERT INTO funnel_block_items (block_id, slot, label, url, position) VALUES (?, ?, ?, ?, ?)`
   );
   const clearCols = sqlite.prepare(
     `UPDATE funnels SET ${colNames.map((c) => `${c} = ''`).join(', ')} WHERE id = ?`
@@ -95,10 +105,25 @@ export function runMigratePhase11(sqlite: import('better-sqlite3').Database): Ph
       })).filter((p) => /^https?:\/\//i.test(p.url));
 
       if (pending.length > 0) {
-        let blockId = (selectBlock.get(row.id) as { id: number } | undefined)?.id;
-        if (blockId === undefined) {
+        const existingBlock = selectBlock.get(row.id) as { id: number; mode: string } | undefined;
+        let blockId: number;
+        let blockMode: string;
+        if (existingBlock === undefined) {
           blockId = Number(insertBlock.run(row.id).lastInsertRowid);
+          blockMode = 'common';
+        } else {
+          blockId = existingBlock.id;
+          blockMode = existingBlock.mode;
         }
+
+        // В блоке «по времени» пункт со slot = NULL не рисует ни редактор
+        // (BlockListField фильтрует по '15'/'19'), ни карточка — перенос
+        // спрятал бы адрес ровно там же, откуда его вытащил. Кладём в
+        // первый слот: адрес не привязан ко времени, и один видимый пункт,
+        // который человек может подвинуть, лучше двух, которые придётся
+        // сверять между собой. Новый блок фаза всегда создаёт 'common' —
+        // для него ветка не применяется.
+        const itemSlot = blockMode === 'by_time' ? '15' : null;
 
         const existing = selectItems.all(blockId) as { url: string; position: number }[];
         const seen = new Set(existing.map((i) => sameUrlKey(i.url)));
@@ -110,7 +135,7 @@ export function runMigratePhase11(sqlite: import('better-sqlite3').Database): Ph
           if (seen.has(key)) continue;
           seen.add(key);
           position += 1;
-          insertItem.run(blockId, label, url, position);
+          insertItem.run(blockId, itemSlot, label, url, position);
           added += 1;
         }
 

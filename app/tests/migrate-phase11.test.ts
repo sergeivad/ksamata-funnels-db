@@ -58,6 +58,33 @@ function addBlockItem(funnelId: number, label: string, url: string, enabled = 1)
     .run(blockId, label, url, pos);
 }
 
+/** Создаёт блок «Ссылки» в нужном режиме, без пунктов (или переводит в него существующий). */
+function makeLinksBlock(funnelId: number, mode: 'common' | 'by_time', enabled = 1): number {
+  const existing = sqlite
+    .prepare(`SELECT id FROM funnel_blocks WHERE funnel_id = ? AND kind = 'links'`)
+    .get(funnelId) as { id: number } | undefined;
+  if (existing) {
+    sqlite.prepare(`UPDATE funnel_blocks SET mode = ? WHERE id = ?`).run(mode, existing.id);
+    return existing.id;
+  }
+  return sqlite
+    .prepare(`INSERT INTO funnel_blocks (funnel_id, kind, enabled, mode) VALUES (?, 'links', ?, ?)`)
+    .run(funnelId, enabled, mode).lastInsertRowid as number;
+}
+
+function blockItemSlots(funnelId: number): (string | null)[] {
+  return (
+    sqlite
+      .prepare(
+        `SELECT i.slot FROM funnel_block_items i
+           JOIN funnel_blocks b ON b.id = i.block_id
+          WHERE b.funnel_id = ? AND b.kind = 'links'
+          ORDER BY i.position`
+      )
+      .all(funnelId) as { slot: string | null }[]
+  ).map((r) => r.slot);
+}
+
 function blockItems(funnelId: number): { label: string; url: string }[] {
   return sqlite
     .prepare(
@@ -138,6 +165,27 @@ describe('Phase-11: ссылки и дашборды переезжают в б�
       { label: 'Дашборд продаж', url: 'https://gc.example.ru/wrong' },
       { label: 'Дашборд продаж', url: 'https://gc.example.ru/right' },
     ]);
+  });
+
+  it('в блоке «по времени» перенесённый пункт попадает в слот 15:00, а не в невидимый NULL', () => {
+    const id = freshFunnel();
+    makeLinksBlock(id, 'by_time');
+    setCol(id, 'dash_sales_url', 'https://gc.example.ru/byTime');
+
+    runMigratePhase11(sqlite);
+
+    expect(blockItemSlots(id)).toEqual(['15']);
+    expect(blockItems(id)).toEqual([{ label: 'Дашборд продаж', url: 'https://gc.example.ru/byTime' }]);
+  });
+
+  it('в общем блоке (и во вновь созданном) перенесённый пункт остаётся slot = NULL', () => {
+    const id = freshFunnel();
+    // Блока ещё нет — фаза создаёт его сама, и он всегда 'common'.
+    setCol(id, 'dash_sales_url', 'https://gc.example.ru/common');
+
+    runMigratePhase11(sqlite);
+
+    expect(blockItemSlots(id)).toEqual([null]);
   });
 
   it('очищает колонку с текстом вместо адреса, ничего не добавляя в блок', () => {
