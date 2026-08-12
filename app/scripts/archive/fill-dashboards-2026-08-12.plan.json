@@ -1,0 +1,511 @@
+[
+ {
+  "frontCode": "f28",
+  "id": 20,
+  "status": "active",
+  "name": "БОО ВК ИНХАУЗ",
+  "update": {
+   "dashSalesUrl": "https://gc.ksamata.ru/pl/logic/funnel/update?id=1686288",
+   "regiTotalUrl": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=&uc%5Brule_string%5D=%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8438156%5D%2C%22selected_tags%22%3A%5B%22%D0%90%D0%92+%D0%9F%D0%BE%D0%B4%D1%80%D1%8F%D0%B4%D1%87%D0%B8%D0%BA%3A+%D0%98%D0%9D%D0%A5%D0%90%D0%A3%D0%97%22%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=sndr-2073296413",
+   "regi15Url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=&uc%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22UserContext_formfieldvalue%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22fieldId%22%3A5002734%2C%22fieldValue%22%3A%7B%22selected_id%22%3A%5B%22%D0%A3%D0%B4%D0%BE%D0%B1%D0%BD%D0%BE+%D1%81%D0%BC%D0%BE%D1%82%D1%80%D0%B5%D1%82%D1%8C+%D0%B2+15%3A00%22%5D%7D%2C%22valueMode%22%3A2%7D%7D%2C%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8438156%5D%2C%22selected_tags%22%3A%5B%22%D0%90%D0%92+%D0%9F%D0%BE%D0%B4%D1%80%D1%8F%D0%B4%D1%87%D0%B8%D0%BA%3A+%D0%98%D0%9D%D0%A5%D0%90%D0%A3%D0%97%22%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=sndr-2073296413",
+   "regi19Url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=&uc%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22UserContext_formfieldvalue%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22fieldId%22%3A5002734%2C%22fieldValue%22%3A%7B%22selected_id%22%3A%5B%22%D0%A3%D0%B4%D0%BE%D0%B1%D0%BD%D0%BE+%D1%81%D0%BC%D0%BE%D1%82%D1%80%D0%B5%D1%82%D1%8C+%D0%B2+19%3A00%22%5D%7D%2C%22valueMode%22%3A2%7D%7D%2C%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8438156%5D%2C%22selected_tags%22%3A%5B%22%D0%90%D0%92+%D0%9F%D0%BE%D0%B4%D1%80%D1%8F%D0%B4%D1%87%D0%B8%D0%BA%3A+%D0%98%D0%9D%D0%A5%D0%90%D0%A3%D0%97%22%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=sndr-2073296413"
+  },
+  "linkItems": [
+   {
+    "label": "Дашборд продаж",
+    "url": "https://gc.ksamata.ru/pl/logic/funnel/update?id=1686288"
+   },
+   {
+    "label": "Регистрации всего",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=&uc%5Brule_string%5D=%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8438156%5D%2C%22selected_tags%22%3A%5B%22%D0%90%D0%92+%D0%9F%D0%BE%D0%B4%D1%80%D1%8F%D0%B4%D1%87%D0%B8%D0%BA%3A+%D0%98%D0%9D%D0%A5%D0%90%D0%A3%D0%97%22%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=sndr-2073296413"
+   },
+   {
+    "label": "Регистрации 15:00",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=&uc%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22UserContext_formfieldvalue%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22fieldId%22%3A5002734%2C%22fieldValue%22%3A%7B%22selected_id%22%3A%5B%22%D0%A3%D0%B4%D0%BE%D0%B1%D0%BD%D0%BE+%D1%81%D0%BC%D0%BE%D1%82%D1%80%D0%B5%D1%82%D1%8C+%D0%B2+15%3A00%22%5D%7D%2C%22valueMode%22%3A2%7D%7D%2C%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8438156%5D%2C%22selected_tags%22%3A%5B%22%D0%90%D0%92+%D0%9F%D0%BE%D0%B4%D1%80%D1%8F%D0%B4%D1%87%D0%B8%D0%BA%3A+%D0%98%D0%9D%D0%A5%D0%90%D0%A3%D0%97%22%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=sndr-2073296413"
+   },
+   {
+    "label": "Регистрации 19:00",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=&uc%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22UserContext_formfieldvalue%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22fieldId%22%3A5002734%2C%22fieldValue%22%3A%7B%22selected_id%22%3A%5B%22%D0%A3%D0%B4%D0%BE%D0%B1%D0%BD%D0%BE+%D1%81%D0%BC%D0%BE%D1%82%D1%80%D0%B5%D1%82%D1%8C+%D0%B2+19%3A00%22%5D%7D%2C%22valueMode%22%3A2%7D%7D%2C%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8438156%5D%2C%22selected_tags%22%3A%5B%22%D0%90%D0%92+%D0%9F%D0%BE%D0%B4%D1%80%D1%8F%D0%B4%D1%87%D0%B8%D0%BA%3A+%D0%98%D0%9D%D0%A5%D0%90%D0%A3%D0%97%22%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=sndr-2073296413"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f29",
+  "id": 37,
+  "status": "active",
+  "name": "СВС НИМБ ВК",
+  "update": {
+   "dashSalesUrl": "https://gc.ksamata.ru/pl/logic/funnel/dashboard?id=1673188#pk=alltime",
+   "dashPerelivUrl": "https://gc.ksamata.ru/pl/logic/funnel/dashboard?id=1673189#pk=alltime",
+   "regiTotalUrl": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=0&uc%5Brule_string%5D=%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2220.05.2022%22%2C%22to%22%3A%2224.05.2022%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8216298%5D%2C%22selected_tags%22%3A%5B%22%D0%9D%D0%98%D0%9C%D0%91%22%2C%22%D0%A0%D0%B5%D0%B3%D0%B8%D1%81%D1%82%D1%80%D0%B0%D1%86%D0%B8%D1%8F%22%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=wIMVGIqMM-l54Ric6Z1s6gW9Zhwq0Vn1",
+   "regi15Url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=0&uc%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22UserContext_formfieldvalue%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22fieldId%22%3A5002734%2C%22fieldValue%22%3A%7B%22selected_id%22%3A%5B%22%D0%A3%D0%B4%D0%BE%D0%B1%D0%BD%D0%BE+%D1%81%D0%BC%D0%BE%D1%82%D1%80%D0%B5%D1%82%D1%8C+%D0%B2+15%3A00%22%5D%7D%2C%22valueMode%22%3A2%7D%7D%2C%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8216298%5D%2C%22selected_tags%22%3A%5B%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=wIMVGIqMM-l54Ric6Z1s6gW9Zhwq0Vn1",
+   "regi19Url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=0&uc%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22UserContext_formfieldvalue%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22fieldId%22%3A5002734%2C%22fieldValue%22%3A%7B%22selected_id%22%3A%5B%22%D0%A3%D0%B4%D0%BE%D0%B1%D0%BD%D0%BE+%D1%81%D0%BC%D0%BE%D1%82%D1%80%D0%B5%D1%82%D1%8C+%D0%B2+19%3A00%22%5D%7D%2C%22valueMode%22%3A2%7D%7D%2C%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8216298%5D%2C%22selected_tags%22%3A%5B%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=wIMVGIqMM-l54Ric6Z1s6gW9Zhwq0Vn1"
+  },
+  "linkItems": [
+   {
+    "label": "Дашборд продаж",
+    "url": "https://gc.ksamata.ru/pl/logic/funnel/dashboard?id=1673188#pk=alltime"
+   },
+   {
+    "label": "Дашборд перелива",
+    "url": "https://gc.ksamata.ru/pl/logic/funnel/dashboard?id=1673189#pk=alltime"
+   },
+   {
+    "label": "Регистрации всего",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=0&uc%5Brule_string%5D=%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2220.05.2022%22%2C%22to%22%3A%2224.05.2022%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8216298%5D%2C%22selected_tags%22%3A%5B%22%D0%9D%D0%98%D0%9C%D0%91%22%2C%22%D0%A0%D0%B5%D0%B3%D0%B8%D1%81%D1%82%D1%80%D0%B0%D1%86%D0%B8%D1%8F%22%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=wIMVGIqMM-l54Ric6Z1s6gW9Zhwq0Vn1"
+   },
+   {
+    "label": "Регистрации 15:00",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=0&uc%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22UserContext_formfieldvalue%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22fieldId%22%3A5002734%2C%22fieldValue%22%3A%7B%22selected_id%22%3A%5B%22%D0%A3%D0%B4%D0%BE%D0%B1%D0%BD%D0%BE+%D1%81%D0%BC%D0%BE%D1%82%D1%80%D0%B5%D1%82%D1%8C+%D0%B2+15%3A00%22%5D%7D%2C%22valueMode%22%3A2%7D%7D%2C%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8216298%5D%2C%22selected_tags%22%3A%5B%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=wIMVGIqMM-l54Ric6Z1s6gW9Zhwq0Vn1"
+   },
+   {
+    "label": "Регистрации 19:00",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=0&uc%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22UserContext_formfieldvalue%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22fieldId%22%3A5002734%2C%22fieldValue%22%3A%7B%22selected_id%22%3A%5B%22%D0%A3%D0%B4%D0%BE%D0%B1%D0%BD%D0%BE+%D1%81%D0%BC%D0%BE%D1%82%D1%80%D0%B5%D1%82%D1%8C+%D0%B2+19%3A00%22%5D%7D%2C%22valueMode%22%3A2%7D%7D%2C%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8216298%5D%2C%22selected_tags%22%3A%5B%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=wIMVGIqMM-l54Ric6Z1s6gW9Zhwq0Vn1"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f30",
+  "id": 38,
+  "status": "active",
+  "name": "ДЫХАНИЕ FAQ ВК",
+  "update": {
+   "dashSalesUrl": "https://gc.ksamata.ru/pl/logic/funnel/update?id=1686902",
+   "regiTotalUrl": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=&uc%5Brule_string%5D=%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Amodules%3A%3Auser%3A%3Amodels%3A%3Arule%3A%3AHasDealRule%22%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Acomponents%3A%3Alogic%3A%3Arule%3A%3AAndRule%22%2C%22params%22%3A%7B%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Amodules%3A%3Asales%3A%3Arules%3A%3ADealCreatedAtRule%22%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Acomponents%3A%3Alogic%3A%3Arule%3A%3Asales%3A%3AOfferIdDealContextRule%22%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8448559%5D%2C%22selected_tags%22%3A%5B%22%D0%90%D0%92+%D0%9F%D0%BE%D0%B4%D1%80%D1%8F%D0%B4%D1%87%D0%B8%D0%BA%3A+FAQ%22%2C%22%D0%90%D0%92+%D0%9F%D1%80%D0%BE%D0%B4%D1%83%D0%BA%D1%82%3A+%D0%94%D0%AB%D0%A5%D0%90%D0%9D%D0%98%D0%95%22%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%2C%22mode%22%3A%22and%22%7D%7D%2C%22countCondition%22%3Anull%7D%7D&formParams%5Bclarity_uid%5D=sndr-2073296413",
+   "regi15Url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=&uc%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22UserContext_formfieldvalue%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22fieldId%22%3A5002734%2C%22fieldValue%22%3A%7B%22selected_id%22%3A%5B%22%D0%A3%D0%B4%D0%BE%D0%B1%D0%BD%D0%BE+%D1%81%D0%BC%D0%BE%D1%82%D1%80%D0%B5%D1%82%D1%8C+%D0%B2+15%3A00%22%5D%7D%2C%22valueMode%22%3A2%7D%7D%2C%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8448559%5D%2C%22selected_tags%22%3A%5B%22%D0%90%D0%92+%D0%9F%D1%80%D0%BE%D0%B4%D1%83%D0%BA%D1%82%3A+%D0%94%D0%AB%D0%A5%D0%90%D0%9D%D0%98%D0%95%22%2C%22%D0%90%D0%92+%D0%9F%D0%BE%D0%B4%D1%80%D1%8F%D0%B4%D1%87%D0%B8%D0%BA%3A+FAQ%22%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=sndr-2073296413",
+   "regi19Url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=&uc%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Acomponents%3A%3Alogic%3A%3Arule%3A%3AAndRule%22%2C%22params%22%3A%7B%22children%22%3A%5B%7B%22type%22%3A%22UserContext_formfieldvalue%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Acomponents%3A%3Alogic%3A%3Arule%3A%3AFormFieldValueRule%22%2C%22params%22%3A%7B%22valueMode%22%3A2%2C%22fieldId%22%3A5002734%2C%22fieldValue%22%3A%7B%22selected_id%22%3A%5B%22%D0%A3%D0%B4%D0%BE%D0%B1%D0%BD%D0%BE+%D1%81%D0%BC%D0%BE%D1%82%D1%80%D0%B5%D1%82%D1%8C+%D0%B2+19%3A00%22%5D%7D%2C%22caseSensitive%22%3Afalse%7D%7D%2C%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Amodules%3A%3Auser%3A%3Amodels%3A%3Arule%3A%3AHasDealRule%22%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Acomponents%3A%3Alogic%3A%3Arule%3A%3AAndRule%22%2C%22params%22%3A%7B%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Amodules%3A%3Asales%3A%3Arules%3A%3ADealCreatedAtRule%22%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Acomponents%3A%3Alogic%3A%3Arule%3A%3Asales%3A%3AOfferIdDealContextRule%22%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8448559%5D%2C%22selected_tags%22%3A%5B%22%D0%90%D0%92+%D0%9F%D1%80%D0%BE%D0%B4%D1%83%D0%BA%D1%82%3A+%D0%94%D0%AB%D0%A5%D0%90%D0%9D%D0%98%D0%95%22%2C%22%D0%90%D0%92+%D0%9F%D0%BE%D0%B4%D1%80%D1%8F%D0%B4%D1%87%D0%B8%D0%BA%3A+FAQ%22%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%2C%22mode%22%3A%22and%22%7D%7D%2C%22countCondition%22%3Anull%7D%7D%5D%2C%22mode%22%3A%22and%22%7D%7D&formParams%5Bclarity_uid%5D=sndr-2073296413"
+  },
+  "linkItems": [
+   {
+    "label": "Дашборд продаж",
+    "url": "https://gc.ksamata.ru/pl/logic/funnel/update?id=1686902"
+   },
+   {
+    "label": "Регистрации всего",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=&uc%5Brule_string%5D=%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Amodules%3A%3Auser%3A%3Amodels%3A%3Arule%3A%3AHasDealRule%22%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Acomponents%3A%3Alogic%3A%3Arule%3A%3AAndRule%22%2C%22params%22%3A%7B%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Amodules%3A%3Asales%3A%3Arules%3A%3ADealCreatedAtRule%22%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Acomponents%3A%3Alogic%3A%3Arule%3A%3Asales%3A%3AOfferIdDealContextRule%22%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8448559%5D%2C%22selected_tags%22%3A%5B%22%D0%90%D0%92+%D0%9F%D0%BE%D0%B4%D1%80%D1%8F%D0%B4%D1%87%D0%B8%D0%BA%3A+FAQ%22%2C%22%D0%90%D0%92+%D0%9F%D1%80%D0%BE%D0%B4%D1%83%D0%BA%D1%82%3A+%D0%94%D0%AB%D0%A5%D0%90%D0%9D%D0%98%D0%95%22%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%2C%22mode%22%3A%22and%22%7D%7D%2C%22countCondition%22%3Anull%7D%7D&formParams%5Bclarity_uid%5D=sndr-2073296413"
+   },
+   {
+    "label": "Регистрации 15:00",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=&uc%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22UserContext_formfieldvalue%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22fieldId%22%3A5002734%2C%22fieldValue%22%3A%7B%22selected_id%22%3A%5B%22%D0%A3%D0%B4%D0%BE%D0%B1%D0%BD%D0%BE+%D1%81%D0%BC%D0%BE%D1%82%D1%80%D0%B5%D1%82%D1%8C+%D0%B2+15%3A00%22%5D%7D%2C%22valueMode%22%3A2%7D%7D%2C%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8448559%5D%2C%22selected_tags%22%3A%5B%22%D0%90%D0%92+%D0%9F%D1%80%D0%BE%D0%B4%D1%83%D0%BA%D1%82%3A+%D0%94%D0%AB%D0%A5%D0%90%D0%9D%D0%98%D0%95%22%2C%22%D0%90%D0%92+%D0%9F%D0%BE%D0%B4%D1%80%D1%8F%D0%B4%D1%87%D0%B8%D0%BA%3A+FAQ%22%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=sndr-2073296413"
+   },
+   {
+    "label": "Регистрации 19:00",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=&uc%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Acomponents%3A%3Alogic%3A%3Arule%3A%3AAndRule%22%2C%22params%22%3A%7B%22children%22%3A%5B%7B%22type%22%3A%22UserContext_formfieldvalue%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Acomponents%3A%3Alogic%3A%3Arule%3A%3AFormFieldValueRule%22%2C%22params%22%3A%7B%22valueMode%22%3A2%2C%22fieldId%22%3A5002734%2C%22fieldValue%22%3A%7B%22selected_id%22%3A%5B%22%D0%A3%D0%B4%D0%BE%D0%B1%D0%BD%D0%BE+%D1%81%D0%BC%D0%BE%D1%82%D1%80%D0%B5%D1%82%D1%8C+%D0%B2+19%3A00%22%5D%7D%2C%22caseSensitive%22%3Afalse%7D%7D%2C%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Amodules%3A%3Auser%3A%3Amodels%3A%3Arule%3A%3AHasDealRule%22%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Acomponents%3A%3Alogic%3A%3Arule%3A%3AAndRule%22%2C%22params%22%3A%7B%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Amodules%3A%3Asales%3A%3Arules%3A%3ADealCreatedAtRule%22%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Acomponents%3A%3Alogic%3A%3Arule%3A%3Asales%3A%3AOfferIdDealContextRule%22%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8448559%5D%2C%22selected_tags%22%3A%5B%22%D0%90%D0%92+%D0%9F%D1%80%D0%BE%D0%B4%D1%83%D0%BA%D1%82%3A+%D0%94%D0%AB%D0%A5%D0%90%D0%9D%D0%98%D0%95%22%2C%22%D0%90%D0%92+%D0%9F%D0%BE%D0%B4%D1%80%D1%8F%D0%B4%D1%87%D0%B8%D0%BA%3A+FAQ%22%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%2C%22mode%22%3A%22and%22%7D%7D%2C%22countCondition%22%3Anull%7D%7D%5D%2C%22mode%22%3A%22and%22%7D%7D&formParams%5Bclarity_uid%5D=sndr-2073296413"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f32",
+  "id": 33,
+  "status": "active",
+  "name": "СУСТАВЫ НИМБ РСЯ",
+  "update": {
+   "dashSalesUrl": "https://gc.ksamata.ru/pl/logic/funnel/update?id=1684981",
+   "regiTotalUrl": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=&uc%5Brule_string%5D=%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8418301%5D%2C%22selected_tags%22%3A%5B%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=sndr-2073296413",
+   "regi15Url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=&uc%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22UserContext_formfieldvalue%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22fieldId%22%3A5002734%2C%22fieldValue%22%3A%7B%22selected_id%22%3A%5B%22%D0%A3%D0%B4%D0%BE%D0%B1%D0%BD%D0%BE+%D1%81%D0%BC%D0%BE%D1%82%D1%80%D0%B5%D1%82%D1%8C+%D0%B2+15%3A00%22%5D%7D%2C%22valueMode%22%3A2%7D%7D%2C%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8418301%5D%2C%22selected_tags%22%3A%5B%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=sndr-2073296413",
+   "regi19Url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=&uc%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22UserContext_formfieldvalue%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22fieldId%22%3A5002734%2C%22fieldValue%22%3A%7B%22selected_id%22%3A%5B%22%D0%A3%D0%B4%D0%BE%D0%B1%D0%BD%D0%BE+%D1%81%D0%BC%D0%BE%D1%82%D1%80%D0%B5%D1%82%D1%8C+%D0%B2+19%3A00%22%5D%7D%2C%22valueMode%22%3A2%7D%7D%2C%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8418301%5D%2C%22selected_tags%22%3A%5B%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=sndr-2073296413"
+  },
+  "linkItems": [
+   {
+    "label": "Дашборд продаж",
+    "url": "https://gc.ksamata.ru/pl/logic/funnel/update?id=1684981"
+   },
+   {
+    "label": "Регистрации всего",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=&uc%5Brule_string%5D=%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8418301%5D%2C%22selected_tags%22%3A%5B%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=sndr-2073296413"
+   },
+   {
+    "label": "Регистрации 15:00",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=&uc%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22UserContext_formfieldvalue%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22fieldId%22%3A5002734%2C%22fieldValue%22%3A%7B%22selected_id%22%3A%5B%22%D0%A3%D0%B4%D0%BE%D0%B1%D0%BD%D0%BE+%D1%81%D0%BC%D0%BE%D1%82%D1%80%D0%B5%D1%82%D1%8C+%D0%B2+15%3A00%22%5D%7D%2C%22valueMode%22%3A2%7D%7D%2C%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8418301%5D%2C%22selected_tags%22%3A%5B%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=sndr-2073296413"
+   },
+   {
+    "label": "Регистрации 19:00",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc%5Bsegment_id%5D=&uc%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22UserContext_formfieldvalue%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22fieldId%22%3A5002734%2C%22fieldValue%22%3A%7B%22selected_id%22%3A%5B%22%D0%A3%D0%B4%D0%BE%D0%B1%D0%BD%D0%BE+%D1%81%D0%BC%D0%BE%D1%82%D1%80%D0%B5%D1%82%D1%8C+%D0%B2+19%3A00%22%5D%7D%2C%22valueMode%22%3A2%7D%7D%2C%7B%22type%22%3A%22user_hasdealrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%2215.07.2024%22%2C%22to%22%3A%2215.07.2024%22%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8418301%5D%2C%22selected_tags%22%3A%5B%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=sndr-2073296413"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f34",
+  "id": 35,
+  "status": "active",
+  "name": "ТКМ НИМБ РСЯ",
+  "update": {
+   "dashSalesUrl": "https://gc.ksamata.ru/pl/logic/funnel/update?id=1689990"
+  },
+  "linkItems": [
+   {
+    "label": "Дашборд продаж",
+    "url": "https://gc.ksamata.ru/pl/logic/funnel/update?id=1689990"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f35",
+  "id": 41,
+  "status": "active",
+  "name": "СУСТАВЫ NR ВК",
+  "update": {
+   "dashSalesUrl": "https://gc.ksamata.ru/pl/logic/funnel/dashboard?id=1689147#pk=3b435cc14171e9f3d5061d88bb763030"
+  },
+  "linkItems": [
+   {
+    "label": "Дашборд продаж",
+    "url": "https://gc.ksamata.ru/pl/logic/funnel/dashboard?id=1689147#pk=3b435cc14171e9f3d5061d88bb763030"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f42",
+  "id": 45,
+  "status": "active",
+  "name": "ЖКТ-4вр НИМБ Яндекс",
+  "update": {
+   "dashSalesUrl": "https://gc.ksamata.ru/pl/logic/funnel/update?id=1688836"
+  },
+  "linkItems": [
+   {
+    "label": "Дашборд продаж",
+    "url": "https://gc.ksamata.ru/pl/logic/funnel/update?id=1688836"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f45",
+  "id": 47,
+  "status": "active",
+  "name": "ЖИВО-суставы НИМБ Яндекс",
+  "update": {
+   "dashSalesUrl": "https://gc.ksamata.ru/pl/logic/funnel/dashboard?id=1691815#pk=alltime"
+  },
+  "linkItems": [
+   {
+    "label": "Дашборд продаж",
+    "url": "https://gc.ksamata.ru/pl/logic/funnel/dashboard?id=1691815#pk=alltime"
+   },
+   {
+    "label": "Заявки (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/sales/deal/index?DealContext[segment_id]=36141808"
+   },
+   {
+    "label": "Оплаты (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/sales/deal/index?DealContext%5Bsegment_id%5D=36141808&DealContext%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22DealContext_formfieldvalue%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22fieldId%22%3A402303%2C%22fieldValue%22%3A%22yandex_nimb%22%2C%22valueMode%22%3A2%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B%228532075%22%2C%228533106%22%5D%2C%22selected_tags%22%3A%5B%22%D0%B6%D0%B8%D0%B2%D0%BE%22%5D%2C%22all_object_with_tags%22%3A%22false%22%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_is_payed%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22checked%22%3A1%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%22%22%2C%22to%22%3A%22%22%2C%22toNDays%22%3A%22%22%2C%22fromNDays%22%3A%22%22%2C%22dateType%22%3A%22this_day%22%2C%22withTime%22%3A%22false%22%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&r8537=yandex_nimb&r3910=on&formParams%5Bclarity_uid%5D=rbwQcqhQvvMt3x1zMB_5CU08i47QbKBX"
+   },
+   {
+    "label": "Продажи (выборка заказов)",
+    "url": "https://gc.ksamata.ru/pl/sales/deal/index?DealContext%5Bsegment_id%5D=36141808&DealContext%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22DealContext_formfieldvalue%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22fieldId%22%3A402303%2C%22fieldValue%22%3A%22yandex_nimb%22%2C%22valueMode%22%3A2%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B%228532075%22%2C%228533106%22%5D%2C%22selected_tags%22%3A%5B%22%D0%B6%D0%B8%D0%B2%D0%BE%22%5D%2C%22all_object_with_tags%22%3A%22false%22%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%22%22%2C%22to%22%3A%22%22%2C%22toNDays%22%3A%22%22%2C%22fromNDays%22%3A%22%22%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3A%22false%22%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_tag%22%2C%22inverted%22%3A1%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B%22282270%22%2C%221478545%22%5D%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&r418=yandex_nimb&formParams%5Bclarity_uid%5D=I7-Mx7u1LcVCs5siWkv-nJ-3NCBhPjrI"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f46",
+  "id": 48,
+  "status": "active",
+  "name": "ЖИВО-суставы ИНХАУЗ ВК",
+  "update": {
+   "dashSalesUrl": "https://gc.ksamata.ru/pl/logic/funnel/dashboard?id=1691815#pk=alltime"
+  },
+  "linkItems": [
+   {
+    "label": "Дашборд продаж",
+    "url": "https://gc.ksamata.ru/pl/logic/funnel/dashboard?id=1691815#pk=alltime"
+   },
+   {
+    "label": "Заявки (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/sales/deal/index?DealContext[segment_id]=36141810"
+   },
+   {
+    "label": "Оплаты (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/sales/deal/index?DealContext%5Bsegment_id%5D=36141810&DealContext%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22DealContext_formfieldvalue%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22fieldId%22%3A402303%2C%22fieldValue%22%3A%22vk_internal_ash%22%2C%22valueMode%22%3A2%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B%228532075%22%2C%228533106%22%5D%2C%22selected_tags%22%3A%5B%22%D0%B6%D0%B8%D0%B2%D0%BE%22%5D%2C%22all_object_with_tags%22%3A%22false%22%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_is_payed%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22checked%22%3A1%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%7D%2C%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%22%22%2C%22to%22%3A%22%22%2C%22toNDays%22%3A%22%22%2C%22fromNDays%22%3A%22%22%2C%22dateType%22%3A%22this_day%22%2C%22withTime%22%3A%22false%22%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&r5023=vk_internal_ash&r2804=on&formParams%5Bclarity_uid%5D=rbwQcqhQvvMt3x1zMB_5CU08i47QbKBX"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f47",
+  "id": 49,
+  "status": "active",
+  "name": "ЖИВО-суставы-триал НИМБ",
+  "update": {},
+  "linkItems": [
+   {
+    "label": "Заявки (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc[segment_id]=36229161"
+   },
+   {
+    "label": "Оплаты (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc[segment_id]=36229157"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f48",
+  "id": 50,
+  "status": "active",
+  "name": "ЖИВО-ЖКТ ИНХАУЗ ВК",
+  "update": {},
+  "linkItems": [
+   {
+    "label": "Заявки (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/sales/deal/index?DealContext%5Bsegment_id%5D=&DealContext%5Brule_string%5D=%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8548102%5D%2C%22selected_tags%22%3A%5B%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=wIMVGIqMM-l54Ric6Z1s6gW9Zhwq0Vn1"
+   },
+   {
+    "label": "Оплаты (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/sales/control/payment/index?PaymentContext%5Bsegment_id%5D=&PaymentContext%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%22%22%2C%22to%22%3A%22%22%2C%22toNDays%22%3A%22%22%2C%22fromNDays%22%3A%22%22%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3A%22false%22%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22payment_dealcontext%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8548102%5D%2C%22selected_tags%22%3A%5B%22живо%22%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%7D%2C%7B%22type%22%3A%22status%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B%22accepted%22%5D%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=wIMVGIqMM-l54Ric6Z1s6gW9Zhwq0Vn1"
+   },
+   {
+    "label": "Продажи (выборка заказов)",
+    "url": "https://gc.ksamata.ru/pl/sales/deal/index?DealContext%5Bsegment_id%5D=&DealContext%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3Anull%2C%22to%22%3Anull%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8548102%5D%2C%22selected_tags%22%3A%5B%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_tag%22%2C%22inverted%22%3A1%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B%22282270%22%2C%221478545%22%5D%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=I7-Mx7u1LcVCs5siWkv-nJ-3NCBhPjrIselected_id%22%3A%5B%22282270%22%2C%221478545%22%5D%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=I7-Mx7u1LcVCs5siWkv-nJ-3NCBhPjrI"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f51",
+  "id": 51,
+  "status": "active",
+  "name": "ЖИВО-суставы-триал ИНХАУЗ",
+  "update": {},
+  "linkItems": [
+   {
+    "label": "Заявки (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/sales/deal/index?DealContext%5Bsegment_id%5D=&DealContext%5Brule_string%5D=%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8551660%5D%2C%22selected_tags%22%3A%5B%5D%7D%2C%22valueMode%22%3Anull%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=wIMVGIqMM-l54Ric6Z1s6gW9Zhwq0Vn1"
+   },
+   {
+    "label": "Оплаты (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/sales/control/payment/index?PaymentContext%5Bsegment_id%5D=&PaymentContext%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%22%22%2C%22to%22%3A%22%22%2C%22toNDays%22%3A%22%22%2C%22fromNDays%22%3A%22%22%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3A%22false%22%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22payment_dealcontext%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8551660%5D%2C%22selected_tags%22%3A%5B%22живо%22%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%7D%2C%7B%22type%22%3A%22status%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B%22accepted%22%5D%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=wIMVGIqMM-l54Ric6Z1s6gW9Zhwq0Vn1"
+   },
+   {
+    "label": "Продажи (выборка заказов)",
+    "url": "https://gc.ksamata.ru/pl/sales/deal/index?DealContext%5Bsegment_id%5D=&DealContext%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3Anull%2C%22to%22%3Anull%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8551660%5D%2C%22selected_tags%22%3A%5B%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_tag%22%2C%22inverted%22%3A1%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B%22282270%22%2C%221478545%22%5D%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=I7-Mx7u1LcVCs5siWkv-nJ-3NCBhPjrI"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f52",
+  "id": 52,
+  "status": "active",
+  "name": "ДЫХАНИЕ ИНХАУЗ ВК",
+  "update": {
+   "dashSalesUrl": "https://gc.ksamata.ru/pl/logic/funnel/update?id=1692551"
+  },
+  "linkItems": [
+   {
+    "label": "Дашборд продаж",
+    "url": "https://gc.ksamata.ru/pl/logic/funnel/update?id=1692551"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f53",
+  "id": 59,
+  "status": "active",
+  "name": "СУСТАВЫ ВК ИНХАУЗ",
+  "update": {
+   "dashSalesUrl": "https://gc.ksamata.ru/pl/logic/funnel/update?id=1692556"
+  },
+  "linkItems": [
+   {
+    "label": "Дашборд продаж",
+    "url": "https://gc.ksamata.ru/pl/logic/funnel/update?id=1692556"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f54",
+  "id": 65,
+  "status": "active",
+  "name": "ЖИВО-ЖКТ НИМБ Яндекс",
+  "update": {},
+  "linkItems": [
+   {
+    "label": "Заявки (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/sales/deal/index?DealContext%5Bsegment_id%5D=&DealContext%5Brule_string%5D=%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8548108%5D%2C%22selected_tags%22%3A%5B%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=wIMVGIqMM-l54Ric6Z1s6gW9Zhwq0Vn1"
+   },
+   {
+    "label": "Оплаты (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/sales/control/payment/index?PaymentContext%5Bsegment_id%5D=&PaymentContext%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22mode%22%3A%22and%22%2C%22children%22%3A%5B%7B%22type%22%3A%22created_at%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3A%22%22%2C%22to%22%3A%22%22%2C%22toNDays%22%3A%22%22%2C%22fromNDays%22%3A%22%22%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3A%22false%22%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22payment_dealcontext%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22linkedRule%22%3A%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8548108%5D%2C%22selected_tags%22%3A%5B%22живо%22%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%22countCondition%22%3A%7B%22checker%22%3A%22nlt%22%2C%22numval%22%3A%22%22%7D%7D%7D%2C%7B%22type%22%3A%22status%22%2C%22inverted%22%3A0%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B%22accepted%22%5D%7D%2C%22valueMode%22%3Anull%7D%7D%5D%7D%2C%22maxSize%22%3A%22%22%7D&formParams%5Bclarity_uid%5D=wIMVGIqMM-l54Ric6Z1s6gW9Zhwq0Vn1"
+   },
+   {
+    "label": "Продажи (выборка заказов)",
+    "url": "https://gc.ksamata.ru/pl/sales/deal/index?DealContext%5Bsegment_id%5D=&DealContext%5Brule_string%5D=%7B%22type%22%3A%22andrule%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Acomponents%3A%3Alogic%3A%3Arule%3A%3AAndRule%22%2C%22params%22%3A%7B%22children%22%3A%5B%7B%22type%22%3A%22deal_created_at%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Amodules%3A%3Asales%3A%3Arules%3A%3ADealCreatedAtRule%22%2C%22params%22%3A%7B%22value%22%3A%7B%22from%22%3Anull%2C%22to%22%3Anull%2C%22toNDays%22%3Anull%2C%22fromNDays%22%3Anull%2C%22dateType%22%3A%22prev_day%22%2C%22withTime%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_offer_id%22%2C%22inverted%22%3A0%2C%22className%22%3A%22app%3A%3Acomponents%3A%3Alogic%3A%3Arule%3A%3Asales%3A%3AOfferIdDealContextRule%22%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B8548108%5D%2C%22selected_tags%22%3A%5B%5D%2C%22all_object_with_tags%22%3Afalse%7D%2C%22valueMode%22%3Anull%7D%7D%2C%7B%22type%22%3A%22deal_tag%22%2C%22inverted%22%3A1%2C%22className%22%3A%22app%3A%3Acomponents%3A%3Alogic%3A%3Arule%3A%3Asales%3A%3ATaggedDealContextRule%22%2C%22params%22%3A%7B%22value%22%3A%7B%22selected_id%22%3A%5B%22282270%22%2C%221478545%22%5D%7D%2C%22valueMode%22%3Anull%7D%7D%5D%2C%22mode%22%3A%22and%22%7D%7D&formParams%5Bclarity_uid%5D=I7-Mx7u1LcVCs5siWkv-nJ-3NCBhPjrI"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f55",
+  "id": 67,
+  "status": "active",
+  "name": "ЖИВО-суставы-триал ИНХАУЗ Яндекс",
+  "update": {},
+  "linkItems": [
+   {
+    "label": "Заявки (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc[segment_id]=36229206"
+   },
+   {
+    "label": "Оплаты (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc[segment_id]=36229215"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f56",
+  "id": 68,
+  "status": "active",
+  "name": "ЖИВО-суставы ИНХАУЗ Яндекс",
+  "update": {},
+  "linkItems": [
+   {
+    "label": "Заявки (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc[segment_id]=36228213"
+   },
+   {
+    "label": "Оплаты (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc[segment_id]=36228225"
+   },
+   {
+    "label": "Заявки — ГК-лендинг",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc[segment_id]=36228641"
+   },
+   {
+    "label": "Оплаты — ГК-лендинг",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc[segment_id]=36228644"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f57",
+  "id": 69,
+  "status": "active",
+  "name": "ЖИВО-ЖКТ ИНХАУЗ Яндекс",
+  "update": {},
+  "linkItems": [
+   {
+    "label": "Заявки (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc[segment_id]=36229126"
+   },
+   {
+    "label": "Оплаты (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc[segment_id]=36229132"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f58",
+  "id": 66,
+  "status": "archive",
+  "name": "БОО НИМБ ЮТУБ",
+  "update": {
+   "dashSalesUrl": "https://gc.ksamata.ru/pl/logic/funnel/dashboard?id=1693798#pk=3b435cc14171e9f3d5061d88bb763030"
+  },
+  "linkItems": [
+   {
+    "label": "Дашборд продаж",
+    "url": "https://gc.ksamata.ru/pl/logic/funnel/dashboard?id=1693798#pk=3b435cc14171e9f3d5061d88bb763030"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f73",
+  "id": 70,
+  "status": "active",
+  "name": "ЖИВО-суставы-триал NR ВК",
+  "update": {},
+  "linkItems": [
+   {
+    "label": "Заявки (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc[segment_id]=36297134"
+   },
+   {
+    "label": "Оплаты (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc[segment_id]=36297190"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f74",
+  "id": 71,
+  "status": "active",
+  "name": "ЖИВО-ЖКТ NR ВК",
+  "update": {},
+  "linkItems": [
+   {
+    "label": "Заявки (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc[segment_id]=36297120"
+   },
+   {
+    "label": "Оплаты (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc[segment_id]=36297123"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f80",
+  "id": 74,
+  "status": "active",
+  "name": "СУСТАВЫ ИНХАУЗ Яндекс",
+  "update": {
+   "dashSalesUrl": "https://gc.ksamata.ru/pl/logic/funnel/update?id=1693745"
+  },
+  "linkItems": [
+   {
+    "label": "Дашборд продаж",
+    "url": "https://gc.ksamata.ru/pl/logic/funnel/update?id=1693745"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f84",
+  "id": 78,
+  "status": "active",
+  "name": "",
+  "update": {
+   "dashSalesUrl": "https://gc.ksamata.ru/pl/logic/funnel/update?id=1694698"
+  },
+  "linkItems": [
+   {
+    "label": "Дашборд продаж",
+    "url": "https://gc.ksamata.ru/pl/logic/funnel/update?id=1694698"
+   }
+  ],
+  "skipped": []
+ },
+ {
+  "frontCode": "f85",
+  "id": 79,
+  "status": "active",
+  "name": "ЖИВО-суставы NR ВК",
+  "update": {},
+  "linkItems": [
+   {
+    "label": "Заявки (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc[segment_id]=36297104"
+   },
+   {
+    "label": "Оплаты (выборка ГК)",
+    "url": "https://gc.ksamata.ru/pl/user/user/index?uc[segment_id]=36297112"
+   }
+  ],
+  "skipped": []
+ }
+]
