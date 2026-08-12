@@ -61,13 +61,15 @@ export const funnels = sqliteTable(
     tag19Raw:         text('tag_19_raw').default(''),
     tag15Raw:         text('tag_15_raw').default(''),
     regTagsRaw:       text('reg_tags_raw').default(''),
-    dashSalesUrl:     text('dash_sales_url').default(''),
-    dashPedelivUrl:   text('dash_pereliv_url').default(''),
-    regiTotalUrl:     text('regi_total_url').default(''),
-    regi15Url:        text('regi_15_url').default(''),
-    regi19Url:        text('regi_19_url').default(''),
-    regiNotimeUrl:    text('regi_notime_url').default(''),
-    predspisokUrl:    text('predspisok_url').default(''),
+    // Колонок dash_sales_url, dash_pereliv_url, regi_total_url, regi_15_url,
+    // regi_19_url, regi_notime_url и predspisok_url здесь больше нет. Адреса
+    // дашбордов и подсчётов регистраций живут в блоке «Ссылки» (kind = 'links'),
+    // и правит человек только его. Сами колонки остались в SQLite пустыми:
+    // в них ещё пишут Python-скрипты импорта, а Phase-11 при каждом старте
+    // переносит попавшее туда в блок. Читать их из приложения нельзя — это
+    // ровно то второе место, ради устранения которого всё и делалось.
+    // Заодно исчезла опечатка `dashPedelivUrl`: Drizzle молча игнорировал
+    // неизвестный ключ, так что запись в dash_pereliv_url проходила мимо.
     roomIdsJson:      text('room_ids_json').default('{}'),
     createdAt:        text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt:        text('updated_at').notNull().default(sql`(datetime('now'))`),
