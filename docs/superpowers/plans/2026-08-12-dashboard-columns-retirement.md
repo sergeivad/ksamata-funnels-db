@@ -1140,6 +1140,41 @@ git commit -m "docs: фаза 11 в цепочке миграций, колон�
 `/data`, и починка f9/f16 из Task 2 туда не попадает: она сделана на локальном
 файле репозитория, а образ несёт `app/seed/` только для первого старта.
 
+**Перед выкатом снять копию прод-базы и посчитать реальный список пунктов,
+которые допишет фаза** — не полагаться на цифру «два пункта» ниже, она
+измерена на локальной базе. Локальные колонки заморожены на состоянии сида, а
+прод-блок `links` месяцами правили через админку, так что расхождение там
+может быть больше, чем два f9/f16. Из корня репозитория (на сервере или на
+свежей копии `/data`):
+
+```sh
+sqlite3 prod_ksamata_funnels.db "VACUUM INTO '/tmp/prod-snapshot.db';"
+sqlite3 /tmp/prod-snapshot.db "
+  SELECT f.front_code, f.id, f.col, f.val FROM (
+    SELECT id, front_code, dash_sales_url AS val, 'dash_sales_url' AS col FROM funnels
+    UNION ALL SELECT id, front_code, dash_pereliv_url, 'dash_pereliv_url' FROM funnels
+    UNION ALL SELECT id, front_code, regi_total_url, 'regi_total_url' FROM funnels
+    UNION ALL SELECT id, front_code, regi_15_url, 'regi_15_url' FROM funnels
+    UNION ALL SELECT id, front_code, regi_19_url, 'regi_19_url' FROM funnels
+    UNION ALL SELECT id, front_code, regi_notime_url, 'regi_notime_url' FROM funnels
+    UNION ALL SELECT id, front_code, predspisok_url, 'predspisok_url' FROM funnels
+  ) f
+  WHERE trim(coalesce(f.val, '')) <> ''
+    AND NOT EXISTS (
+      SELECT 1 FROM funnel_block_items i
+        JOIN funnel_blocks b ON b.id = i.block_id
+       WHERE b.funnel_id = f.id AND b.kind = 'links'
+         AND lower(trim(i.url)) = lower(rtrim(trim(f.val), '/'))
+    );
+"
+```
+
+Каждая строка результата — будущий второй пункт под уже занятой подписью, а не
+только пара f9/f16. Список стоит просмотреть глазами до выката: если там
+окажется что-то неожиданное (мусор вместо адреса, адрес не по правилу фазы),
+лучше разобраться заранее, чем после того, как фаза уже дописала пункты на
+живых карточках.
+
 Значит на проде фаза 11 при первом же старте сделает ровно то, для чего ветка
 и написана: увидит, что верного адреса дашборда f9 и f16 в блоке нет, и
 допишет его **вторым пунктом** с подписью «Дашборд продаж». В карточках этих

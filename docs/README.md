@@ -68,3 +68,4 @@ All features below are merged. Specs and plans are kept for context.
 | Funnel-tag drift map (`tools/audit/`) | [funnel-tag-drift-map-design](superpowers/specs/2026-07-24-funnel-tag-drift-map-design.md) | [funnel-tag-drift-map](superpowers/plans/2026-07-24-funnel-tag-drift-map.md) |
 | Monitoring: per-group on/off decisions (`monitor_source_kind_prefs`) | — | [monitoring-source-kind-prefs](plans/2026-07-24-monitoring-source-kind-prefs.md) |
 | Funnel type — fifth axis (`funnel_types`, Phase 8) | [funnel-type-fifth-axis-design](superpowers/specs/2026-07-28-funnel-type-fifth-axis-design.md) | [funnel-type-fifth-axis](superpowers/plans/2026-07-28-funnel-type-fifth-axis.md) |
+| Dashboard/registration URL columns retirement (`links` block, Phase 11) | [dashboard-columns-retirement-design](superpowers/specs/2026-08-12-dashboard-columns-retirement-design.md) | [dashboard-columns-retirement](superpowers/plans/2026-08-12-dashboard-columns-retirement.md) |
