@@ -229,29 +229,46 @@ describe('Phase-11: ссылки и дашборды переезжают в б�
     expect(blockItems(id)).toEqual([{ label: 'Дашборд продаж', url: 'https://gc.example.ru/once' }]);
   });
 
-  it('после прогона ни в одной воронке базы не остаётся заполненной колонки', () => {
-    runMigratePhase11(sqlite);
+  // Колонки живой базы фаза 11 уже очистила (см. CLAUDE.md, коммит
+  // b4d4ccd) — с этого момента `WHERE <любая колонка непуста>` над всей
+  // таблицей проходит по пустому множеству и ничего не проверяет. Оба теста
+  // ниже сами заводят воронки с непустыми колонками, чтобы запрос снова имел
+  // что находить, а не просто не падал.
+  it('после прогона ни в одной воронке (включая только что заведённые) не остаётся заполненной колонки', () => {
+    const ids = [freshFunnel(), freshFunnel(), freshFunnel()];
+    ids.forEach((id, i) =>
+      setCol(id, LINK_COLUMNS[i % LINK_COLUMNS.length].col, `https://gc.example.ru/many-${i}`)
+    );
 
     const where = LINK_COLUMNS.map((c) => `trim(coalesce(${c.col}, '')) <> ''`).join(' OR ');
+    // Подтверждаем, что запросу вообще есть что находить — иначе оставшийся
+    // ноль ничего не доказывает.
+    const before = sqlite.prepare(`SELECT COUNT(*) AS n FROM funnels WHERE ${where}`).get() as { n: number };
+    expect(before.n).toBeGreaterThan(0);
+
+    runMigratePhase11(sqlite);
+
     const left = sqlite.prepare(`SELECT COUNT(*) AS n FROM funnels WHERE ${where}`).get() as { n: number };
     expect(left.n).toBe(0);
   });
 
-  it('не теряет ни одного адреса живой базы: всё, что было в колонках, есть в блоке', () => {
+  it('не теряет ни одного адреса, перенося несколько воронок за один прогон', () => {
     const key = (u: string) => u.trim().toLowerCase().replace(/\/+$/, '');
-    const where = LINK_COLUMNS.map((c) => `trim(coalesce(${c.col}, '')) <> ''`).join(' OR ');
-    const before = (
-      sqlite
-        .prepare(`SELECT id, ${LINK_COLUMNS.map((c) => c.col).join(', ')} FROM funnels WHERE ${where}`)
-        .all() as Record<string, string | number>[]
-    ).map((row) => [
-      row.id as number,
-      LINK_COLUMNS.map((c) => String(row[c.col] ?? '').trim()).filter((u) => /^https?:\/\//i.test(u)),
-    ] as const);
+    const seeded: [number, string[]][] = [];
+
+    for (let n = 0; n < 3; n++) {
+      const id = freshFunnel();
+      const urls = LINK_COLUMNS.map(({ col }, i) => {
+        const url = `https://gc.example.ru/multi-${n}-${i}`;
+        setCol(id, col, url);
+        return url;
+      });
+      seeded.push([id, urls]);
+    }
 
     runMigratePhase11(sqlite);
 
-    for (const [id, urls] of before) {
+    for (const [id, urls] of seeded) {
       const inBlock = new Set(blockItems(id).map((i) => key(i.url)));
       for (const url of urls) {
         expect(inBlock.has(key(url))).toBe(true);
