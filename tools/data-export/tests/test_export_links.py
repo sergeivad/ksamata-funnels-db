@@ -18,6 +18,7 @@ _TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 _ROOT_DIR = os.path.abspath(os.path.join(_TESTS_DIR, '..', '..', '..'))
 _PHASE11_PATH = os.path.join(_ROOT_DIR, 'app', 'scripts', 'migrate-phase11.ts')
 
+
 def make_db(path, items):
     """Минимальная база с одной воронкой и блоком «Ссылки» из `items`."""
     conn = sqlite3.connect(str(path))
@@ -147,6 +148,38 @@ def test_funnel_without_links_block_does_not_crash(tmp_path):
     assert f["dash_sales"] == ""
     assert f["predspisok"] == ""
     assert f["extra_links"] == ""
+
+
+def test_two_or_more_unmatched_labels_are_joined_in_extra_links(tmp_path):
+    """`extra_links` — не одно поле, а склейка ' / ' по всем незнакомым пунктам."""
+    db = tmp_path / "ksamata_funnels.db"
+    make_db(
+        db,
+        [
+            ("Сводка по рекламе", "https://gc.example.ru/ads"),
+            ("Черновик дашборда", "https://gc.example.ru/draft"),
+        ],
+    )
+
+    f = load_all(str(db))[0]
+
+    assert f["dash_sales"] == ""
+    assert f["extra_links"] == (
+        "Сводка по рекламе — https://gc.example.ru/ads / "
+        "Черновик дашборда — https://gc.example.ru/draft"
+    )
+
+
+def test_blank_label_with_url_goes_to_extra_links_as_bare_address(tmp_path):
+    """Пункт без подписи — законное состояние блока, а не мусор: адрес идёт в
+    «Прочие ссылки» голым, без тире, потому что подписывать его нечем."""
+    db = tmp_path / "ksamata_funnels.db"
+    make_db(db, [("", "https://gc.example.ru/nolabel")])
+
+    f = load_all(str(db))[0]
+
+    assert f["dash_sales"] == ""
+    assert f["extra_links"] == "https://gc.example.ru/nolabel"
 
 
 def test_link_labels_match_migrate_phase11_source():
