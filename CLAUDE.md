@@ -60,6 +60,11 @@ Drizzle SQLite. Core + lookup + content + tags tables:
   `roomIdsJson`, `bothelpCondition`, `status` (`active`/`draft`/`archive`),
   `frontCode`, `comment`, `timeLabelA`/`timeLabelB`, and room toggles
   `roomsEnabled` / `roomsReplayEnabled`.
+  Семи URL-колонок дашбордов (`dash_sales_url`, `dash_pereliv_url`,
+  `regi_total_url`, `regi_15_url`, `regi_19_url`, `regi_notime_url`,
+  `predspisok_url`) в `schema.ts` больше нет (Phase 11) — как и `landing_url`
+  (Phase 10). Колонки остались в SQLite пустыми, потому что в них пишет
+  Python-импорт; адреса живут в блоках `links` и `landings`.
   **`num` and `frontCode` are two unrelated numberings** — `num` is the internal
   key (unique, never shown to a human), `frontCode` is the F code the funnel is
   called by everywhere else and it comes from LeakEngine, not from here. They
@@ -477,9 +482,24 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
   `funnels.landing_url` is gone from `schema.ts`, from `FunnelDetail`, and from
   the create/update schemas — the column survives in SQLite, empty, and nothing
   in the app reads it.
+- **Phase 11** — адреса дашбордов и подсчётов регистраций живут **только** в
+  блоке «Ссылки». Семь колонок (`dash_sales_url`, `dash_pereliv_url`,
+  `regi_total_url`, `regi_15_url`, `regi_19_url`, `regi_notime_url`,
+  `predspisok_url`) держали то же, что и блок, но правит человек только блок:
+  полей карточки у колонок нет, и приложение их не читает и не пишет. Фаза
+  дописывает в блок адреса, которых там ещё нет (сравнение по адресу без учёта
+  регистра и хвостового слэша, **подписи в сравнении не участвуют**), затем
+  гасит все семь колонок — в одной транзакции, перенос первым. Понятия
+  «конфликт» у неё поэтому нет: расхождение выглядит как «этого адреса в блоке
+  нет» и дописывается вторым пунктом с той же подписью. Ничего не теряется, а
+  лишний пункт человек снимает в админке; «блок главнее» стоило бы верных
+  дашбордов f9 и f16, «колонка главнее» возвращало бы литералы Python-скриптов
+  2022 года поверх правок маркетолога при каждом старте. **Фаза остаётся в
+  цепочке навсегда**: колонки продолжает писать Python-импорт. Семь свойств
+  удалены из `schema.ts`; сами колонки живут в SQLite пустыми.
 
 **Docker runs, in order** (`app/docker-entrypoint.sh`): Phase 2 → 3 (+data) →
-4 → 5 → legacy-tag-override backfill → 6 → 7 → 8 → 9 → 10.
+4 → 5 → legacy-tag-override backfill → 6 → 7 → 8 → 9 → 10 → 11.
 
 **A migration script must never run itself.** esbuild bundles the runner and the
 migration into one file, and inside that bundle `require.main === module` is
@@ -656,11 +676,14 @@ Env vars: `FUNNELS_DB_PATH`, `ADMIN_USERS`, `ADMIN_SESSION_SECRET`,
 Python scripts resolve paths from the **repo root** (via their own file
 location), so they run from any working directory.
 
-**Python tools still write `funnels.landing_url`**, a column the app no longer
-reads (Phase 10). Nothing breaks: the phase runs on every container start and
-sweeps whatever lands there into the «Лендинги» block. But after running an
-import against a local DB, run the phase by hand
-(`npx tsx scripts/migrate-phase10-runner.ts` from `app/`) or the addresses stay
+**Python tools still write columns the app no longer reads** —
+`funnels.landing_url` (Phase 10) и семь URL-колонок дашбордов
+(`dash_sales_url`, `dash_pereliv_url`, `regi_total_url`, `regi_15_url`,
+`regi_19_url`, `regi_notime_url`, `predspisok_url`, Phase 11). Nothing breaks:
+обе фазы выполняются при каждом старте контейнера и сметают попавшее туда в
+блоки «Лендинги» и «Ссылки». But after running an import against a local DB,
+run both phases by hand (`npx tsx scripts/migrate-phase10-runner.ts` and
+`npx tsx scripts/migrate-phase11-runner.ts` from `app/`) or the addresses stay
 invisible until the next container start.
 
 - **Import** (`tools/data-import/`): `add_av_tags.py`, `add_durations.py`,
