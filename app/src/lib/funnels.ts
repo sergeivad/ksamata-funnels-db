@@ -321,6 +321,27 @@ export function getFunnel(db: DB, id: number): FunnelDetail | null {
 }
 
 /**
+ * Воронка по F-коду — то, чем адрес карточки отличается от API.
+ *
+ * Пустой код не ищется НИКОГДА: `front_code` у бескодовых воронок хранится
+ * пустой строкой, и запрос по '' вернул бы первую попавшуюся из них.
+ * Уникальность непустого кода держит частичный индекс Phase 7.
+ *
+ * Тело читается через `getFunnel`, а не собирается заново: материализация
+ * тегов и осей должна жить в одном месте.
+ */
+export function getFunnelByFrontCode(db: DB, code: string): FunnelDetail | null {
+  const normalized = normalizeFrontCode(code);
+  if (normalized === '') return null;
+  const row = db
+    .select({ id: funnels.id })
+    .from(funnels)
+    .where(eq(funnels.frontCode, normalized))
+    .get();
+  return row ? getFunnel(db, row.id) : null;
+}
+
+/**
  * POST /api/funnels — create a new funnel.
  * Throws an error with message containing "409" if num already exists.
  */

@@ -15,6 +15,7 @@ import * as schema from '../src/db/schema';
 import {
   listFunnels,
   getFunnel,
+  getFunnelByFrontCode,
   createFunnel,
   createDraftFunnel,
   updateFunnel,
@@ -760,5 +761,28 @@ describe('resyncAllFunnels и пустые черновики', () => {
     const created = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9899 });
     resyncAllFunnels(testDb);
     expect(getFunnel(testDb, created.id)!.axes.product).toBe(BASE_FUNNEL_DATA.product);
+  });
+});
+
+describe('getFunnelByFrontCode', () => {
+  it('находит воронку по её коду', () => {
+    const created = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9901, frontCode: 'f9001' });
+    expect(getFunnelByFrontCode(testDb, 'f9001')?.id).toBe(created.id);
+  });
+
+  it('регистр и пробелы не мешают — код нормализуется', () => {
+    createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9902, frontCode: 'f9002' });
+    expect(getFunnelByFrontCode(testDb, 'F9002')?.frontCode).toBe('f9002');
+    expect(getFunnelByFrontCode(testDb, ' f9002 ')?.frontCode).toBe('f9002');
+  });
+
+  it('пустой код не ищется никогда — иначе бескодовые склеятся в одну', () => {
+    createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9903, frontCode: '' });
+    expect(getFunnelByFrontCode(testDb, '')).toBeNull();
+    expect(getFunnelByFrontCode(testDb, '   ')).toBeNull();
+  });
+
+  it('несуществующий код — null, а не чужая воронка', () => {
+    expect(getFunnelByFrontCode(testDb, 'f9999')).toBeNull();
   });
 });
