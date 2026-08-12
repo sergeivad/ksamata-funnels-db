@@ -17,6 +17,20 @@ ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
 DB_PATH = os.path.join(ROOT_DIR, 'ksamata_funnels.db')
 OUT_PATH = os.path.join(ROOT_DIR, 'data', 'generated', 'Сводная_таблица_автоворонок.xlsx')
 
+# Подпись пункта блока «Ссылки» → поле отчёта. Совпадает с таблицей фазы 11
+# (app/scripts/migrate-phase11.ts) и со STANDARD_LINKS_LABELS приложения.
+# Колонки funnels.dash_*_url / regi_*_url / predspisok_url больше не источник:
+# после Phase-11 адреса живут только в блоке, а сами колонки стоят пустыми.
+LINK_LABELS = {
+    'дашборд продаж': 'dash_sales',
+    'дашборд перелива': 'dash_pereliv',
+    'регистрации всего': 'regi_total',
+    'регистрации 15:00': 'regi_15',
+    'регистрации 19:00': 'regi_19',
+    'регистрации без времени': 'regi_notime',
+    'предсписок': 'predspisok',
+}
+
 # ============================================================
 # 1. LOAD DATA FROM DB
 # ============================================================
@@ -58,6 +72,28 @@ def load_all(db_path):
             """, (fid,)).fetchall()
             if (r['url'] or '').strip()
         )
+
+        # Дашборды и подсчёты регистраций — пункты блока «Ссылки». Пункт с
+        # подписью вне таблицы попадает в «Прочие ссылки»: подпись в админке
+        # свободная, и молча терять такую ссылку отчёт не должен.
+        links = {key: '' for key in LINK_LABELS.values()}
+        extra_links = []
+        for r in conn.execute("""
+            SELECT i.label, i.url
+              FROM funnel_block_items i
+              JOIN funnel_blocks b ON b.id = i.block_id
+             WHERE b.funnel_id = ? AND b.kind = 'links'
+             ORDER BY i.position
+        """, (fid,)).fetchall():
+            url = (r['url'] or '').strip()
+            if not url:
+                continue
+            label = (r['label'] or '').strip()
+            key = LINK_LABELS.get(label.lower())
+            if key is None:
+                extra_links.append(f'{label} — {url}' if label else url)
+            else:
+                links[key] = f'{links[key]} / {url}' if links[key] else url
 
         # Tags grouped by type, ordered by position
         tags = {}
@@ -127,13 +163,14 @@ def load_all(db_path):
             'tag_19': tag_19_str,
             'tag_15': tag_15_str,
             'reg_tags': reg_str,
-            'dash_sales': f['dash_sales_url'] or '',
-            'dash_pereliv': f['dash_pereliv_url'] or '',
-            'predspisok': f['predspisok_url'] or '',
-            'regi_total': f['regi_total_url'] or '',
-            'regi_15': f['regi_15_url'] or '',
-            'regi_19': f['regi_19_url'] or '',
-            'regi_notime': f['regi_notime_url'] or '',
+            'dash_sales': links['dash_sales'],
+            'dash_pereliv': links['dash_pereliv'],
+            'predspisok': links['predspisok'],
+            'regi_total': links['regi_total'],
+            'regi_15': links['regi_15'],
+            'regi_19': links['regi_19'],
+            'regi_notime': links['regi_notime'],
+            'extra_links': ' / '.join(extra_links),
             'days': days,
             'salebot': salebot,
             'bothelp_condition': f['bothelp_condition'] or '',
@@ -256,6 +293,7 @@ def build_excel(funnels_data, out_path):
         cur = wmeta(cur, 'Реги на 15:00:', f['regi_15'])
         cur = wmeta(cur, 'Реги на 19:00:', f['regi_19'])
         cur = wmeta(cur, 'Реги без выбора:', f['regi_notime'])
+        cur = wmeta(cur, 'Прочие ссылки:', f['extra_links'])
 
         # Column headers
         for c, h in enumerate(col_headers, 1):
