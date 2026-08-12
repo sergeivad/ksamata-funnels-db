@@ -805,6 +805,16 @@ invisible until the next container start.
   `npx vitest run`, `npm run build`.
 - Mutate funnel data (especially tags) through the app's tsx logic or API, never
   raw SQL against the live DB.
+- **`replaceBlock` does not validate URLs — the PUT route does.** A script
+  writing block items must run every URL through `checkUrlField`
+  ([app/src/lib/url-field.ts](app/src/lib/url-field.ts)) itself, because the
+  admin refuses to save what it would have rejected on input.
+  `fill-dashboards-2026-08-12.ts` obeyed the rule above — it went through
+  `replaceBlock` — and still wrote 20 URLs with unencoded brackets
+  (`?uc[segment_id]=`) into nine funnels. Opening any of those cards and
+  pressing save then returned 400 on a line the human never touched, and the
+  same nine were the ones prod's API refused when the links were carried over.
+  Pinned by [app/tests/block-url-hygiene.test.ts](app/tests/block-url-hygiene.test.ts).
 - **Never show `num` to a human, and never derive an F code from it.** It is the
   internal key; the F code is what is written on the card, in LeakEngine and in
   every external material. Search, delete confirmations, the monitoring chips
@@ -814,6 +824,22 @@ invisible until the next container start.
   whose `num` is 70 but whose card reads f74.
 - Never leave `ksamata_funnels.db` modified after a live run — restore it (see
   the monitoring gotcha above). Its `monitor_*` tables must stay empty.
+- **Never rebase a commit that touches `ksamata_funnels.db` onto a base that
+  touched it too.** The file is binary, so git has no merge for it: a replay
+  swaps the whole blob in **without reporting a conflict**, silently discarding
+  the other side's rows. Check before rebasing or merging —
+
+  ```sh
+  git log --oneline <your-branch>..main -- ksamata_funnels.db
+  ```
+
+  — and if it prints anything, do not rebase: reset onto the new base and
+  re-apply your change by running its script again. On 2026-08-12 that check
+  was the only thing standing between a routine rebase and the silent loss of
+  `funnel_types.has_time` (Phase 12) and an un-archived funnel, both committed
+  by another session within the same hour. This is also why a data change
+  belongs in its own commit and must be reproducible from a script: an edit
+  made by hand in the admin cannot be replayed onto a moved base.
 - Put process-wide state on `globalThis`, not in a module-level `let` — the
   production bundle duplicates modules (see above).
 - Tests run against a temp **copy** of the DB, never the live file. Make that
@@ -830,6 +856,14 @@ invisible until the next container start.
   day f34 went active — catching nothing. Assert seeded values only for rows
   the seed actually created (the file's `countBeforeSeed` idiom), and pin
   invariants, not today's data.
+- **A one-off script must name its target database in its header — repo or
+  prod.** They hold different data: `/data` is seeded from `app/seed/` only on a
+  container's **first** start, so a script run against the repo DB never reaches
+  the people working in the admin, and no deploy will carry it there.
+  `fill-dashboards-2026-08-12.ts` wrote 55 links from the owner's spreadsheets
+  into the repo DB alone; they stayed invisible in production until they were
+  carried over by hand a day later. Data meant for the admin goes to prod
+  through its API (below).
 - Mutating **prod** goes through its own HTTP API, not raw SQL on `/data`:
   creating a funnel pulls in ref rows and tag materialization. The container has
   no `tsx`, so run a `.cjs` against `127.0.0.1:3000` from inside it — the editor
