@@ -118,6 +118,20 @@ export default function HomePage() {
     }
   }
 
+  /**
+   * Начало поиска само переводит список на «Все»: искать человек идёт по всей
+   * базе, а не внутри раздела, в котором стоит, — запрос по архивной воронке с
+   * «Активных» отвечал «Ничего не найдено», то есть «такой воронки нет».
+   * Переключаем только на переходе «пусто → есть запрос»: раздел, выбранный
+   * уже поверх поиска, следующая же буква иначе сбрасывала бы обратно.
+   */
+  function handleSearchChange(value: string) {
+    if (!isSearching(search) && isSearching(value)) {
+      handleStatusFilterChange('all');
+    }
+    setSearch(value);
+  }
+
   function showToast(message: string, variant: 'success' | 'error') {
     toastKeyRef.current += 1;
     setToast({ message, variant, key: toastKeyRef.current });
@@ -240,8 +254,6 @@ export default function HomePage() {
     []
   );
 
-  const searching = isSearching(search);
-
   const visibleFunnels = useMemo(() => {
     return funnels
       .filter((f) => isFunnelVisible(f, statusFilter, search))
@@ -347,7 +359,7 @@ export default function HomePage() {
             <input
               type="text"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') setSearch('');
               }}
@@ -366,19 +378,14 @@ export default function HomePage() {
               </button>
             )}
           </div>
-          {/* Пока идёт поиск, вкладка ни на что не влияет — показываем это
-              выключенным видом, а не молча игнорируем нажатие. */}
+          {/* Вкладка остаётся живой и во время поиска: начало запроса уже
+              перевело её на «Все», а дальше человек волен сузить выдачу до
+              раздела — и увидит на вкладке ровно то, что фильтрует. */}
           <Segmented
             options={STATUS_OPTIONS}
             value={statusFilter}
             onChange={handleStatusFilterChange}
-            disabled={searching}
           />
-          {searching && (
-            <span className="text-[11px] text-[var(--color-text-secondary)]">
-              Поиск идёт по всем воронкам, включая архив
-            </span>
-          )}
         </div>
       )}
 

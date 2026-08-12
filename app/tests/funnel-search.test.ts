@@ -32,27 +32,34 @@ describe('matchesSearch', () => {
 });
 
 /**
- * Главное правило: поиск отменяет вкладку. До этого условия перемножались, и
- * найти воронку можно было только в том разделе, где человек уже стоит —
- * запрос по архивной воронке на «Активных» отвечал «Ничего не найдено».
+ * Правило: вкладка и запрос перемножаются, а по всем воронкам поиск идёт
+ * потому, что при первом же нажатии список сам встаёт на «Все» (это делает
+ * страница, `handleSearchChange`). Раньше это же решала сама функция —
+ * игнорировала вкладку, пока идёт поиск, — и вкладка при этом врала: стояла
+ * «Активные», а в выдаче был архив.
  */
 describe('isFunnelVisible', () => {
-  test('поиск находит воронку любого статуса из любого раздела', () => {
-    expect(isFunnelVisible(archived, 'active', 'f58')).toBe(true);
-    expect(isFunnelVisible(draft, 'archive', 'петров')).toBe(true);
-    expect(isFunnelVisible(active, 'draft', 'f70')).toBe(true);
+  test('с вкладки «Все» поиск достаёт воронку любого статуса', () => {
+    expect(isFunnelVisible(archived, 'all', 'f58')).toBe(true);
+    expect(isFunnelVisible(draft, 'all', 'петров')).toBe(true);
+    expect(isFunnelVisible(active, 'all', 'f70')).toBe(true);
   });
 
-  test('архив виден при поиске и с вкладки «Все», которая его прячет', () => {
+  test('«Все» показывает и архив — с запросом и без', () => {
     expect(isFunnelVisible(archived, 'all', 'жкт')).toBe(true);
-    expect(isFunnelVisible(archived, 'all', '')).toBe(false);
+    expect(isFunnelVisible(archived, 'all', '')).toBe(true);
+  });
+
+  test('вкладку, выбранную поверх поиска, запрос не отменяет', () => {
+    expect(isFunnelVisible(archived, 'active', 'f58')).toBe(false);
+    expect(isFunnelVisible(archived, 'archive', 'f58')).toBe(true);
   });
 
   test('не подходящая под запрос воронка не всплывает из чужого раздела', () => {
     expect(isFunnelVisible(archived, 'archive', 'сидоров')).toBe(false);
   });
 
-  test('без запроса работает прежняя фильтрация по вкладке', () => {
+  test('без запроса работает фильтрация по вкладке', () => {
     expect(isFunnelVisible(draft, 'draft', '')).toBe(true);
     expect(isFunnelVisible(draft, 'active', '   ')).toBe(false);
     expect(isFunnelVisible(active, 'all', '')).toBe(true);

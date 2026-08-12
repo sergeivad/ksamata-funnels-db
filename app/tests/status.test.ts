@@ -23,10 +23,10 @@ describe('isFunnelStatus', () => {
 });
 
 describe('matchesStatusFilter', () => {
-  test('"all" shows active and draft but hides archive', () => {
+  test('«Все» — это действительно все три статуса, включая архив', () => {
     expect(matchesStatusFilter('active', 'all')).toBe(true);
     expect(matchesStatusFilter('draft', 'all')).toBe(true);
-    expect(matchesStatusFilter('archive', 'all')).toBe(false);
+    expect(matchesStatusFilter('archive', 'all')).toBe(true);
   });
   test('specific filter matches only that status', () => {
     expect(matchesStatusFilter('archive', 'archive')).toBe(true);
@@ -58,14 +58,15 @@ describe('STATUS_META / STATUS_ACTION_LABELS', () => {
 });
 
 /**
- * Счётчик под списком воронок. Вкладка «Все» намеренно прячет архив
- * (`matchesStatusFilter`), но счётчик считал вид неотфильтрованным и писал
- * «51 всего» — то есть ровно в состоянии по умолчанию утверждал, что воронок
- * всего 51 при 72 в базе. Владелец на этом решил, что новые воронки не
- * доехали до прода, 2026-07-29.
+ * Счётчик под списком воронок. Форма выбирается по факту «что-то скрыто», а не
+ * по тому, трогал ли человек фильтры: пока условие смотрело на сам фильтр, оно
+ * промахивалось в состоянии по умолчанию — вкладка «Все» тогда прятала архив,
+ * и счётчик писал «51 всего» при 72 воронках в базе. Владелец на этом решил,
+ * что новые воронки не доехали до прода, 2026-07-29. Архив «Все» больше не
+ * прячет, но сравнение длин переживает и это, и любой следующий фильтр.
  */
 describe('countLabel', () => {
-  test('на вкладке «Все» показывает «из», пока архив скрыт', () => {
+  test('пока что-то скрыто фильтром или поиском, показывает «из»', () => {
     expect(countLabel(51, 72)).toBe('51 из 72');
   });
 

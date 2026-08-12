@@ -11,8 +11,10 @@ export function isFunnelStatus(v: unknown): v is FunnelStatus {
   return typeof v === 'string' && (FUNNEL_STATUS_VALUES as readonly string[]).includes(v);
 }
 
-// Фильтр вкладок на главной. 'all' — рабочие воронки (активные + черновики),
-// архив из него исключён и виден только на своей вкладке.
+// Фильтр вкладок на главной. 'all' — буквально все воронки, включая архив.
+// Раньше архив из «Всех» исключался, и вкладка противоречила собственному
+// названию: человек видел «54 из 75» и не понимал, где ещё двадцать одна.
+// Архив на своей вкладке от этого не потерялся — там он по-прежнему один.
 export type StatusFilter = 'all' | FunnelStatus;
 
 export function isStatusFilter(v: unknown): v is StatusFilter {
@@ -20,7 +22,7 @@ export function isStatusFilter(v: unknown): v is StatusFilter {
 }
 
 export function matchesStatusFilter(status: string, filter: StatusFilter): boolean {
-  if (filter === 'all') return status !== 'archive';
+  if (filter === 'all') return true;
   return status === filter;
 }
 
@@ -29,13 +31,13 @@ export function matchesStatusFilter(status: string, filter: StatusFilter): boole
  *
  * Решение о форме принимается по ФАКТУ «что-то скрыто», а не по тому, трогал
  * ли человек фильтры. Раньше условие было `фильтр !== 'all' || есть поиск`, и
- * оно промахивалось ровно в состоянии по умолчанию: вкладка «Все» намеренно
- * прячет архив (см. `matchesStatusFilter`), но фильтр при этом равен 'all' и
- * поиск пуст — счётчик писал «51 всего» при 72 воронках в базе. Владелец на
- * этом решил, что заведённые воронки не доехали до прода (2026-07-29).
+ * оно промахивалось ровно в состоянии по умолчанию: вкладка «Все» тогда прятала
+ * архив, но фильтр при этом равен 'all' и поиск пуст — счётчик писал «51 всего»
+ * при 72 воронках в базе. Владелец на этом решил, что заведённые воронки не
+ * доехали до прода (2026-07-29).
  *
- * Сравнение длин покрывает все три способа спрятать строку разом — вкладка,
- * поиск и скрытый архив, — и не разъедется, если добавится четвёртый.
+ * Сравнение длин покрывает все способы спрятать строку разом — вкладка и
+ * поиск, — и не разъедется, если добавится третий.
  */
 export function countLabel(visible: number, total: number): string {
   return visible === total ? `${total} всего` : `${visible} из ${total}`;
