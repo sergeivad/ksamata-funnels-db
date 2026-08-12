@@ -27,6 +27,7 @@ import {
   type TagSets,
   type Scenario,
   type OverrideMap,
+  type ScenarioOverride,
   type FunnelTypeContext,
   SCENARIOS,
   computeTagSet,
@@ -34,7 +35,12 @@ import {
 } from './ab-tags';
 import { listTemplate, assertNotFunnelTypeMarker } from './tag-templates';
 import { listOverrides, replaceOverrides } from './tag-overrides';
-import { createRef, listRefs, getRefByName } from './refs';
+import {
+  createRef,
+  listRefs,
+  getRefByName,
+  setFunnelTypeHasTime as setRefHasTime,
+} from './refs';
 import { FUNNEL_TYPE_KIND } from './funnel-type';
 import { nextFrontCode, normalizeFrontCode } from './front-code';
 import { type FunnelCreate, type FunnelUpdate } from './validation';
@@ -70,6 +76,13 @@ export type FunnelDetail = FunnelListItem & {
   timeLabelB: string;
   roomsReplayEnabled: boolean;
   roomsEnabled: boolean;
+  /**
+   * Есть ли у типа этой воронки эфиры по времени (funnel_types.has_time).
+   * Карточка по нему решает, показывать ли переключатель 15:00/19:00 в оплате:
+   * у безвременной воронки оба сценария одинаковы, и две вкладки означали бы
+   * выбор, которого нет. Тип не выбран — true, см. getFunnelTypeContext.
+   */
+  typeHasTime: boolean;
   tagSets: TagSets;
 };
 
@@ -98,13 +111,15 @@ export function getFunnelTypeContext(db: AnyDB, funnelId: number): FunnelTypeCon
     .map((r) => r.name);
 
   const row = db
-    .select({ name: funnelTypes.name })
+    .select({ name: funnelTypes.name, hasTime: funnelTypes.hasTime })
     .from(funnels)
     .leftJoin(funnelTypes, eq(funnelTypes.id, funnels.funnelTypeId))
     .where(eq(funnels.id, funnelId))
-    .get() as { name: string | null } | undefined;
+    .get() as { name: string | null; hasTime: number | null } | undefined;
 
-  return { name: row?.name ?? null, known };
+  // Тип не выбран (leftJoin не нашёл строку) — время остаётся: это «не решили»,
+  // а не «времени нет». Снимает его только явный ноль в справочнике.
+  return { name: row?.name ?? null, known, hasTime: row?.hasTime !== 0 };
 }
 
 /**
@@ -299,6 +314,7 @@ export function getFunnel(db: DB, id: number): FunnelDetail | null {
     timeLabelB:   row.timeLabelB   ?? '19:00',
     roomsReplayEnabled: (row.roomsReplayEnabled ?? 0) === 1,
     roomsEnabled: (row.roomsEnabled ?? 1) === 1,
+    typeHasTime: typeCtx.hasTime !== false,
     tagSets,
     axes,
   };
@@ -614,6 +630,31 @@ export function resyncFunnelAvTags(db: DB, id: number): boolean {
   return true;
 }
 
+function sameOverride(a: ScenarioOverride | undefined, b: ScenarioOverride | undefined): boolean {
+  const norm = (o?: ScenarioOverride) => JSON.stringify([o?.add ?? [], o?.remove ?? []]);
+  return norm(a) === norm(b);
+}
+
+/**
+ * У воронки без эфиров по времени сценарий оплаты один: без тега времени
+ * `time_15` и `time_19` дают один и тот же набор, и карточка показывает одну
+ * вкладку «Оплата». Оверрайды при этом лежат в двух строках, и без выравнивания
+ * они разъедутся — тег, добавленный на видимой вкладке, во второй не попадёт,
+ * и два «одинаковых» сценария начнут отличаться в экспорте и в аудите.
+ *
+ * Главным считается изменившийся сценарий: карточка правит `time_19`, но вызов
+ * API руками может прийти и с `time_15`, и молча выбросить его правку хуже, чем
+ * принять. Изменились оба — берём `time_19`, потому что именно его правит
+ * интерфейс.
+ */
+function mirrorPaymentOverrides(patch: OverrideMap, current: OverrideMap): OverrideMap {
+  const changed19 = !sameOverride(patch.time_19, current.time_19);
+  const changed15 = !sameOverride(patch.time_15, current.time_15);
+  if (!changed19 && !changed15) return patch;
+  const winner = changed19 ? patch.time_19 : patch.time_15;
+  return { ...patch, time_15: winner, time_19: winner };
+}
+
 /**
  * Replace a funnel's tag overrides and re-materialize its funnel_tags.
  * Axes are read from current reg tags FIRST (channel/direction live there),
@@ -658,7 +699,10 @@ export function applyTagOverrides(db: DB, id: number, patch: OverrideMap): Funne
       assertNotFunnelTypeMarker(tx, newNames);
     }
     const axes = getAxesForFunnel(tx, id);
-    replaceOverrides(tx, id, patch);
+    const effective = getFunnelTypeContext(tx, id).hasTime === false
+      ? mirrorPaymentOverrides(patch, current)
+      : patch;
+    replaceOverrides(tx, id, effective);
     materializeFunnelTags(tx, id, axes);
   });
   return getFunnel(db, id);
@@ -683,6 +727,39 @@ export function resyncAllFunnels(db: DB): void {
       materializeFunnelTags(tx, id, axes);
     }
   });
+}
+
+/**
+ * Переключить признак «есть эфиры по времени» у типа воронки и тут же
+ * пересобрать теги всех воронок этого типа. Возвращает число затронутых
+ * воронок, либо null, если типа с таким id нет.
+ *
+ * Ресинк здесь не удобство, а обязательная часть операции: `funnel_tags` —
+ * материализованный результат, и без пересборки набор отставал бы от
+ * справочника до ближайшего сохранения каждой воронки поодиночке. Человек
+ * снял галку, а теги времени остались висеть — ровно та тихая рассинхронизация,
+ * от которой существует весь слой материализации.
+ *
+ * Пустые черновики пропускаются по тому же правилу, что и в resyncAllFunnels.
+ */
+export function setFunnelTypeHasTime(db: DB, typeId: number, hasTime: boolean): number | null {
+  let affected: number | null = null;
+  db.transaction((tx) => {
+    if (!setRefHasTime(tx, typeId, hasTime)) return;
+    const rows = db
+      .select({ id: funnels.id })
+      .from(funnels)
+      .where(eq(funnels.funnelTypeId, typeId))
+      .all() as { id: number }[];
+    affected = 0;
+    for (const { id } of rows) {
+      const axes = getAxesForFunnel(tx, id);
+      if (!axes.product && !axes.contractor && !axes.channel && !axes.direction) continue;
+      materializeFunnelTags(tx, id, axes);
+      affected += 1;
+    }
+  });
+  return affected;
 }
 
 /**

@@ -29,6 +29,16 @@ export function isAxisTag(name: string): boolean {
 }
 
 /**
+ * Тег времени эфира. В AXIS_PREFIXES ему места нет: это не ось воронки, а
+ * свойство сценария оплаты — регистрация и мессенджер его не несут никогда.
+ */
+export const TIME_TAG_PREFIX = 'АВ Время: ';
+
+export function isTimeTag(name: string): boolean {
+  return name.startsWith(TIME_TAG_PREFIX);
+}
+
+/**
  * Axis tags for a funnel, one per non-empty axis. An empty axis emits nothing
  * (a bare "АВ Продукт: " would pollute the tags table).
  */
@@ -53,8 +63,17 @@ export function axisTagNames(axes: AbAxes): string[] {
  *
  * Множество приходит извне, а не зашито здесь, потому что значения типа
  * правятся через справочник — см. funnel-type.ts.
+ *
+ * `hasTime` — есть ли у типа эфиры по времени (колонка funnel_types.has_time).
+ * Умолчание `true` намеренно: время у воронки было всегда, и отсутствие
+ * контекста не должно молча его снимать. «Тип не выбран» — тоже не «времени
+ * нет»: у такой воронки время остаётся.
  */
-export type FunnelTypeContext = { name: string | null; known: readonly string[] };
+export type FunnelTypeContext = {
+  name: string | null;
+  known: readonly string[];
+  hasTime?: boolean;
+};
 
 /**
  * Effective tag set per scenario from the four layers:
@@ -63,6 +82,13 @@ export type FunnelTypeContext = { name: string | null; known: readonly string[] 
  * - Axis tags and the type marker are NEVER suppressed (identity layer).
  * - Dedup by exact name; first occurrence wins (template/axis over add).
  * - `suppressed` lists template defaults currently removed (for the restore UI).
+ *
+ * У типа без эфиров (`hasTime: false`) теги «АВ Время: …» снимаются во всех
+ * слоях — и в шаблоне, и в `add`. В `suppressed` они при этом НЕ попадают:
+ * скрытый дефолт — это решение человека, отменяемое кликом, а здесь тега нет
+ * не потому, что его сняли, а потому, что у типа нет времени. Так же нельзя и
+ * дописать его руками — иначе набор оплаты разойдётся с реестром GetCourse,
+ * где у «АВ Прямые» и квизов тега времени нет ни на одном предложении.
  */
 export function computeTagSet(
   template: TemplateMap,
@@ -73,10 +99,12 @@ export function computeTagSet(
   const axisTags = axisTagNames(axes);
   const markerNames = new Set(type.known);
   const isIdentity = (name: string) => isAxisTag(name) || markerNames.has(name);
+  // Умолчание — «время есть»: контекст без флага не должен снимать теги.
+  const dropTime = type.hasTime === false;
   const out = {} as TagSets;
 
   for (const scenario of SCENARIOS) {
-    const staticTags = template[scenario] ?? [];
+    const staticTags = (template[scenario] ?? []).filter((n) => !(dropTime && isTimeTag(n)));
     const ov = overrides[scenario] ?? { add: [], remove: [] };
     // Только неидентичные remove считаются — оси и маркер типа неудаляемы.
     const removeSet = new Set(ov.remove.filter((n) => !isIdentity(n)));
@@ -99,6 +127,7 @@ export function computeTagSet(
     if (type.name) pushIfNew(type.name, 'axis');
     for (const name of ov.add) {
       if (isIdentity(name)) continue; // теги идентичности приходят только своим слоем
+      if (dropTime && isTimeTag(name)) continue; // у типа без эфиров времени нет и вручную
       pushIfNew(name, 'custom');
     }
 

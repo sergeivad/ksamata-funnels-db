@@ -8,6 +8,8 @@ import { confirmUnsavedNavigation } from '@/lib/useUnsavedGuard';
 interface RefRow {
   id: number;
   name: string;
+  /** Только у типов воронок: есть ли эфиры по времени (funnel_types.has_time). */
+  hasTime?: boolean;
 }
 
 type RefsState = {
@@ -151,6 +153,31 @@ export default function RefsPage() {
     return { ok: true };
   }
 
+  /**
+   * Переключение признака «эфиры по времени» у типа воронки. Ответ несёт
+   * `resynced` — сколько воронок пересобрано; в интерфейсе он не нужен, теги
+   * пересчитываются на сервере, а карточка читает их при следующей загрузке.
+   */
+  async function handleToggleHasTime(
+    id: number,
+    hasTime: boolean
+  ): Promise<{ ok: boolean; error?: string }> {
+    const res = await fetch(`/api/refs/funnel_types/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hasTime }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      return { ok: false, error: body.error ?? 'Не удалось переключить' };
+    }
+    setRefs((prev) => ({
+      ...prev,
+      funnel_types: prev.funnel_types.map((r) => (r.id === id ? { ...r, hasTime } : r)),
+    }));
+    return { ok: true };
+  }
+
   return (
     <main className="mx-auto max-w-[900px] px-4 py-8">
       <div className="mb-6 flex items-start justify-between gap-4">
@@ -195,6 +222,17 @@ export default function RefsPage() {
               onRename={(id, newName) => handleRename(key, id, newName)}
               onDelete={(id) => handleDelete(key, id)}
               readOnly={key === 'tags'}
+              toggle={
+                key === 'funnel_types'
+                  ? {
+                      label: 'эфиры',
+                      title:
+                        'Есть ли у воронок этого типа эфиры по времени. Снятая галка убирает теги «АВ Время: …» у всех воронок этого типа.',
+                      value: (row) => (row as RefRow).hasTime !== false,
+                      onChange: handleToggleHasTime,
+                    }
+                  : undefined
+              }
             />
           ))}
         </div>

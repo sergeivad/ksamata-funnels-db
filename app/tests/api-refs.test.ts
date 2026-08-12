@@ -18,6 +18,7 @@ import {
   FunnelTypeAxisConflictError,
 } from '../src/lib/refs';
 import { runMigratePhase8 } from '../scripts/migrate-phase8';
+import { runMigratePhase12 } from '../scripts/migrate-phase12';
 import { copyDbForTest } from './helpers/db';
 
 // __dirname = app/tests/ → go up 2 levels to repo root
@@ -30,6 +31,7 @@ const sqlite = new Database(TMP_DB);
 sqlite.pragma('journal_mode = WAL');
 sqlite.pragma('foreign_keys = ON');
 runMigratePhase8(sqlite);
+runMigratePhase12(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => sqlite.close());

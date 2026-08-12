@@ -80,11 +80,16 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   const [copyFlash, setCopyFlash] = useState<{ marker: string; ok: boolean } | null>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // У типа без эфиров сценарий оплаты один: наборы 15 и 19 совпадают (тег
+  // времени погашен движком), и две вкладки предлагали бы выбор, которого нет.
+  const timeless = !funnel.typeHasTime;
+
   // Map the visible tab (+ pay timeSlot) to the canonical Scenario key.
   const activeScenario: 'reg' | 'time_15' | 'time_19' | 'messenger' =
     scenario === 'reg' ? 'reg'
       : scenario === 'messenger' ? 'messenger'
-        : timeSlot === '15' ? 'time_15' : 'time_19';
+        : timeless ? 'time_19'
+          : timeSlot === '15' ? 'time_15' : 'time_19';
 
   // Working copy of overrides, keyed by scenario. Seeded from the server tagSets:
   // custom chips → add[]; suppressed defaults → remove[].
@@ -138,36 +143,44 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
 
   const currentTags = visibleChips.map((c) => c.name); // for copy-all / copy-tag
 
-  function removeTag(name: string, source: 'axis' | 'default' | 'custom') {
-    if (source === 'axis') return; // axis tags are identity — not removable
+  /**
+   * Правка оверрайдов активного сценария. У безвременной воронки правка оплаты
+   * ложится СРАЗУ В ОБА сценария: видимая вкладка одна, но строк в базе две, и
+   * если держать в клиенте только одну, следующее сохранение отправит вторую
+   * нетронутой — сервер увидит расхождение с обратным знаком и откатит правку
+   * (см. mirrorPaymentOverrides в funnels.ts).
+   */
+  function editOv(update: (o: Ov) => Ov) {
     setOv((prev) => {
-      const next = { ...prev, [activeScenario]: { ...prev[activeScenario] } };
-      if (source === 'custom') {
-        next[activeScenario].add = prev[activeScenario].add.filter((n) => n !== name);
-      } else {
-        next[activeScenario].remove = [...new Set([...prev[activeScenario].remove, name])];
+      const next = update(prev[activeScenario]);
+      if (next === prev[activeScenario]) return prev;
+      if (timeless && (activeScenario === 'time_15' || activeScenario === 'time_19')) {
+        return { ...prev, time_15: next, time_19: next };
       }
-      return next;
+      return { ...prev, [activeScenario]: next };
     });
   }
+
+  function removeTag(name: string, source: 'axis' | 'default' | 'custom') {
+    if (source === 'axis') return; // axis tags are identity — not removable
+    editOv((s) =>
+      source === 'custom'
+        ? { ...s, add: s.add.filter((n) => n !== name) }
+        : { ...s, remove: [...new Set([...s.remove, name])] }
+    );
+  }
   function restoreTag(name: string) {
-    setOv((prev) => ({
-      ...prev,
-      [activeScenario]: { ...prev[activeScenario], remove: prev[activeScenario].remove.filter((n) => n !== name) },
-    }));
+    editOv((s) => ({ ...s, remove: s.remove.filter((n) => n !== name) }));
   }
   function addTag() {
     const name = tagInput.trim();
     if (!name) return;
     if (isAxisTag(name)) return; // axis tags are auto-managed — never manually added
-    setOv((prev) => {
-      const s = prev[activeScenario];
+    editOv((s) => {
       // Re-adding a suppressed default = restore; a brand-new name = custom add.
-      if (s.remove.includes(name)) {
-        return { ...prev, [activeScenario]: { ...s, remove: s.remove.filter((n) => n !== name) } };
-      }
-      if (currentTags.includes(name) || s.add.includes(name)) return prev; // no dup
-      return { ...prev, [activeScenario]: { ...s, add: [...s.add, name] } };
+      if (s.remove.includes(name)) return { ...s, remove: s.remove.filter((n) => n !== name) };
+      if (currentTags.includes(name) || s.add.includes(name)) return s; // no dup
+      return { ...s, add: [...s.add, name] };
     });
     setTagInput('');
   }
@@ -316,10 +329,15 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
           <Segmented
             options={[{ value: 'reg', label: 'Регистрация' }, { value: 'pay', label: 'Оплата' }, { value: 'messenger', label: 'Мессенджер' }]}
             value={scenario} onChange={(v) => setScenario(v as Scenario)} />
-          {scenario === 'pay' && (
+          {scenario === 'pay' && !timeless && (
             <Segmented
               options={[{ value: '15', label: ta || '15:00' }, { value: '19', label: tb || '19:00' }]}
               value={timeSlot} onChange={(v) => setTimeSlot(v as TimeSlot)} />
+          )}
+          {scenario === 'pay' && timeless && (
+            <span className="text-[10px] text-[var(--faint)]">
+              у этого типа воронки нет эфиров по времени — набор оплаты один
+            </span>
           )}
         </div>
 

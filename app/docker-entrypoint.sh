@@ -110,4 +110,15 @@ if [ -n "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] Phase-11 migration done."
 fi
 
+# Apply Phase-12 migration (idempotent: признак «есть эфиры по времени» у типа
+# воронки + снятие тегов «АВ Время: …» с воронок безвременных типов). Снятие
+# тегов безусловно и на каждом старте: строка времени, приехавшая в обход
+# приложения, будет подметена, а решение человека в /refs не затирается —
+# бэкфилл нулей срабатывает только в прогон, заводящий колонку.
+if [ -n "$FUNNELS_DB_PATH" ]; then
+  echo "[entrypoint] Running Phase-12 migration against $FUNNELS_DB_PATH"
+  node /app/migrate-phase12.cjs
+  echo "[entrypoint] Phase-12 migration done."
+fi
+
 exec node server.js

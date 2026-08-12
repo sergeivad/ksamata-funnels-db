@@ -28,6 +28,7 @@ import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { runMigratePhase7 } from '../scripts/migrate-phase7';
 import { runMigratePhase8 } from '../scripts/migrate-phase8';
+import { runMigratePhase12 } from '../scripts/migrate-phase12';
 import { replaceDays, listDays } from '../src/lib/funnel-days';
 import { ConflictError } from '../src/lib/errors';
 import { replaceBlock, getBlock } from '../src/lib/funnel-blocks';
@@ -51,6 +52,7 @@ runMigratePhase5(sqlite);
 // прод: без него дубль кода ловила бы только предпроверка в funnels.ts.
 runMigratePhase7(sqlite);
 runMigratePhase8(sqlite);
+runMigratePhase12(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => {

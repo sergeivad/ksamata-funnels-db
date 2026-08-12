@@ -14,6 +14,7 @@ import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { runMigratePhase8 } from '../scripts/migrate-phase8';
+import { runMigratePhase12 } from '../scripts/migrate-phase12';
 import { PHASE5_DDL, seedTagTemplates } from '../scripts/migrate-phase5-data';
 import { PHASE8_DDL } from '../scripts/migrate-phase8-data';
 import { SEED_FUNNEL_TYPES } from '../src/lib/funnel-type';
@@ -48,6 +49,7 @@ beforeEach(async () => {
   runMigrateMessengerTagType(sqlite);
   runMigratePhase5(sqlite);
   runMigratePhase8(sqlite);
+  runMigratePhase12(sqlite);
   db = drizzle(sqlite, { schema });
   vi.doMock('@/db/client', () => ({ db }));
 

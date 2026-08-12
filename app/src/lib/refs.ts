@@ -116,14 +116,50 @@ export class FunnelTypeAxisConflictError extends Error {
 
 export type RefRow = { id: number; name: string };
 
+/**
+ * Строка справочника типов воронки. `hasTime` есть только у этого вида —
+ * остальные справочники своих свойств не имеют, и общий RefRow не должен
+ * обрастать полем, которое у шести видов из семи всегда undefined.
+ */
+export type FunnelTypeRefRow = RefRow & { hasTime: boolean };
+
 /** Return all rows for a reference table, ordered by name. */
 export function listRefs(db: AnyDB, kind: string): RefRow[] {
   const table = resolveTable(kind);
+  if (kind === FUNNEL_TYPE_KIND) {
+    return (
+      db
+        .select({ id: funnelTypes.id, name: funnelTypes.name, hasTime: funnelTypes.hasTime })
+        .from(funnelTypes)
+        .orderBy(asc(funnelTypes.name))
+        .all() as { id: number; name: string; hasTime: number }[]
+    ).map((r) => ({ id: r.id, name: r.name, hasTime: r.hasTime !== 0 }) satisfies FunnelTypeRefRow);
+  }
   return db
     .select({ id: table.id, name: table.name })
     .from(table)
     .orderBy(asc(table.name))
     .all() as RefRow[];
+}
+
+/**
+ * Переключить у типа воронки признак «есть эфиры по времени».
+ * Возвращает false, если строки нет.
+ *
+ * Только запись флага — БЕЗ пересборки тегов воронок этого типа: ресинк живёт
+ * в funnels.ts (setFunnelTypeHasTime), потому что материализация тянет за собой
+ * половину доменной логики, а refs.ts обязан оставаться листом, который
+ * funnels.ts импортирует, а не наоборот.
+ */
+export function setFunnelTypeHasTime(db: AnyDB, id: number, hasTime: boolean): boolean {
+  const existing = db
+    .select({ id: funnelTypes.id })
+    .from(funnelTypes)
+    .where(eq(funnelTypes.id, id))
+    .get() as { id: number } | undefined;
+  if (!existing) return false;
+  db.update(funnelTypes).set({ hasTime: hasTime ? 1 : 0 }).where(eq(funnelTypes.id, id)).run();
+  return true;
 }
 
 /**

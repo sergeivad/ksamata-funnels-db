@@ -186,3 +186,51 @@ describe('пятая ось: маркер типа воронки', () => {
     expect(chips[0].source).toBe('axis');
   });
 });
+
+describe('время у типа без эфиров', () => {
+  const empty: OverrideMap = { reg: { add: [], remove: [] }, time_15: { add: [], remove: [] },
+    time_19: { add: [], remove: [] }, messenger: { add: [], remove: [] } };
+  const known = ['АВ Автоворонка', 'АВ Прямые', 'АВ Квиз', 'АВ Квиз-Лайт'];
+  const timeless = { name: 'АВ Прямые', known, hasTime: false };
+
+  it('снимает тег времени из шаблона в обоих сценариях оплаты', () => {
+    const out = computeTagSet(template, axes, empty, timeless);
+    expect(out.time_15.tags.map((t) => t.name)).not.toContain('АВ Время: 15');
+    expect(out.time_19.tags.map((t) => t.name)).not.toContain('АВ Время: 19');
+    // Остальной шаблон на месте — гасится только время.
+    expect(out.time_15.tags.map((t) => t.name)).toContain('АВ Этап: Оплата');
+  });
+
+  it('оба сценария оплаты становятся одинаковыми', () => {
+    const out = computeTagSet(template, axes, empty, timeless);
+    expect(out.time_15.tags.map((t) => t.name)).toEqual(out.time_19.tags.map((t) => t.name));
+  });
+
+  it('тег времени не показывается как скрытый дефолт — его нельзя вернуть', () => {
+    const out = computeTagSet(template, axes, empty, timeless);
+    expect(out.time_15.suppressed).not.toContain('АВ Время: 15');
+    expect(out.time_19.suppressed).not.toContain('АВ Время: 19');
+  });
+
+  it('не даёт добавить время через add-оверрайд', () => {
+    const ov = { ...empty, time_19: { add: ['АВ Время: 17'], remove: [] } };
+    const out = computeTagSet(template, axes, ov, timeless);
+    expect(out.time_19.tags.map((t) => t.name)).not.toContain('АВ Время: 17');
+  });
+
+  it('при hasTime = true время на месте', () => {
+    const out = computeTagSet(template, axes, empty, { name: 'АВ Автоворонка', known, hasTime: true });
+    expect(out.time_15.tags.map((t) => t.name)).toContain('АВ Время: 15');
+    expect(out.time_19.tags.map((t) => t.name)).toContain('АВ Время: 19');
+  });
+
+  it('без указания типа время остаётся — «тип не выбран» это не «времени нет»', () => {
+    const out = computeTagSet(template, axes, empty, { name: null, known });
+    expect(out.time_15.tags.map((t) => t.name)).toContain('АВ Время: 15');
+  });
+
+  it('время без указания типа остаётся и при вызове вовсе без контекста', () => {
+    const out = computeTagSet(template, axes, empty);
+    expect(out.time_19.tags.map((t) => t.name)).toContain('АВ Время: 19');
+  });
+});

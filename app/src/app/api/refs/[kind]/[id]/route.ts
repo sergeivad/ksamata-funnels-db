@@ -10,6 +10,8 @@ import {
   deleteRef,
   FUNNEL_TYPE_AXIS_CONFLICT_MESSAGE,
 } from '@/lib/refs';
+import { setFunnelTypeHasTime } from '@/lib/funnels';
+import { FUNNEL_TYPE_KIND } from '@/lib/funnel-type';
 import { REF_MAX, parseRouteId } from '@/lib/validation';
 import { internalError } from '@/lib/http';
 import { requireEditor } from '@/lib/auth-server';
@@ -18,6 +20,16 @@ type Params = { params: Promise<{ kind: string; id: string }> };
 
 const refRenameSchema = z.object({
   value: z.string().trim().min(1).max(REF_MAX),
+});
+
+/**
+ * Признак «есть эфиры по времени» у типа воронки. Отдельная форма тела, а не
+ * необязательное поле рядом с `value`: переименование и переключение флага —
+ * разные операции с разными последствиями (второе пересобирает теги всех
+ * воронок этого типа), и смешивать их в одном запросе незачем.
+ */
+const funnelTypeHasTimeSchema = z.object({
+  hasTime: z.boolean(),
 });
 
 /**
@@ -69,6 +81,28 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  // Тело с `hasTime` — переключение флага у типа воронки. Проверяем до разбора
+  // переименования: иначе `{ hasTime: false }` провалилось бы на отсутствии
+  // `value` с невнятным «Validation failed».
+  const hasTimeBody = funnelTypeHasTimeSchema.safeParse(body);
+  if (hasTimeBody.success) {
+    if (kind !== FUNNEL_TYPE_KIND) {
+      return NextResponse.json(
+        { error: 'Признак «эфиры по времени» есть только у типов воронок' },
+        { status: 400 }
+      );
+    }
+    try {
+      const affected = setFunnelTypeHasTime(db, numId, hasTimeBody.data.hasTime);
+      if (affected === null) {
+        return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      }
+      return NextResponse.json({ id: numId, hasTime: hasTimeBody.data.hasTime, resynced: affected });
+    } catch (err: unknown) {
+      return internalError('PATCH /api/refs/[kind]/[id] hasTime', err);
+    }
   }
 
   const parsed = refRenameSchema.safeParse(body);

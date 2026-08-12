@@ -8,6 +8,7 @@ import type { DayCell } from '@/lib/funnel-days';
 import type { BlockState } from '@/lib/funnel-blocks';
 import { getBlockDef } from '@/lib/blocks';
 import { groupDaysByDay, visibleBlocks, blockHasLabels, isOpenableUrl } from '@/lib/funnel-compact';
+import { scenarioViews, joinTagsForCopy } from '@/lib/tag-scenarios';
 import StatusPill from './StatusPill';
 
 interface Props {
@@ -49,6 +50,11 @@ export default function FunnelCompactView({ funnel, initialDays, landings, rest,
           </span>
         )}
       </div>
+
+      {/* Tags. Каждый сценарий — своя строка со своей кнопкой копирования:
+          сюда приходят за готовым набором, и переключать вкладки ради этого
+          в режиме просмотра незачем. */}
+      <TagSets funnel={funnel} />
 
       {/* Rooms. On narrow screens the two time slots stack vertically (each
           full-width, labelled inline); side-by-side columns from sm up. */}
@@ -106,6 +112,91 @@ export default function FunnelCompactView({ funnel, initialDays, landings, rest,
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Наборы тегов по сценариям. Только чтение: убрать тег или добавить свой можно
+ * на вкладке «Все поля», здесь же и `×`, и поле ввода были бы обещанием прав,
+ * которых у анонима нет.
+ */
+function TagSets({ funnel }: { funnel: FunnelDetail }) {
+  const views = scenarioViews(funnel.typeHasTime, funnel.timeLabelA, funnel.timeLabelB)
+    .filter((v) => funnel.tagSets[v.scenario].tags.length > 0);
+  if (views.length === 0) return null;
+
+  return (
+    <div className="mb-3 flex flex-col gap-1.5">
+      {views.map((view) => (
+        <TagScenarioRow
+          key={view.scenario}
+          label={view.label}
+          names={funnel.tagSets[view.scenario].tags.map((t) => t.name)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function TagScenarioRow({ label, names }: { label: string; names: string[] }) {
+  const { status, copy } = useCopyFlash(1500);
+
+  return (
+    <div className="flex min-w-0 items-start gap-2">
+      <span className="w-[92px] shrink-0 pt-[3px] text-[10px] uppercase tracking-wide text-[var(--faint)]">
+        {label}
+      </span>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+        {names.map((name) => (
+          <TagChip key={name} name={name} />
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => copy(joinTagsForCopy(names))}
+        aria-label={
+          status === 'copied' ? 'Скопировано'
+            : status === 'failed' ? 'Не удалось скопировать'
+              : `Копировать все теги: ${label}`
+        }
+        title={
+          status === 'copied' ? 'Скопировано'
+            : status === 'failed' ? 'Не удалось скопировать'
+              : 'Копировать все теги сценария'
+        }
+        className={`flex shrink-0 items-center justify-center pt-[3px] transition ${
+          status === 'copied'
+            ? 'text-[#087443]'
+            : status === 'failed'
+              ? 'text-[#B42318]'
+              : 'text-[var(--faint)] hover:text-[var(--ink)]'
+        }`}
+      >
+        {status === 'copied' ? <Check size={13} /> : status === 'failed' ? <AlertCircle size={13} /> : <Copy size={13} />}
+      </button>
+    </div>
+  );
+}
+
+function TagChip({ name }: { name: string }) {
+  const { status, copy } = useCopyFlash(1500);
+  return (
+    <button
+      type="button"
+      onClick={() => copy(name)}
+      title={status === 'copied' ? 'Скопировано' : status === 'failed' ? 'Не удалось скопировать' : 'Клик — скопировать тег'}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-[2px] text-[10px] transition ${
+        status === 'copied'
+          ? 'bg-[#DFF3E7] text-[#087443]'
+          : status === 'failed'
+            ? 'bg-[#FEF3F2] text-[#B42318]'
+            : 'bg-[var(--chip)] text-[var(--muted)] hover:text-[var(--ink)]'
+      }`}
+    >
+      {status === 'copied' && <Check size={10} />}
+      {status === 'failed' && <AlertCircle size={10} />}
+      {name}
+    </button>
   );
 }
 

@@ -35,6 +35,10 @@ export const contractors = sqliteTable('contractors', {
 export const funnelTypes = sqliteTable('funnel_types', {
   id:   integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull().unique(),
+  // Phase 12: есть ли у типа эфиры по времени. У «АВ Прямые» и квизов их нет,
+  // и тега «АВ Время: …» у таких воронок быть не должно — в реестре GetCourse
+  // он стоит только на оплатах вебинарных воронок (см. ab-tags.ts).
+  hasTime: integer('has_time').notNull().default(1),
 });
 
 // ─── funnels ──────────────────────────────────────────────────────────────────

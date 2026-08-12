@@ -13,6 +13,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { NextRequest } from 'next/server';
 import { copyDbForTest } from './helpers/db';
+import { runMigratePhase12 } from '../scripts/migrate-phase12';
 
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
 const TMP_DB = join(tmpdir(), `ksamata_refs_id_route_test_${Date.now()}.db`);
@@ -24,6 +25,10 @@ process.env.FUNNELS_DB_PATH = TMP_DB;
 // funnel that uses a ref value) without importing the funnels route/lib —
 // that's out of this agent's zone, so we insert directly via SQL instead.
 const rawSqlite = new Database(TMP_DB);
+
+// Копия реальной базы фазу 12 ещё не проходила — без неё нет колонки has_time,
+// на которой держится и признак типа, и материализация тегов.
+runMigratePhase12(rawSqlite);
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 let refsGET: typeof import('../src/app/api/refs/[kind]/route').GET;
@@ -259,5 +264,72 @@ describe('DELETE /api/refs/[kind]/[id]', () => {
     rawSqlite.prepare('DELETE FROM product_durations WHERE product_id = ?').run(created.id);
     const res2 = await idDELETE(makeReq('DELETE'), idParams('products', String(created.id)));
     expect(res2.status).toBe(204);
+  });
+});
+
+describe('PATCH /api/refs/funnel_types/[id] — признак «эфиры по времени»', () => {
+  const typeId = (name: string) =>
+    (rawSqlite.prepare('SELECT id FROM funnel_types WHERE name = ?').get(name) as { id: number }).id;
+  const hasTimeOf = (name: string) =>
+    (rawSqlite.prepare('SELECT has_time FROM funnel_types WHERE name = ?').get(name) as { has_time: number })
+      .has_time;
+
+  it('переключает флаг и сообщает, сколько воронок пересобрано', async () => {
+    const id = typeId('АВ Прямые');
+    const res = await idPATCH(makeReq('PATCH', { hasTime: true }), idParams('funnel_types', String(id)));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.hasTime).toBe(true);
+    expect(typeof body.resynced).toBe('number');
+    expect(hasTimeOf('АВ Прямые')).toBe(1);
+
+    // Вернуть как было и убедиться, что переключается в обе стороны.
+    const back = await idPATCH(makeReq('PATCH', { hasTime: false }), idParams('funnel_types', String(id)));
+    expect(back.status).toBe(200);
+    expect(hasTimeOf('АВ Прямые')).toBe(0);
+  });
+
+  it('снятие галки убирает теги времени у воронок этого типа, возврат — возвращает', async () => {
+    const id = typeId('АВ Прямые');
+    const timeRows = () =>
+      (
+        rawSqlite
+          .prepare(
+            `SELECT COUNT(*) AS c FROM funnel_tags ft
+               JOIN tags t ON t.id = ft.tag_id
+               JOIN funnels f ON f.id = ft.funnel_id
+              WHERE t.name LIKE 'АВ Время: %' AND f.funnel_type_id = ?`
+          )
+          .get(id) as { c: number }
+      ).c;
+
+    await idPATCH(makeReq('PATCH', { hasTime: true }), idParams('funnel_types', String(id)));
+    expect(timeRows()).toBeGreaterThan(0);
+
+    await idPATCH(makeReq('PATCH', { hasTime: false }), idParams('funnel_types', String(id)));
+    expect(timeRows()).toBe(0);
+  });
+
+  it('несуществующий тип → 404', async () => {
+    const res = await idPATCH(makeReq('PATCH', { hasTime: false }), idParams('funnel_types', '999999'));
+    expect(res.status).toBe(404);
+  });
+
+  it('у прочих справочников признака нет → 400', async () => {
+    const anyProduct = rawSqlite.prepare('SELECT id FROM products LIMIT 1').get() as { id: number };
+    const res = await idPATCH(
+      makeReq('PATCH', { hasTime: false }),
+      idParams('products', String(anyProduct.id))
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('переименование по-прежнему работает', async () => {
+    const created = await createRefRow('funnel_types', `АВ Тест_${Date.now()}`);
+    const res = await idPATCH(
+      makeReq('PATCH', { value: `АВ Тест2_${Date.now()}` }),
+      idParams('funnel_types', String(created.id))
+    );
+    expect(res.status).toBe(200);
   });
 });

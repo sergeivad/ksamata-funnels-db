@@ -8,6 +8,20 @@ interface RefRow {
   name: string;
 }
 
+/**
+ * Необязательная колонка-тумблер у строки справочника. Сейчас её просит один
+ * вид — типы воронок с признаком «эфиры по времени», — но описана она общим
+ * контрактом, а не полем `hasTime`: у следующего справочника со своим
+ * свойством не должно быть повода копировать всю таблицу.
+ */
+interface RefToggle {
+  /** Подпись рядом с тумблером; она же уходит в aria-label вместе с именем строки. */
+  label: string;
+  title?: string;
+  value: (row: RefRow) => boolean;
+  onChange: (id: number, value: boolean) => Promise<{ ok: boolean; error?: string }>;
+}
+
 interface RefTableProps {
   title: string;
   rows: RefRow[];
@@ -16,6 +30,7 @@ interface RefTableProps {
   onDelete: (id: number) => Promise<{ ok: boolean; error?: string }>;
   /** Hide rename/delete (e.g. tags: system АВ-rows are managed by the app). */
   readOnly?: boolean;
+  toggle?: RefToggle;
 }
 
 // Row action icons are hover-revealed on pointer devices; on touch (no hover)
@@ -23,7 +38,7 @@ interface RefTableProps {
 const REVEAL =
   'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto [@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto';
 
-export default function RefTable({ title, rows, onAdd, onRename, onDelete, readOnly }: RefTableProps) {
+export default function RefTable({ title, rows, onAdd, onRename, onDelete, readOnly, toggle }: RefTableProps) {
   const [inputValue, setInputValue] = useState('');
   const [addError, setAddError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -79,6 +94,17 @@ export default function RefTable({ title, rows, onAdd, onRename, onDelete, readO
   function handleEditKeyDown(e: React.KeyboardEvent<HTMLInputElement>, row: RefRow) {
     if (e.key === 'Enter') commitEdit(row);
     if (e.key === 'Escape') cancelEdit();
+  }
+
+  async function handleToggle(row: RefRow, next: boolean) {
+    if (!toggle) return;
+    setBusyId(row.id);
+    setRowError(null);
+    const result = await toggle.onChange(row.id, next);
+    setBusyId(null);
+    if (!result.ok) {
+      setRowError({ id: row.id, message: result.error ?? 'Не удалось переключить' });
+    }
   }
 
   async function handleDelete(row: RefRow) {
@@ -140,6 +166,24 @@ export default function RefTable({ title, rows, onAdd, onRename, onDelete, readO
                   ) : (
                     <>
                       <span className="min-w-0 flex-1 truncate">{row.name}</span>
+                      {toggle && (
+                        // Видна всегда, не по наведению: это не действие над
+                        // строкой, а её свойство — по нему справочник и читают.
+                        <label
+                          className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--color-text-secondary)]"
+                          title={toggle.title}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={toggle.value(row)}
+                            disabled={isBusy || readOnly}
+                            onChange={(e) => handleToggle(row, e.target.checked)}
+                            aria-label={`${toggle.label}: ${row.name}`}
+                            className="h-3.5 w-3.5 accent-[var(--color-accent)] disabled:opacity-50"
+                          />
+                          {toggle.label}
+                        </label>
+                      )}
                       {!readOnly && (
                       <>
                       <button

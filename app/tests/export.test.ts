@@ -13,6 +13,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { runMigratePhase8 } from '../scripts/migrate-phase8';
+import { runMigratePhase12 } from '../scripts/migrate-phase12';
 import { copyDbForTest } from './helpers/db';
 
 // Роуты теперь принимают запрос (второй рубеж авторизации, requireEditor).
@@ -34,6 +35,7 @@ copyDbForTest(REAL_DB, TMP_DB);
 const migrationSqlite = new Database(TMP_DB);
 runMigratePhase5(migrationSqlite);
 runMigratePhase8(migrationSqlite);
+runMigratePhase12(migrationSqlite);
 migrationSqlite.close();
 
 process.env.FUNNELS_DB_PATH = TMP_DB;
@@ -104,6 +106,7 @@ describe('buildExportRows — roomsEnabled gating', () => {
     const sqlite = new Database(tmp);
     const { runMigratePhase8 } = await import('../scripts/migrate-phase8');
     runMigratePhase8(sqlite);
+    runMigratePhase12(sqlite);
     const db = drizzle(sqlite, { schema });
 
     const roomsRowsFor = (num: number) =>

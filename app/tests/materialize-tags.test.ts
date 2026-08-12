@@ -11,7 +11,8 @@ import { runMigratePhase3 } from '../scripts/migrate-phase3';
 import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype';
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { runMigratePhase8 } from '../scripts/migrate-phase8';
-import { createFunnel, updateFunnel, getFunnel } from '../src/lib/funnels';
+import { runMigratePhase12 } from '../scripts/migrate-phase12';
+import { createFunnel, updateFunnel, getFunnel, applyTagOverrides } from '../src/lib/funnels';
 import { replaceOverrides } from '../src/lib/tag-overrides';
 import type { OverrideMap, Scenario } from '../src/lib/ab-tags';
 import { ValidationError } from '../src/lib/errors';
@@ -27,6 +28,7 @@ runMigratePhase3(sqlite);
 runMigrateMessengerTagType(sqlite);
 runMigratePhase5(sqlite);
 runMigratePhase8(sqlite);
+runMigratePhase12(sqlite);
 const db = drizzle(sqlite, { schema });
 
 afterAll(() => { sqlite.close(); if (existsSync(TMP_DB)) unlinkSync(TMP_DB); });
@@ -147,5 +149,62 @@ describe('тип воронки участвует в материализаци
 
     const names = listFunnelTagNames(db, created.id, 'reg');
     expect(names).not.toContain('АВ Квиз');
+  });
+});
+
+describe('тип без эфиров по времени', () => {
+  /** Воронка заданного типа с заполненными осями. */
+  function funnelOfType(num: number, code: string, type: string) {
+    const created = createFunnel(db, {
+      num, frontCode: code, status: 'draft', productName: '', variant: '', startDate: '', blockName: '',
+      product: 'ЖИВО', contractor: 'НИМБ', channel: 'Яндекс', direction: 'РСЯ',
+    } as any);
+    updateFunnel(db, created.id, { funnelType: type } as any);
+    return created.id;
+  }
+
+  const emptyOv = (): OverrideMap => ({
+    reg: { add: [], remove: [] }, time_15: { add: [], remove: [] },
+    time_19: { add: [], remove: [] }, messenger: { add: [], remove: [] },
+  });
+
+  it('в материализованных тегах времени нет ни в одном сценарии', () => {
+    const id = funnelOfType(9101, 'ftime1', 'АВ Прямые');
+    for (const scenario of ['reg', 'time_15', 'time_19', 'messenger'] as Scenario[]) {
+      const names = listFunnelTagNames(db, id, scenario);
+      expect(names.some((n) => n.startsWith('АВ Время: ')), scenario).toBe(false);
+    }
+  });
+
+  it('оба сценария оплаты совпадают', () => {
+    const id = funnelOfType(9102, 'ftime2', 'АВ Прямые');
+    expect(listFunnelTagNames(db, id, 'time_15')).toEqual(listFunnelTagNames(db, id, 'time_19'));
+  });
+
+  it('смена типа на вебинарный возвращает время', () => {
+    const id = funnelOfType(9103, 'ftime3', 'АВ Прямые');
+    updateFunnel(db, id, { funnelType: 'АВ Автоворонка' } as any);
+    expect(listFunnelTagNames(db, id, 'time_19')).toContain('АВ Время: 19');
+  });
+
+  it('тег, добавленный в оплату, попадает в оба сценария', () => {
+    const id = funnelOfType(9104, 'ftime4', 'АВ Прямые');
+    applyTagOverrides(db, id, { ...emptyOv(), time_19: { add: ['допродажа'], remove: [] } });
+    expect(listFunnelTagNames(db, id, 'time_19')).toContain('допродажа');
+    expect(listFunnelTagNames(db, id, 'time_15')).toContain('допродажа');
+  });
+
+  it('правка через time_15 тоже зеркалится — главным считается изменившийся сценарий', () => {
+    const id = funnelOfType(9105, 'ftime5', 'АВ Прямые');
+    applyTagOverrides(db, id, { ...emptyOv(), time_15: { add: ['вебинарка'], remove: [] } });
+    expect(listFunnelTagNames(db, id, 'time_15')).toContain('вебинарка');
+    expect(listFunnelTagNames(db, id, 'time_19')).toContain('вебинарка');
+  });
+
+  it('у вебинарной воронки сценарии оплаты независимы', () => {
+    const id = funnelOfType(9106, 'ftime6', 'АВ Автоворонка');
+    applyTagOverrides(db, id, { ...emptyOv(), time_19: { add: ['только19'], remove: [] } });
+    expect(listFunnelTagNames(db, id, 'time_19')).toContain('только19');
+    expect(listFunnelTagNames(db, id, 'time_15')).not.toContain('только19');
   });
 });

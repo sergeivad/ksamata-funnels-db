@@ -136,6 +136,25 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 оверрайдом, ни положить в шаблон: `computeTagSet` гасит их в обоих слоях.
 Значения типа расширяемы через `/refs` — набор маркеров задаёт GetCourse.
 
+**Время — свойство типа, а не сценария** (Phase 12). У типа с
+`funnel_types.has_time = 0` (`АВ Прямые`, `АВ Квиз`, `АВ Квиз-Лайт`)
+`computeTagSet` снимает все теги `АВ Время: …` — и из шаблона, и из
+`add`-оверрайдов. В `suppressed` они не попадают: скрытый дефолт — решение
+человека, отменяемое кликом, а здесь тега нет по свойству типа, и вернуть его
+можно только галкой «эфиры» в `/refs` (она же пересобирает теги всех воронок
+этого типа, см. `setFunnelTypeHasTime` в `funnels.ts`). Тип не выбран
+(`funnel_type_id IS NULL`) — время **остаётся**: это «не решили», а не
+«времени нет».
+Сценариев оплаты в схеме по-прежнему два, и у безвременной воронки они
+материализуются одинаковыми; карточка показывает одну вкладку «Оплата»
+(`FunnelDetail.typeHasTime`, `app/src/lib/tag-scenarios.ts`), а
+`applyTagOverrides` зеркалит правку оплаты в оба сценария, чтобы две строки
+оверрайдов не разъехались (`mirrorPaymentOverrides`: главным считается
+изменившийся сценарий, при правке обоих — `time_19`, который правит интерфейс).
+В реестре GetCourse значений времени **четыре** (`15`, `19`, `17`, `20`), и
+часть предложений несёт сразу два — у нас зашиты только 15 и 19; расхождение
+известное, отдельная тема.
+
 ## Domain helpers (`app/src/lib/`)
 
 - `funnels.ts` — funnel CRUD + business logic (list/get/create/draft/update/
@@ -194,6 +213,10 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   the code rather than borrowing it — the owner then carries it into LeakEngine
   (see [docs/leak-engine.md](docs/leak-engine.md)). The suggestion stays
   editable: LeakEngine may already hold a higher number.
+- `tag-scenarios.ts` — порядок и подписи сценариев тегов на все экраны
+  (`scenarioViews`, `joinTagsForCopy`). У безвременной воронки строк три, и
+  оплата берётся от `time_19`. Вынесено из компонентов, чтобы «Оплата 15:00»
+  в просмотре и в редакторе не разошлись словами.
 - `funnel-sort.ts` — list order by F (`compareByFrontCodeDesc`) plus
   `compareByFrontCodeAsc` for the monitoring chip rows. Codeless funnels go
   **last in both**: that is a property of having no code, not of the direction,
@@ -303,6 +326,10 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   partial: a scenario the body omits keeps its stored overrides; clear one by
   naming it with empty `add`/`remove`.
 - `GET/POST /api/refs/[kind]` and `PATCH/DELETE /api/refs/[kind]/[id]` — refs CRUD.
+  `PATCH` принимает две разные формы тела: `{ value }` — переименование,
+  `{ hasTime }` — признак «эфиры по времени» и **только для `funnel_types`**
+  (у прочих видов 400). Вторая форма пересобирает теги всех воронок этого типа
+  и отвечает `{ id, hasTime, resynced }`.
 - `GET /api/tag-templates` and `PUT /api/tag-templates/[scenario]` — global template.
 - `GET /api/export` — CSV export of all funnels.
 - `GET /api/monitoring` — summary + targets with state.
@@ -498,8 +525,23 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
   цепочке навсегда**: колонки продолжает писать Python-импорт. Семь свойств
   удалены из `schema.ts`; сами колонки живут в SQLite пустыми.
 
+- **Phase 12** — у типа воронки появляется признак «есть эфиры по времени»
+  (`funnel_types.has_time`, по умолчанию 1; ноль у «АВ Прямые», «АВ Квиз»,
+  «АВ Квиз-Лайт»). Тег «АВ Время: …» в реестре предложений GetCourse стоит
+  **только на оплатах вебинарных воронок**: у «АВ Прямые» — на одном
+  предложении из 71 (и то по ошибке), у квизов — ни на одном из 24. У нас же
+  он приезжал из шаблона любой воронке, потому что зависел от сценария, а не
+  от типа. Фаза заводит колонку, ставит нули **только в тот прогон, который
+  колонку и завёл** (`NOT NULL DEFAULT 1` не отличает «ещё не решали» от
+  «решили, что время есть», и безусловный бэкфилл затирал бы галку, снятую
+  человеком в `/refs`), и **при каждом прогоне** снимает строки `funnel_tags`
+  с тегом времени у воронок безвременных типов — 13 воронок, 26 строк.
+  Прямая правка `funnel_tags` здесь законна: удаляются ровно те строки,
+  которых `computeTagSet` теперь и не построит, что закреплено тестом
+  «материализация после фазы даёт тот же набор».
+
 **Docker runs, in order** (`app/docker-entrypoint.sh`): Phase 2 → 3 (+data) →
-4 → 5 → legacy-tag-override backfill → 6 → 7 → 8 → 9 → 10 → 11.
+4 → 5 → legacy-tag-override backfill → 6 → 7 → 8 → 9 → 10 → 11 → 12.
 
 **A migration script must never run itself.** esbuild bundles the runner and the
 migration into one file, and inside that bundle `require.main === module` is

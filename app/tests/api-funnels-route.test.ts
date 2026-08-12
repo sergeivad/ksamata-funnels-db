@@ -18,6 +18,7 @@ import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { runMigratePhase7 } from '../scripts/migrate-phase7';
 import { runMigratePhase8 } from '../scripts/migrate-phase8';
+import { runMigratePhase12 } from '../scripts/migrate-phase12';
 import * as schema from '../src/db/schema';
 import { copyDbForTest } from './helpers/db';
 
@@ -56,6 +57,7 @@ beforeEach(async () => {
   runMigratePhase5(sqlite);
   runMigratePhase7(sqlite);
   runMigratePhase8(sqlite);
+  runMigratePhase12(sqlite);
   const rows = sqlite.prepare('SELECT id, num FROM funnels ORDER BY num LIMIT 2').all() as { id: number; num: number }[];
   existingId = rows[0].id;
   numA = rows[0].num;
