@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   frontCodeNum,
+  funnelHref,
   funnelRefLabel,
   nextFrontCode,
   normalizeFrontCode,
+  parseFunnelRef,
 } from '../src/lib/front-code';
 
 describe('normalizeFrontCode', () => {
@@ -72,5 +74,53 @@ describe('funnelRefLabel', () => {
 
   it('без кода — id из ссылки, а не num', () => {
     expect(funnelRefLabel({ frontCode: '', id: 4 })).toBe('#4');
+  });
+});
+
+describe('parseFunnelRef', () => {
+  it('F-код — канон адреса, регистр приводится', () => {
+    expect(parseFunnelRef('f86')).toEqual({ kind: 'code', code: 'f86' });
+    expect(parseFunnelRef('F86')).toEqual({ kind: 'code', code: 'f86' });
+  });
+
+  it('чистые цифры — это id, а не код', () => {
+    expect(parseFunnelRef('83')).toEqual({ kind: 'id', id: 83 });
+    // Ведущие нули законны как id: страница потом уведёт на канон.
+    expect(parseFunnelRef('083')).toEqual({ kind: 'id', id: 83 });
+  });
+
+  it('f086 — код, а не id: в базе лежит f86, это другая строка', () => {
+    expect(parseFunnelRef('f086')).toEqual({ kind: 'code', code: 'f086' });
+  });
+
+  it('всё непонятное — null, то есть 404', () => {
+    for (const raw of ['', '   ', 'f', 'abc', 'f86x', 'x86', '8 6', '-1', '1.5']) {
+      expect(parseFunnelRef(raw), raw).toBeNull();
+    }
+  });
+
+  it('небезопасно большое число — null, иначе id уедет в Infinity', () => {
+    expect(parseFunnelRef('9'.repeat(25))).toBeNull();
+  });
+});
+
+describe('funnelHref', () => {
+  it('с кодом — адрес по коду', () => {
+    expect(funnelHref({ frontCode: 'f86', id: 83 })).toBe('/funnels/f86');
+  });
+
+  it('без кода — числовой адрес, как и подпись funnelRefLabel', () => {
+    expect(funnelHref({ frontCode: '', id: 83 })).toBe('/funnels/83');
+    expect(funnelRefLabel({ frontCode: '', id: 83 })).toBe('#83');
+  });
+
+  it('разбор собственного адреса возвращает то же самое — пара обратима', () => {
+    for (const f of [{ frontCode: 'f86', id: 83 }, { frontCode: '', id: 83 }]) {
+      const seg = funnelHref(f).replace('/funnels/', '');
+      const parsed = parseFunnelRef(seg);
+      expect(parsed, seg).not.toBeNull();
+      expect(parsed!.kind === 'code' ? parsed!.code : String(parsed!.id))
+        .toBe(f.frontCode || String(f.id));
+    }
   });
 });

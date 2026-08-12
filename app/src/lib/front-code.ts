@@ -66,3 +66,41 @@ export function nextFrontCode(existing: Iterable<string>): string {
   }
   return `f${max + 1}`;
 }
+
+/**
+ * Что стоит в адресе карточки. Две формы, и только две: F-код — канон,
+ * числовой id — вечный запасной вход для старых ссылок.
+ *
+ * Различение по букве, а не по эвристике: `f86` — код, `86` — id. Без этого
+ * адрес был бы двусмысленным, а совпадение кода с чужим id — обычное дело
+ * (у F86 id равен 83, а id 86 принадлежит другой воронке).
+ */
+export type FunnelRef =
+  | { kind: 'code'; code: string }
+  | { kind: 'id'; id: number };
+
+/**
+ * Разбор сегмента адреса. `null` — 404: список форм закрытый, новая форма
+ * должна появляться здесь явно, а не проскакивать как «похоже на число».
+ *
+ * Правило для цифр повторяет `parseRouteId` из validation.ts намеренно: тот
+ * отвечает за API, этот — за страницу, и оба должны считать `id` одинаково.
+ */
+export function parseFunnelRef(raw: string): FunnelRef | null {
+  const s = raw.trim();
+  if (/^[Ff]\d+$/.test(s)) return { kind: 'code', code: normalizeFrontCode(s) };
+  if (/^\d+$/.test(s)) {
+    const id = Number(s);
+    return Number.isSafeInteger(id) ? { kind: 'id', id } : null;
+  }
+  return null;
+}
+
+/**
+ * Единственное место, где строится ссылка на карточку. До этого она
+ * собиралась руками в пяти местах — ровно поэтому и разъезжалась.
+ * Правило то же, что у `funnelRefLabel`: есть код — по коду, нет — по id.
+ */
+export function funnelHref(ref: { frontCode: string; id: number }): string {
+  return ref.frontCode ? `/funnels/${ref.frontCode}` : `/funnels/${ref.id}`;
+}
