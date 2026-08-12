@@ -10,11 +10,11 @@ import Segmented from '@/components/Segmented';
 import { confirmUnsavedNavigation } from '@/lib/useUnsavedGuard';
 import { useCanEdit } from '@/components/AuthProvider';
 import { compareByFrontCodeDesc } from '@/lib/funnel-sort';
+import { isFunnelVisible, isSearching } from '@/lib/funnel-search';
 import {
   type FunnelStatus,
   type StatusFilter,
   isStatusFilter,
-  matchesStatusFilter,
   countLabel,
   STATUS_TOAST,
 } from '@/lib/status';
@@ -55,18 +55,6 @@ interface ToastState {
 
 function isGroupBy(v: unknown): v is GroupBy {
   return v === 'contractor' || v === 'product' || v === 'none';
-}
-
-/**
- * Ищем по имени и F-коду — и только по ним. Раньше в стог клали ещё `f${num}`
- * и сам num, а num с F не связан (совпадают у 16 воронок из 72): запрос «f70»
- * находил и настоящую f70, и воронку с num=70, у которой на карточке написано
- * f74. Подстрочный поиск по коду сохраняет и «f5», и «5».
- */
-function matchesSearch(f: FunnelListItem, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  return [f.name, f.frontCode].join(' ').toLowerCase().includes(q);
 }
 
 /**
@@ -252,9 +240,11 @@ export default function HomePage() {
     []
   );
 
+  const searching = isSearching(search);
+
   const visibleFunnels = useMemo(() => {
     return funnels
-      .filter((f) => matchesStatusFilter(f.status, statusFilter) && matchesSearch(f, search))
+      .filter((f) => isFunnelVisible(f, statusFilter, search))
       .sort(compareByFrontCodeDesc);
   }, [funnels, statusFilter, search]);
 
@@ -376,11 +366,19 @@ export default function HomePage() {
               </button>
             )}
           </div>
+          {/* Пока идёт поиск, вкладка ни на что не влияет — показываем это
+              выключенным видом, а не молча игнорируем нажатие. */}
           <Segmented
             options={STATUS_OPTIONS}
             value={statusFilter}
             onChange={handleStatusFilterChange}
+            disabled={searching}
           />
+          {searching && (
+            <span className="text-[11px] text-[var(--color-text-secondary)]">
+              Поиск идёт по всем воронкам, включая архив
+            </span>
+          )}
         </div>
       )}
 

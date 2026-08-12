@@ -217,6 +217,12 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   (`scenarioViews`, `joinTagsForCopy`). У безвременной воронки строк три, и
   оплата берётся от `time_19`. Вынесено из компонентов, чтобы «Оплата 15:00»
   в просмотре и в редакторе не разошлись словами.
+- `funnel-search.ts` — видимость строки в списке: поиск по имени и F-коду плюс
+  вкладка статуса. **Поиск отменяет вкладку** (`isFunnelVisible`): пока условия
+  перемножались, найти воронку можно было только в том разделе, где человек уже
+  стоит, и запрос по архивной с вкладки «Активные» отвечал «Ничего не найдено» —
+  то есть «такой воронки нет». Статус найденной видно по бейджу на карточке, а
+  сама вкладка на время поиска рисуется выключенной.
 - `funnel-sort.ts` — list order by F (`compareByFrontCodeDesc`) plus
   `compareByFrontCodeAsc` for the monitoring chip rows. Codeless funnels go
   **last in both**: that is a property of having no code, not of the direction,
