@@ -11,6 +11,7 @@ import { confirmUnsavedNavigation } from '@/lib/useUnsavedGuard';
 import { useCanEdit } from '@/components/AuthProvider';
 import { compareByFrontCodeDesc } from '@/lib/funnel-sort';
 import { isFunnelVisible, isSearching } from '@/lib/funnel-search';
+import { funnelHref } from '@/lib/front-code';
 import {
   type FunnelStatus,
   type StatusFilter,
@@ -218,7 +219,7 @@ export default function HomePage() {
         const duplicated: FunnelListItem = await res.json();
         setFunnels((prev) => [...prev, duplicated]);
         showToast('Воронка дублирована', 'success');
-        router.push(`/funnels/${duplicated.id}`);
+        router.push(funnelHref(duplicated));
       } catch {
         showToast('Не удалось дублировать воронку', 'error');
       }
