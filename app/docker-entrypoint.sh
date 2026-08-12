@@ -100,4 +100,14 @@ if [ -n "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] Phase-10 migration done."
 fi
 
+# Apply Phase-11 migration (idempotent: переносит адреса из семи колонок в блок
+# «Ссылки» и чистит колонки). Дашборды и подсчёты регистраций живут только в
+# блоке; колонки ещё пишут Python-скрипты импорта, поэтому фаза остаётся в
+# цепочке навсегда — она подберёт то, что попало туда в обход приложения.
+if [ -n "$FUNNELS_DB_PATH" ]; then
+  echo "[entrypoint] Running Phase-11 migration against $FUNNELS_DB_PATH"
+  node /app/migrate-phase11.cjs
+  echo "[entrypoint] Phase-11 migration done."
+fi
+
 exec node server.js
