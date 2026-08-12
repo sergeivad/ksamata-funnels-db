@@ -34,7 +34,13 @@ const DAY_COLUMN_TO_KIND: { col: string; kind: string; labelCol?: string }[] = [
   { col: 'mission',    kind: 'processes', labelCol: 'mission_type' },
 ];
 
-const DASHBOARD_COLUMNS: { col: string; label: string }[] = [
+// Экспортируется ради app/tests/link-labels-consistency.test.ts: та же таблица
+// живёт в migrate-phase11.ts (LINK_COLUMNS), tools/data-export/ksamata_funnels_export.py
+// (LINK_LABELS) и block-fill.ts (STANDARD_LINKS_LABELS, шесть из семи), и
+// расхождение между копиями молчит — новый пункт просто уходит не в ту графу
+// отчёта. Тест сверяет их между собой; без экспорта здесь ему было бы нечего
+// сравнивать, кроме переписанной вручную копии этой же таблицы.
+export const DASHBOARD_COLUMNS: { col: string; label: string }[] = [
   { col: 'dash_sales_url',   label: 'Дашборд продаж' },
   { col: 'dash_pereliv_url', label: 'Дашборд перелива' },
   { col: 'regi_total_url',   label: 'Регистрации всего' },

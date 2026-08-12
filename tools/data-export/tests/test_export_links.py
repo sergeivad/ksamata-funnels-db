@@ -5,10 +5,18 @@
 всем воронкам.
 """
 
+import os
+import re
 import sqlite3
 
-from ksamata_funnels_export import load_all
+from ksamata_funnels_export import LINK_LABELS, load_all
 
+# Путь резолвится от расположения этого файла, как и в остальных
+# инструментах репозитория (см. ksamata_funnels_export.py: BASE_DIR/ROOT_DIR).
+# tools/data-export/tests/test_export_links.py -> repo root: три уровня вверх.
+_TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
+_ROOT_DIR = os.path.abspath(os.path.join(_TESTS_DIR, '..', '..', '..'))
+_PHASE11_PATH = os.path.join(_ROOT_DIR, 'app', 'scripts', 'migrate-phase11.ts')
 
 def make_db(path, items):
     """Минимальная база с одной воронкой и блоком «Ссылки» из `items`."""
@@ -139,3 +147,25 @@ def test_funnel_without_links_block_does_not_crash(tmp_path):
     assert f["dash_sales"] == ""
     assert f["predspisok"] == ""
     assert f["extra_links"] == ""
+
+
+def test_link_labels_match_migrate_phase11_source():
+    """LINK_LABELS (здесь) и LINK_COLUMNS (app/scripts/migrate-phase11.ts) —
+    одна и та же таблица «колонка → подпись», переписанная руками в двух
+    языках. Расхождение молчит: подпись, которую фаза 11 больше не пишет (или
+    пишет по-другому), в этом отчёте попадает в «Прочие ссылки» вместо своей
+    графы — и никто не увидит ошибку, пока не сверит отчёт с базой вручную.
+
+    Читаем исходник TypeScript-файла как текст: у pytest нет рантайма, чтобы
+    импортировать и выполнить .ts. Если путь резолвится неверно — тест падает
+    с FileNotFoundError, а не молча пропускается.
+    """
+    with open(_PHASE11_PATH, encoding="utf-8") as fh:
+        source = fh.read()
+
+    labels = re.findall(r"label:\s*'([^']+)'", source)
+    assert labels, f"не нашли ни одной подписи в {_PHASE11_PATH} — разбор сломался"
+
+    from_source = {label.lower() for label in labels}
+    from_export = set(LINK_LABELS.keys())
+    assert from_source == from_export
