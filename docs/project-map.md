@@ -33,7 +33,9 @@ File-level map of the repo. For architecture and conventions see
   status, rooms-grid (+ room-urls - правила адресов комнат: Web из GC,
   зеркало по дням, зеркало 15↔19 двух семей), funnel-compact, export,
   validation, авторизация
-  (`auth` - чистое Edge-безопасное ядро, `auth-server` - Node-обвязка), plus
+  (`auth` - чистое Edge-безопасное ядро, `auth-server` - Node-обвязка),
+  `link-preview` - опознание ботов предпросмотра ссылок, которым мидлвара
+  отвечает пустотой, plus
   http/errors and client hooks; monitoring (`monitor-status`, `monitor-urls`,
   `monitor-kinds`, `monitor-targets`, `monitor-check`, `monitor-run`,
   `monitor-view`, `monitor-scheduler`). See CLAUDE.md for the full module list.

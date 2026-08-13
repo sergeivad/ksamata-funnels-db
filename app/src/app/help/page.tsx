@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Справка — Ksamata Funnels',
+  title: 'Справка — Ксамата · Воронки',
   description: 'Как пользоваться базой воронок Ксаматы',
 };
 

@@ -260,6 +260,16 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   `requireEditor`, оба через общий `resolveAccessFrom`); `login-attempts.ts` —
   счётчик неудачных попыток на `globalThis`, Edge-безопасный, потому что его
   зовут с обеих сторон. Подробно — раздел Auth ниже.
+- `link-preview.ts` — `isLinkPreviewBot(userAgent)`: опознание ботов, которые
+  рисуют карточку предпросмотра ссылки в мессенджерах. Мидлвара отвечает им
+  `204` без тела на GET/HEAD, и ссылка на сервис приходит в переписку голой
+  строкой — решение владельца 2026-08-13. `robots.txt` тут не рычаг:
+  `Disallow: /` у сервиса стоял и до этого, а превью всё равно рисовалось —
+  боты предпросмотра ходят не как поисковый краулер и robots.txt не читают.
+  Убрать мета-описание тоже мало: карточка осталась бы, просто пустее. Это
+  **не** защита: `User-Agent` подделывается одной строкой, а страницы за этим
+  ответом и так читаются анонимно; поэтому же ветка ловит только GET/HEAD —
+  решения о записи принимает авторизация, а не заголовок.
 - `rooms-grid.ts` — build/flatten the rooms grid (slot × day).
   Там же `fillRoomGrid` — достройка пустых ячеек по образцу заполненных
   (кнопка «Заполнить остальные»). Источник ищется сначала в своём слоте, где
@@ -845,6 +855,11 @@ invisible until the next container start.
 ## Conventions
 
 - Treat `app/` as the production service boundary.
+- **Сервис называется «Ксамата · Воронки», и только так** — шапка (`AppHeader`),
+  `<title>` в `layout.tsx`, заголовок справки. Английского «Ksamata Funnels
+  Admin» в интерфейсе больше нет. Единственное исключение — `realm` в
+  `WWW-Authenticate` (`Ksamata Voronki`, латиницей): по RFC 7235 это
+  ASCII-строка, и кириллица в ней покажется мусором в окне пароля браузера.
 - Keep `ksamata_funnels.db` at the repo root unless a task explicitly migrates
   every path (tests, Python tools, seed, env defaults).
 - Do not commit SQLite sidecars, local `*.db.bak_*` backups, `.env.local`,

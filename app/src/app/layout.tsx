@@ -5,8 +5,12 @@ import { AuthProvider } from "@/components/AuthProvider";
 import { getViewer } from "@/lib/auth-server";
 
 export const metadata: Metadata = {
-  title: "Ksamata Funnels Admin",
-  description: "Admin panel for managing Ksamata marketing funnels",
+  // Одна форма названия на весь сервис — та же, что в шапке (`AppHeader`).
+  // Заголовок видно на вкладке браузера, в закладках и в истории; в карточках
+  // предпросмотра он больше не появляется — превью-ботам мидлвара отвечает
+  // пустотой (см. `@/lib/link-preview`).
+  title: "Ксамата · Воронки",
+  description: "База автоворонок Ксаматы",
   // Сервис читается публично, но индексировать его незачем: в карточках URL
   // лендов и внутренние комментарии. Дублируется заголовком X-Robots-Tag в
   // мидлваре — мета-тег не покрывает ответы API.

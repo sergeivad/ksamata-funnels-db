@@ -10,6 +10,7 @@ import {
   type AccessDecision,
   type AuthEnv,
 } from '@/lib/auth';
+import { isLinkPreviewBot } from '@/lib/link-preview';
 import { attemptKey, clearAttempts, isBlocked, registerFailure } from '@/lib/login-attempts';
 
 /**
@@ -127,6 +128,21 @@ function withNoIndex(res: NextResponse): NextResponse {
 }
 
 export async function middleware(req: NextRequest): Promise<NextResponse> {
+  // Бот предпросмотра ссылки (телеграм и остальные мессенджеры) получает пустой
+  // ответ — тогда ссылка на сервис приходит в переписку голой строкой, без
+  // карточки с названием и описанием. Подробно, включая «почему не robots.txt»,
+  // — в `@/lib/link-preview`.
+  //
+  // Проверка стоит первой строкой, но только на GET/HEAD: превью-бот ничего не
+  // меняет, и совпадение по подделываемому User-Agent не должно становиться
+  // веткой, которая отвечает раньше проверок записи.
+  if (
+    (req.method === 'GET' || req.method === 'HEAD') &&
+    isLinkPreviewBot(req.headers.get('user-agent'))
+  ) {
+    return withNoIndex(new NextResponse(null, { status: 204 }));
+  }
+
   const token = req.cookies.get(SESSION_COOKIE)?.value ?? null;
   const sessionUser = await resolveSessionUser(process.env, token, Math.floor(Date.now() / 1000));
 
@@ -215,10 +231,14 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
       // WWW-Authenticate оставляем ради curl и скриптов с ADMIN_BASIC_AUTH.
       // Браузерный вход идёт через форму /login, поэтому на страницах отдаётся
       // редирект, а не этот вызов пароля.
+      //
+      // Название в realm — латиницей, единственное место, где сервис так
+      // подписан: realm по RFC 7235 — ASCII-строка, кириллица в ней не
+      // интероперабельна (браузер покажет мусор в окне пароля).
       return withNoIndex(
         new NextResponse('Требуется авторизация', {
           status: 401,
-          headers: { 'WWW-Authenticate': 'Basic realm="Ksamata Funnels Admin"' },
+          headers: { 'WWW-Authenticate': 'Basic realm="Ksamata Voronki"' },
         })
       );
   }

@@ -61,14 +61,16 @@ interface ReqOpts {
   cookie?: string;
   origin?: string;
   ip?: string;
+  ua?: string;
 }
 
-function req(path = '/', { method = 'GET', auth, cookie, origin, ip }: ReqOpts = {}) {
+function req(path = '/', { method = 'GET', auth, cookie, origin, ip, ua }: ReqOpts = {}) {
   const headers = new Headers({ host: 'admin.example' });
   if (auth) headers.set('authorization', auth);
   if (cookie) headers.set('cookie', `${SESSION_COOKIE}=${cookie}`);
   if (origin) headers.set('origin', origin);
   if (ip) headers.set('x-forwarded-for', ip);
+  if (ua) headers.set('user-agent', ua);
   return new NextRequest(`http://admin.example${path}`, { method, headers });
 }
 
@@ -91,6 +93,32 @@ describe('публичное чтение', () => {
     expect((await middleware(req('/'))).headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
     expect((await middleware(req('/api/funnels'))).headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
     expect((await middleware(req('/refs'))).headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
+  });
+});
+
+describe('предпросмотр ссылки в мессенджерах', () => {
+  const TELEGRAM = 'TelegramBot (like TwitterBot)';
+
+  it('отдаёт боту предпросмотра пустой ответ вместо страницы', async () => {
+    // 204 без тела — мессенджеру нечего показать, и ссылка приходит в
+    // переписку голой строкой.
+    for (const path of ['/', '/funnels/f84', '/help']) {
+      const res = await middleware(req(path, { ua: TELEGRAM }));
+      expect(res.status, path).toBe(204);
+      expect(await res.text(), path).toBe('');
+    }
+  });
+
+  it('не пускает бота предпросмотра в обход проверки записи', async () => {
+    // User-Agent подделывается одной строкой, поэтому ветка ловит только
+    // GET/HEAD: POST должен решаться авторизацией, как и любой другой.
+    const res = await middleware(req('/api/funnels', { method: 'POST', ua: TELEGRAM }));
+    expect(res.status).toBe(401);
+  });
+
+  it('живому браузеру отвечает как обычно', async () => {
+    const chrome = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/126.0';
+    expect((await middleware(req('/', { ua: chrome }))).status).toBe(200);
   });
 });
 
