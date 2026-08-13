@@ -5,7 +5,7 @@ import { Tv, Plus, X, Wand2 } from 'lucide-react';
 import Switch from './Switch';
 import UrlInput from './UrlInput';
 import type { DayCell } from '@/lib/funnel-days';
-import { webRoomFromGc, mirrorDayUrl } from '@/lib/block-fill';
+import { webRoomFromGc, mirrorDayUrl } from '@/lib/room-urls';
 import { SLOTS, buildGrid, cellsFromGrid, gridKey as key, type RoomCell as Cell, type RoomGrid as Grid } from '@/lib/rooms-grid';
 import { useCanEdit } from './AuthProvider';
 
