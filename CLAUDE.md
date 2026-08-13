@@ -194,6 +194,15 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 - `funnel-blocks.ts` — read/replace blocks and items.
 - `blocks.ts` — static block-kind registry.
 - `block-fill.ts` — block-editing helpers (parse pasted lines, mirror slots, labels).
+- `room-urls.ts` — правила адресов вебинарных комнат: `webRoomFromGc`,
+  `mirrorDayUrl`, `mirrorSlotRoomUrl`. Слотовое зеркало знает **две** семьи
+  слагов, и это не украшение: половина воронок несёт время в адресе
+  (`dbo1-15-vks` ↔ `dbo1-19-vks`), у другой половины времени в адресе нет
+  вовсе и второе время получается перестановкой цифры дня через первое слово
+  (`1dbo-bookv` ↔ `dbo1-bookv`). Замер по живой базе: 151 + 113, третьего
+  случая нет. Не путать с `mirrorSlotUrl` из `block-fill.ts` — тот правит
+  подписи и произвольные URL блоков заменой токена `15` и семьи B не знает;
+  перестановка цифры дня в подписи блока дала бы мусор.
 - `url-field.ts` — hygiene of a block item's URL field, shared by `BlockEditor`/
   `BlockListField` and the blocks `PUT` route. Two classes: **A** — a label glued
   into an http(s) URL (`…/a (ADS)`, a trailing quote) is rejected, because
@@ -241,6 +250,11 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   счётчик неудачных попыток на `globalThis`, Edge-безопасный, потому что его
   зовут с обеих сторон. Подробно — раздел Auth ниже.
 - `rooms-grid.ts` — build/flatten the rooms grid (slot × day).
+  Там же `fillRoomGrid` — достройка пустых ячеек по образцу заполненных
+  (кнопка «Заполнить остальные»). Источник ищется сначала в своём слоте, где
+  хватает дневного зеркала, и только потом в чужом. **Повтор выводится
+  только по дням своего слота:** правила, связывающего повтор с комнатой,
+  в данных нет — «вставить `r` после цифры дня» верно в 38 случаях из 44.
 - `funnel-compact.ts` — grouping/visibility for the compact view.
 - `export.ts` — build export rows + CSV serialization. Fields starting with
   `=`, `+`, `-`, `@`, TAB or CR get a leading apostrophe: the route serves a BOM
