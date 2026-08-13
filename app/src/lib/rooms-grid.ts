@@ -53,6 +53,11 @@ type FillField = 'gcRoom' | 'webRoom' | 'replayUrl';
  */
 function sourceFor(grid: RoomGrid, slot: string, day: number, field: FillField, dayCount: number): string {
   for (let d = 1; d <= dayCount; d++) {
+    // Повтор — запись уже прошедшего эфира: он появляется только у финальных
+    // дней (в живой базе — только у дней 4-5), а достройка назад сочиняла бы
+    // запись для дня, у которого её не было. gcRoom/webRoom остаются
+    // двусторонними — это подтверждено на живых данных (см. room-urls.ts).
+    if (field === 'replayUrl' && d > day) continue;
     const v = grid[gridKey(slot, d)]?.[field].trim();
     if (!v) continue;
     const byDay = mirrorDayUrl(v, d, day);
@@ -66,7 +71,11 @@ function sourceFor(grid: RoomGrid, slot: string, day: number, field: FillField, 
     if (!v) continue;
     const byDay = mirrorDayUrl(v, d, day);
     if (byDay === v && d !== day) continue;
-    return mirrorSlotRoomUrl(byDay, other);
+    // Пустой результат — не ответ, а повод перейти к следующему дню: слаг
+    // мог отбраковаться (см. mirrorSlotRoomUrl), а более поздний день
+    // всё ещё может подойти.
+    const mirrored = mirrorSlotRoomUrl(byDay, other);
+    if (mirrored) return mirrored;
   }
   return '';
 }
@@ -77,9 +86,12 @@ function sourceFor(grid: RoomGrid, slot: string, day: number, field: FillField, 
  * повтора), затем оставшийся пустым Web берётся из GC своей же ячейки — это и
  * позволяет развернуть всю сетку из одной введённой комнаты.
  *
- * Оба прохода читают ИСХОДНУЮ сетку, а не промежуточный результат: иначе
- * порядок обхода влиял бы на вывод. Непустое поле не перетирается никогда,
- * даже если отличается от выводимого — это правка человека.
+ * Проход 1 читает исходную сетку, поэтому не зависит от порядка обхода.
+ * Проход 2 читает результат прохода 1 (out), но каждая ячейка выводится
+ * только из самой себя (webRoom из своего же gcRoom, а не из соседних
+ * ячеек) — так что порядок обхода снова ни при чём. Непустое поле не
+ * перетирается никогда, даже если отличается от выводимого — это правка
+ * человека.
  */
 export function fillRoomGrid(grid: RoomGrid, dayCount: number, replayEnabled: boolean): RoomGrid {
   const fields: FillField[] = replayEnabled ? ['gcRoom', 'webRoom', 'replayUrl'] : ['gcRoom', 'webRoom'];

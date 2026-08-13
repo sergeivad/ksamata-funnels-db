@@ -96,6 +96,46 @@ describe('fillRoomGrid', () => {
     expect(f[gridKey('15', 4)].replayUrl).toBe(`${GC}/4rboo-kvspb`);
   });
 
+  it('повтор не достраивается назад: день 4 даёт день 5, но не дни 1–3', () => {
+    const g = buildGrid([
+      { timeSlot: '15', dayNum: 4, gcRoom: '', webRoom: '', replayUrl: `${GC}/4rboo-kvspb` },
+    ], 5);
+    const f = fillRoomGrid(g, 5, true);
+    expect(f[gridKey('15', 5)].replayUrl).toBe(`${GC}/5rboo-kvspb`);
+    expect(f[gridKey('15', 1)].replayUrl).toBe('');
+    expect(f[gridKey('15', 2)].replayUrl).toBe('');
+    expect(f[gridKey('15', 3)].replayUrl).toBe('');
+  });
+
+  it('посев повтором последнего дня не достраивает ничего — вперёд достраивать некуда', () => {
+    const g = buildGrid([
+      { timeSlot: '15', dayNum: 5, gcRoom: '', webRoom: '', replayUrl: `${GC}/5rboo-kvspb` },
+    ], 5);
+    const f = fillRoomGrid(g, 5, true);
+    expect(f[gridKey('15', 1)].replayUrl).toBe('');
+    expect(f[gridKey('15', 2)].replayUrl).toBe('');
+    expect(f[gridKey('15', 3)].replayUrl).toBe('');
+    expect(f[gridKey('15', 4)].replayUrl).toBe('');
+    expect(f[gridKey('15', 5)].replayUrl).toBe(`${GC}/5rboo-kvspb`);
+  });
+
+  it('gcRoom по-прежнему достраивается назад по дням — правка одностороннего повтора его не задела', () => {
+    const g = buildGrid([
+      { timeSlot: '15', dayNum: 4, gcRoom: `${GC}/dbo4-15-vks`, webRoom: '', replayUrl: '' },
+    ], 5);
+    const f = fillRoomGrid(g, 5, false);
+    expect(f[gridKey('15', 1)].gcRoom).toBe(`${GC}/dbo1-15-vks`);
+  });
+
+  it('чужой слот пропускает противоречивый день и берёт следующий подходящий', () => {
+    const g = buildGrid([
+      { timeSlot: '19', dayNum: 1, gcRoom: `${GC}/dbo1-15-vks`, webRoom: '', replayUrl: '' },
+      { timeSlot: '19', dayNum: 2, gcRoom: `${GC}/dbo2-19-vks`, webRoom: '', replayUrl: '' },
+    ], 2);
+    const f = fillRoomGrid(g, 2, false);
+    expect(f[gridKey('15', 1)].gcRoom).toBe(`${GC}/dbo1-15-vks`);
+  });
+
   it('не выходит за dayCount', () => {
     const g = buildGrid([{ timeSlot: '15', dayNum: 1, gcRoom: `${GC}/1dbo-bookv`, webRoom: '', replayUrl: '' }], 3);
     const f = fillRoomGrid(g, 3, false);

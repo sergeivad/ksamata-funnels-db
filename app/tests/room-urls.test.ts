@@ -117,4 +117,20 @@ describe('mirrorSlotRoomUrl — не выводится', () => {
     expect(mirrorSlotRoomUrl('просто текст', '15')).toBe('');
     expect(mirrorSlotRoomUrl('https://gc.ksamata.ru/', '15')).toBe('');
   });
+
+  it('rejects a family-B slug whose tail after the peeled word is not a separator', () => {
+    // "1dbo2-x": цифра 2 сразу после переставляемого слова — не хвост-разделитель,
+    // а часть слага; переставлять её в мусор ("dbo12-x") нельзя.
+    expect(mirrorSlotRoomUrl('https://gc.ksamata.ru/1dbo2-x', '15')).toBe('');
+    expect(mirrorSlotRoomUrl('https://gc.ksamata.ru/1dbo2-x', '19')).toBe('');
+  });
+
+  it('still accepts the real family-B pairs after the boundary fix', () => {
+    expect(mirrorSlotRoomUrl('https://gc.ksamata.ru/1dbo-bookv', '15')).toBe(
+      'https://gc.ksamata.ru/dbo1-bookv',
+    );
+    expect(mirrorSlotRoomUrl('https://gc.ksamata.ru/4boo-kvspb', '15')).toBe(
+      'https://gc.ksamata.ru/boo4-kvspb',
+    );
+  });
 });

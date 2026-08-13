@@ -56,8 +56,11 @@ export function mirrorSlotRoomUrl(url: string, from: '15' | '19'): string {
   if (swapped) return head + swapped;
   if (swapTime(slug, to, from)) return '';
 
+  // После переставляемого слова хвост обязан либо отсутствовать, либо
+  // начинаться с разделителя — иначе цифра дня слипается с соседним словом
+  // (1dbo2-x → «dbo12-x» вместо отказа: «2» тут часть слага, а не хвост).
   const m = from === '15'
-    ? /^(\d)([a-z]+)(.*)$/i.exec(slug)   // 1dbo-bookv → dbo1-bookv
-    : /^([a-z]+)(\d)(.*)$/i.exec(slug);  // dbo1-bookv → 1dbo-bookv
+    ? /^(\d)([a-z]+)(?=[-_.]|$)(.*)$/i.exec(slug)   // 1dbo-bookv → dbo1-bookv
+    : /^([a-z]+)(\d)(?=[-_.]|$)(.*)$/i.exec(slug);  // dbo1-bookv → 1dbo-bookv
   return m ? `${head}${m[2]}${m[1]}${m[3]}` : '';
 }
