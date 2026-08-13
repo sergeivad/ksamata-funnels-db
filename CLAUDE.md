@@ -213,6 +213,11 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   the code rather than borrowing it — the owner then carries it into LeakEngine
   (see [docs/leak-engine.md](docs/leak-engine.md)). The suggestion stays
   editable: LeakEngine may already hold a higher number.
+  `parseFunnelRef` разбирает сегмент адреса (`f86` → код, `86` → id, прочее →
+  404), `funnelRefSegment` строит этот сегмент без префикса `/funnels/`, а
+  `funnelHref` собирает полный путь через него. Различение по букве, а не по
+  эвристике: код воронки и чужой `id` совпадают сплошь и рядом — у F86 `id`
+  равен 83, а `id` 86 принадлежит другой воронке.
 - `tag-scenarios.ts` — порядок и подписи сценариев тегов на все экраны
   (`scenarioViews`, `joinTagsForCopy`). У безвременной воронки строк три, и
   оплата берётся от `time_19`. Вынесено из компонентов, чтобы «Оплата 15:00»
@@ -365,9 +370,10 @@ funnel `PATCH` and the days `PUT`.
 
 ## Pages & components
 
-Pages (`app/src/app/`): `page.tsx` (funnel list), `funnels/[id]/page.tsx`
-(edit), `tags/page.tsx` (global template editor), `refs/page.tsx` (lookup
-tables), `monitoring/page.tsx` (landing-availability dashboard),
+Pages (`app/src/app/`): `page.tsx` (funnel list), `funnels/[ref]/page.tsx`
+(edit; сегмент — F-код либо id), `tags/page.tsx` (global template editor),
+`refs/page.tsx` (lookup tables), `monitoring/page.tsx` (landing-availability
+dashboard),
 `login/page.tsx` (вход редактора), `help/page.tsx` (справка по сервису).
 `/refs`, `/tags` и `/monitoring` закрыты серверным `EditorGate` через свои
 `layout.tsx`.
@@ -827,6 +833,12 @@ invisible until the next container start.
   `funnelRefLabel`) — `num` survives in the export only as the `ID` column. When
   the two were mixed, searching `f70` returned both the real f70 and the funnel
   whose `num` is 70 but whose card reads f74.
+  Адрес карточки — тоже F-код: `/funnels/f86`. Строится он **только** через
+  `funnelHref` ([app/src/lib/front-code.ts](app/src/lib/front-code.ts)) —
+  собранный руками `/funnels/${id}` ловит
+  [app/tests/funnel-href-consistency.test.ts](app/tests/funnel-href-consistency.test.ts).
+  Числовой адрес остаётся вечным запасным входом и редиректит на канон
+  временным 307: постоянный 308 браузер кеширует навсегда, а код редактируем.
 - Never leave `ksamata_funnels.db` modified after a live run — restore it (see
   the monitoring gotcha above). Its `monitor_*` tables must stay empty.
 - **Never rebase a commit that touches `ksamata_funnels.db` onto a base that
