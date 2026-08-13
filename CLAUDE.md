@@ -205,8 +205,9 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   lowercase — SQLite compares TEXT bytewise, so `F80` and `f80` would otherwise
   slip past the unique index as two rows), `frontCodeNum`, `nextFrontCode`,
   `funnelRefLabel`. Pure, no DB — the caller queries. `nextFrontCode` is
-  `max(F) + 1`, **not** the first gap: gaps (`f10`, `f14`, `f17`, `f18`, `f20`,
-  `f44`, `f49`) are numbers LeakEngine can hand out at any moment. It is also
+  `max(F) + 1`, **not** the first gap: gaps (`f1`–`f5`, `f10`, `f14`, `f17`,
+  `f18`, `f20`, `f44`, `f49`, `f65`, `f71`, `f72`, `f75`, `f76`, `f77`) are
+  numbers LeakEngine can hand out at any moment. It is also
   not derived from `num`: `createDraftFunnel` used to write `f${num}`, and with
   `max(num)=75` against `max(F)=79` the next two drafts would have taken `f76`
   and the **already-occupied** `f77`. Since 2026-08-04 this base **allocates**

@@ -119,6 +119,18 @@ describe('funnelRefSegment', () => {
       expect(`/funnels/${funnelRefSegment(f)}`).toBe(funnelHref(f));
     }
   });
+
+  it('код не по форме ^f\\d+$ — откат на id, а не кривой сегмент', () => {
+    // Домен только нормализует регистр (normalizeFrontCode); форму проверяет
+    // Zod исключительно на границе API, так что запись мимо неё (raw SQL,
+    // разовый tsx-скрипт) может оставить в базе что-то вроде 'f 86'. Такой
+    // сегмент не разбирает обратно parseFunnelRef — без отката воронка стала
+    // бы недостижима обоими адресами: канон вёл бы на кривой сегмент, а
+    // числовой id редиректил бы на тот же кривой канон.
+    expect(funnelRefSegment({ frontCode: 'f 86', id: 83 })).toBe('83');
+    expect(funnelRefSegment({ frontCode: 'F86', id: 83 })).toBe('83');
+    expect(funnelRefSegment({ frontCode: 'сайт', id: 83 })).toBe('83');
+  });
 });
 
 describe('funnelHref', () => {

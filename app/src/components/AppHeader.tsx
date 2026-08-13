@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Plus } from 'lucide-react';
 import { confirmUnsavedNavigation } from '@/lib/useUnsavedGuard';
 import { funnelHref } from '@/lib/front-code';
+import type { FunnelListItem } from '@/lib/funnels';
 import { useAuth } from './AuthProvider';
 
 /**
@@ -41,7 +42,7 @@ export default function AppHeader() {
     try {
       const res = await fetch('/api/funnels/draft', { method: 'POST' });
       if (!res.ok) throw new Error('draft failed');
-      const funnel = await res.json();
+      const funnel: FunnelListItem = await res.json();
       router.push(funnelHref(funnel));
     } catch {
       setCreating(false);

@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Wand2, Copy, Check, AlertCircle, X, RotateCcw } from 'lucide-react';
 import type { FunnelDetail } from '@/lib/funnels';
 import { copyText } from '@/lib/clipboard';
 import { isAxisTag } from '@/lib/ab-tags';
+import { funnelHref } from '@/lib/front-code';
 import Segmented from './Segmented';
 import RefSelect from './RefSelect';
 import { useCanEdit } from './AuthProvider';
@@ -30,7 +32,14 @@ type IdentitySnapshot = {
 interface Props { funnel: FunnelDetail; onDirtyChange?: (dirty: boolean) => void }
 
 export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
+  const router = useRouter();
   const canEdit = useCanEdit();
+  // Код, на который сейчас стоит адресная строка вкладки — отдельно от
+  // `saved.frontCode` (снимок формы), потому что форма хранит то, что ввёл
+  // человек до нормализации сервером ('F95'), а адрес должен сравниваться с
+  // тем, что сервер реально сохранил ('f95'); иначе повторное сохранение без
+  // правки кода снова решало бы, что адрес устарел.
+  const urlCodeRef = useRef(funnel.frontCode);
   const [frontCode, setFrontCode] = useState(funnel.frontCode);
   const [status, setStatus] = useState<string>(funnel.status);
   const [axes, setAxes] = useState(funnel.axes);
@@ -245,6 +254,15 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
         throw new Error(body?.error ?? `Не удалось сохранить (${res.status})`);
       }
       setSaved(submitted);
+      // Смена F-кода меняет канонический адрес карточки. Берём новый код из
+      // ответа сервера, не из формы: сервер его нормализует (trim + нижний
+      // регистр). replace, не push: старый адрес мёртв (обновление страницы
+      // на нём даёт 404 — этот компонент не перечитывает URL сам), и держать
+      // его в истории «назад» незачем.
+      if (typeof body?.frontCode === 'string' && body.frontCode !== urlCodeRef.current) {
+        urlCodeRef.current = body.frontCode;
+        router.replace(funnelHref({ frontCode: body.frontCode, id: funnel.id }));
+      }
       // Осевые теги пересчитал сервер, но ответ PATCH — это сводка воронки без
       // tagSets, поэтому дочитываем деталь. Без этого чипы показывали бы теги
       // от прежних осей до перезагрузки страницы. Отдельный catch: сохранение
