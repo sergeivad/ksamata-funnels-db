@@ -14,7 +14,7 @@ File-level map of the repo. For architecture and conventions see
 ## App (`app/`)
 
 - `src/app/page.tsx` - funnel list (home).
-- `src/app/funnels/[id]/page.tsx` - funnel edit page.
+- `src/app/funnels/[ref]/page.tsx` - funnel edit page; segment is the F code or the id.
 - `src/app/tags/page.tsx` - global tag-template editor.
 - `src/app/refs/page.tsx` - lookup/reference tables management.
 - `src/app/monitoring/page.tsx` - landing-availability monitoring dashboard.
