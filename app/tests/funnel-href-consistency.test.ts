@@ -7,6 +7,12 @@
  * `front-code.ts`. Статический текст (например `<Code>/funnels/78</Code>` в
  * справке) и регулярки в `auth.ts` не ловятся: там нет ни интерполяции, ни
  * конкатенации, а значит и разъезжаться нечему.
+ *
+ * Раунд правок 1: первая версия сторожа ловила по чистой подстроке и вместе
+ * со ссылкой на карточку хватала ещё и машинные вызовы REST
+ * (`/api/funnels/${id}` в BlockEditor, FunnelIdentity, RoomsEditor, page.tsx)
+ * — их трогать не нужно, API как адресовал воронку числовым id, так и
+ * адресует. Негативный лукбехайд `(?<!\/api)` их исключает.
  */
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -16,7 +22,10 @@ const SRC = join(__dirname, '..', 'src');
 const ALLOWED = 'lib/front-code.ts';
 
 // Динамическая сборка адреса: `/funnels/${…}` или '/funnels/' + …
-const OFFENDERS = [/\/funnels\/\$\{/, /['"`]\/funnels\/['"`]\s*\+/];
+// Негативный лукбехайд исключает машинные вызовы REST (`/api/funnels/${id}`,
+// GET/PATCH/DELETE /api/funnels/[id] по контракту) — это не ссылка на
+// карточку, а адрес API, и он по-прежнему числовой, менять его не нужно.
+const OFFENDERS = [/(?<!\/api)\/funnels\/\$\{/, /['"`]\/funnels\/['"`]\s*\+/];
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -42,5 +51,6 @@ describe('ссылка на карточку строится только в fr
     expect(OFFENDERS.some((re) => re.test('href={`/funnels/${funnel.id}`}'))).toBe(true);
     expect(OFFENDERS.some((re) => re.test("router.push('/funnels/' + id)"))).toBe(true);
     expect(OFFENDERS.some((re) => re.test('<Code>/funnels/78</Code>'))).toBe(false);
+    expect(OFFENDERS.some((re) => re.test('fetch(`/api/funnels/${id}`)'))).toBe(false);
   });
 });

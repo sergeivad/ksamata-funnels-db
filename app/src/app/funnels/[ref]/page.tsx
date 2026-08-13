@@ -3,7 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { db } from '@/db/client';
 import { getFunnel, getFunnelByFrontCode } from '@/lib/funnels';
-import { parseFunnelRef, funnelHref } from '@/lib/front-code';
+import { parseFunnelRef, funnelHref, funnelRefSegment } from '@/lib/front-code';
 import { listDays } from '@/lib/funnel-days';
 import { listBlocks } from '@/lib/funnel-blocks';
 import FunnelSections from '@/components/FunnelSections';
@@ -25,9 +25,13 @@ export default async function FunnelEditPage({ params }: PageProps) {
   if (!funnel) notFound();
 
   // Канон — F-код. Числовой адрес и ненормализованный код работают вечно, но
-  // уводят на канон. Одно сравнение закрывает все случаи: «83» → «/funnels/f86»,
-  // «F86» → «/funnels/f86», «083» → «/funnels/f86», а у воронки без кода
-  // «7» совпадает с каноном и перехода не будет.
+  // уводят на канон. Сравниваем не полный путь, а только сегмент после
+  // `/funnels/` (его же строит funnelRefSegment) — иначе эта страница сама
+  // оказалась бы шестым местом ручной сборки `/funnels/...`, которое ловит
+  // сторож funnel-href-consistency.test.ts. Одно сравнение закрывает все
+  // случаи: «83» → «/funnels/f86», «F86» → «/funnels/f86», «083» →
+  // «/funnels/f86», а у воронки без кода «7» совпадает с каноном и перехода
+  // не будет.
   //
   // Переход ВРЕМЕННЫЙ (redirect даёт 307), а не постоянный: 308 браузер
   // кеширует навсегда, а код редактируемый — поменяли f86 на f90, и
@@ -36,8 +40,7 @@ export default async function FunnelEditPage({ params }: PageProps) {
   // Заодно лечит вторую ловушку: увидев на карточке «F86», человек набирает
   // /funnels/86 руками. 86 — валидный id, и без перехода страница молча
   // показала бы чужую воронку; теперь адресная строка сразу покажет чужой код.
-  const canonical = funnelHref(funnel);
-  if (`/funnels/${ref}` !== canonical) redirect(canonical);
+  if (ref !== funnelRefSegment(funnel)) redirect(funnelHref(funnel));
 
   const initialDays = listDays(db, funnel.id);
   const blocks = listBlocks(db, funnel.id);

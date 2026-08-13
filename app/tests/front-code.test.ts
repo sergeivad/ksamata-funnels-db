@@ -3,6 +3,7 @@ import {
   frontCodeNum,
   funnelHref,
   funnelRefLabel,
+  funnelRefSegment,
   nextFrontCode,
   normalizeFrontCode,
   parseFunnelRef,
@@ -101,6 +102,22 @@ describe('parseFunnelRef', () => {
 
   it('небезопасно большое число — null, иначе id уедет в Infinity', () => {
     expect(parseFunnelRef('9'.repeat(25))).toBeNull();
+  });
+});
+
+describe('funnelRefSegment', () => {
+  it('с кодом — отдаёт код', () => {
+    expect(funnelRefSegment({ frontCode: 'f86', id: 83 })).toBe('f86');
+  });
+
+  it('без кода — отдаёт строковый id', () => {
+    expect(funnelRefSegment({ frontCode: '', id: 83 })).toBe('83');
+  });
+
+  it('funnelHref собран ровно из /funnels/ + сегмент — для обоих случаев', () => {
+    for (const f of [{ frontCode: 'f86', id: 83 }, { frontCode: '', id: 83 }]) {
+      expect(`/funnels/${funnelRefSegment(f)}`).toBe(funnelHref(f));
+    }
   });
 });
 

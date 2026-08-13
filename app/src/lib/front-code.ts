@@ -97,10 +97,22 @@ export function parseFunnelRef(raw: string): FunnelRef | null {
 }
 
 /**
+ * Сегмент адреса без префикса `/funnels/` — то же правило, что у
+ * `funnelHref` и `funnelRefLabel`: есть код — код, нет — id. Вынесен
+ * отдельно, чтобы страница карточки (`app/funnels/[ref]/page.tsx`) могла
+ * сравнить уже полученный из URL сегмент с каноном, не реконструируя сам
+ * путь `/funnels/...` — иначе сторож `funnel-href-consistency.test.ts`
+ * ловил бы и эту страницу как ещё одно место ручной сборки ссылки.
+ */
+export function funnelRefSegment(ref: { frontCode: string; id: number }): string {
+  return ref.frontCode || String(ref.id);
+}
+
+/**
  * Единственное место, где строится ссылка на карточку. До этого она
  * собиралась руками в пяти местах — ровно поэтому и разъезжалась.
  * Правило то же, что у `funnelRefLabel`: есть код — по коду, нет — по id.
  */
 export function funnelHref(ref: { frontCode: string; id: number }): string {
-  return ref.frontCode ? `/funnels/${ref.frontCode}` : `/funnels/${ref.id}`;
+  return `/funnels/${funnelRefSegment(ref)}`;
 }
