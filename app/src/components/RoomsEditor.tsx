@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Tv, Plus, X, Wand2 } from 'lucide-react';
 import Switch from './Switch';
 import UrlInput from './UrlInput';
 import type { DayCell } from '@/lib/funnel-days';
-import { webRoomFromGc, mirrorDayUrl } from '@/lib/room-urls';
-import { SLOTS, buildGrid, cellsFromGrid, gridKey as key, type RoomCell as Cell, type RoomGrid as Grid } from '@/lib/rooms-grid';
+import { webRoomFromGc } from '@/lib/room-urls';
+import { SLOTS, buildGrid, cellsFromGrid, fillRoomGrid, gridKey as key, type RoomCell as Cell, type RoomGrid as Grid } from '@/lib/rooms-grid';
 import { useCanEdit } from './AuthProvider';
 
 interface Props {
@@ -68,37 +68,12 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
     });
   }
 
-  const FILL_FIELDS: (keyof Cell)[] = replay ? ['gcRoom', 'webRoom', 'replayUrl'] : ['gcRoom', 'webRoom'];
-
-  // Day-1 rows can seed the rest: later-day urls differ from day 1 only by
-  // the day digit (see mirrorDayUrl). Offer the button while there is at
-  // least one empty later-day field whose day-1 counterpart is filled.
-  const canFillFromDay1 =
-    dayCount > 1 &&
-    SLOTS.some((slot) =>
-      FILL_FIELDS.some((f) => {
-        if (grid[key(slot, 1)][f].trim() === '') return false;
-        for (let d = 2; d <= dayCount; d++) if (grid[key(slot, d)][f].trim() === '') return true;
-        return false;
-      }),
-    );
-
-  function fillFromDay1() {
-    setGrid((p) => {
-      const g = { ...p };
-      for (const slot of SLOTS) {
-        const src = p[key(slot, 1)];
-        for (let d = 2; d <= dayCount; d++) {
-          const cell = { ...g[key(slot, d)] };
-          for (const f of FILL_FIELDS) {
-            if (src[f].trim() !== '' && cell[f].trim() === '') cell[f] = mirrorDayUrl(src[f].trim(), 1, d);
-          }
-          g[key(slot, d)] = cell;
-        }
-      }
-      return g;
-    });
-  }
+  // Сетка, достроенная по уже заполненным ячейкам. Кнопка предлагается ровно
+  // тогда, когда достройка что-то меняет — отдельной эвристики «есть ли что
+  // заполнить» нет, иначе она разъедется с самой достройкой.
+  const filled = useMemo(() => fillRoomGrid(grid, dayCount, replay), [grid, dayCount, replay]);
+  const canFill =
+    JSON.stringify(cellsFromGrid(filled, dayCount)) !== JSON.stringify(cellsFromGrid(grid, dayCount));
 
   function addDay() {
     if (dayCount >= MAX_DAYS) return;
@@ -245,11 +220,11 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
             className="flex items-center gap-1 text-[12px] font-semibold text-[var(--orange)] disabled:opacity-40">
             <Plus size={13} /> добавить день
           </button>
-          {canFillFromDay1 && (
-            <button type="button" onClick={fillFromDay1}
-              title="Заполнить пустые дни ссылками дня 1 с заменой номера дня"
+          {canFill && (
+            <button type="button" onClick={() => setGrid(filled)}
+              title="Достроить пустые ячейки по образцу заполненных: другой день, второе время, Web из GC"
               className="flex items-center gap-1 text-[12px] font-semibold text-[var(--orange)]">
-              <Wand2 size={13} /> Заполнить из дня 1
+              <Wand2 size={13} /> Заполнить остальные
             </button>
           )}
         </div>
