@@ -15,6 +15,7 @@ import * as schema from '../src/db/schema';
 import {
   listFunnels,
   getFunnel,
+  getFunnelByFrontCode,
   createFunnel,
   createDraftFunnel,
   updateFunnel,
@@ -331,7 +332,7 @@ describe('updateFunnel', () => {
 
 // ─── DUPLICATE ────────────────────────────────────────────────────────────────
 describe('duplicateFunnel', () => {
-  it('creates copy with num=max+1, status=draft, frontCode=""', () => {
+  it('creates copy with num=max+1, status=draft, a freshly allocated frontCode', () => {
     const list = listFunnels(testDb);
     const found = list.find((f) => f.num === 9900)!;
     const maxNum = Math.max(...list.map((f) => f.num));
@@ -340,7 +341,24 @@ describe('duplicateFunnel', () => {
     expect(dup).not.toBeNull();
     expect(dup!.num).toBe(maxNum + 1);
     expect(dup!.status).toBe('draft');
-    expect(dup!.frontCode).toBe('');
+    // Дубль — не пустая воронка, а полноценная новая: код выдаётся, как и
+    // черновику (createDraftFunnel), а не остаётся пустым.
+    expect(dup!.frontCode).toBe(nextFrontCode(list.map((f) => f.frontCode)));
+  });
+
+  it('дубль получает следующий свободный код, выше максимума и не как у оригинала', () => {
+    // Свои строки (num 9900+), ничего не утверждаем про воронки живой базы.
+    const src = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9945, frontCode: 'f9930' });
+    const before = listFunnels(testDb);
+    const maxCodeBefore = Math.max(
+      ...before.map((f) => Number(/^f(\d+)$/.exec(f.frontCode)?.[1] ?? 0))
+    );
+
+    const dup = duplicateFunnel(testDb, src.id)!;
+
+    expect(dup.frontCode).toMatch(/^f\d+$/);
+    expect(Number(/^f(\d+)$/.exec(dup.frontCode)![1])).toBeGreaterThan(maxCodeBefore);
+    expect(dup.frontCode).not.toBe(src.frontCode);
   });
 
   it('duplicate carries over the same axes', () => {
@@ -760,5 +778,28 @@ describe('resyncAllFunnels и пустые черновики', () => {
     const created = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9899 });
     resyncAllFunnels(testDb);
     expect(getFunnel(testDb, created.id)!.axes.product).toBe(BASE_FUNNEL_DATA.product);
+  });
+});
+
+describe('getFunnelByFrontCode', () => {
+  it('находит воронку по её коду', () => {
+    const created = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9901, frontCode: 'f9001' });
+    expect(getFunnelByFrontCode(testDb, 'f9001')?.id).toBe(created.id);
+  });
+
+  it('регистр и пробелы не мешают — код нормализуется', () => {
+    createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9902, frontCode: 'f9002' });
+    expect(getFunnelByFrontCode(testDb, 'F9002')?.frontCode).toBe('f9002');
+    expect(getFunnelByFrontCode(testDb, ' f9002 ')?.frontCode).toBe('f9002');
+  });
+
+  it('пустой код не ищется никогда — иначе бескодовые склеятся в одну', () => {
+    createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9903, frontCode: '' });
+    expect(getFunnelByFrontCode(testDb, '')).toBeNull();
+    expect(getFunnelByFrontCode(testDb, '   ')).toBeNull();
+  });
+
+  it('несуществующий код — null, а не чужая воронка', () => {
+    expect(getFunnelByFrontCode(testDb, 'f9999')).toBeNull();
   });
 });

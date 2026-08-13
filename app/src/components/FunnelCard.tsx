@@ -8,6 +8,7 @@ import StatusPill from './StatusPill';
 import { useCanEdit } from './AuthProvider';
 import { FUNNEL_STATUSES, STATUS_ACTION_LABELS, type FunnelStatus } from '@/lib/status';
 import { DEFAULT_FUNNEL_TYPE } from '@/lib/funnel-type';
+import { funnelHref } from '@/lib/front-code';
 
 interface Funnel {
   id: number;
@@ -32,7 +33,7 @@ export default function FunnelCard({
 }: FunnelCardProps) {
   const canEdit = useCanEdit();
   const [menuOpen, setMenuOpen] = useState(false);
-  const href = `/funnels/${funnel.id}`;
+  const href = funnelHref(funnel);
   // Вторая колонка была фиксированной 80px под один статус-пилл; с чипом типа
   // воронки рядом контент мог не влезать и наезжать на кнопки действий, поэтому
   // 80px теперь только нижняя граница, а не потолок.

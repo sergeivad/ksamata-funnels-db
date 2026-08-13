@@ -321,6 +321,27 @@ export function getFunnel(db: DB, id: number): FunnelDetail | null {
 }
 
 /**
+ * Воронка по F-коду — то, чем адрес карточки отличается от API.
+ *
+ * Пустой код не ищется НИКОГДА: `front_code` у бескодовых воронок хранится
+ * пустой строкой, и запрос по '' вернул бы первую попавшуюся из них.
+ * Уникальность непустого кода держит частичный индекс Phase 7.
+ *
+ * Тело читается через `getFunnel`, а не собирается заново: материализация
+ * тегов и осей должна жить в одном месте.
+ */
+export function getFunnelByFrontCode(db: DB, code: string): FunnelDetail | null {
+  const normalized = normalizeFrontCode(code);
+  if (normalized === '') return null;
+  const row = db
+    .select({ id: funnels.id })
+    .from(funnels)
+    .where(eq(funnels.frontCode, normalized))
+    .get();
+  return row ? getFunnel(db, row.id) : null;
+}
+
+/**
  * POST /api/funnels — create a new funnel.
  * Throws an error with message containing "409" if num already exists.
  */
@@ -836,8 +857,10 @@ function copyFunnelChildren(tx: AnyDB, srcId: number, dstId: number): void {
 }
 
 /**
- * POST /api/funnels/[id]/duplicate — copy with num=max(num)+1, frontCode='', status='draft'.
- * Copies all editable scalar fields and every child row. Returns null if source not found.
+ * POST /api/funnels/[id]/duplicate — copy with num=max(num)+1, a freshly
+ * allocated frontCode (same rule as createDraftFunnel — next free above the
+ * current max, never derived from num), status='draft'. Copies all editable
+ * scalar fields and every child row. Returns null if source not found.
  */
 export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
   const source = db.select().from(funnels).where(eq(funnels.id, id)).get();
@@ -852,14 +875,16 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
       .from(funnels)
       .get();
     const newNum = (maxResult?.maxNum ?? 0) + 1;
+    const newFrontCode = allocateFrontCode(tx);
 
     // Insert copy — carry over ALL editable scalar fields (incl. Phase-3),
-    // resetting only identity fields (num/frontCode/status) for the new draft.
+    // resetting identity fields (num/frontCode/status) for the new draft: num
+    // and frontCode are freshly allocated, never copied from the source.
     const inserted = tx
       .insert(funnels)
       .values({
         num:                newNum,
-        frontCode:          '',
+        frontCode:          newFrontCode,
         status:             'draft',
         productName:        source.productName,
         variant:            source.variant,
@@ -897,7 +922,7 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
     return {
       id:          inserted.id,
       num:         inserted.num,
-      frontCode:   '',
+      frontCode:   inserted.frontCode ?? '',
       status:      'draft',
       productName: inserted.productName,
       funnelType:  typeName,

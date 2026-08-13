@@ -6,7 +6,7 @@ import Switch from '@/components/Switch';
 import MonitorStatusPill from './MonitorStatusPill';
 import { formatAgo } from '@/lib/monitor-status';
 import { sourceKindLabel } from '@/lib/monitor-kinds';
-import { funnelRefLabel } from '@/lib/front-code';
+import { funnelRefLabel, funnelHref } from '@/lib/front-code';
 import { STATUS_META, type FunnelStatus } from '@/lib/status';
 
 /**
@@ -98,7 +98,7 @@ export default function MonitorTable({ targets, onToggle }: Props) {
                     {t.funnels.map((f) => (
                       <Link
                         key={f.id}
-                        href={`/funnels/${f.id}`}
+                        href={funnelHref(f)}
                         title={f.frontCode === '' ? 'Код воронки ещё не заведён' : undefined}
                         className="rounded-[5px] bg-[var(--chip)] px-1.5 py-0.5 text-[11px] text-[var(--muted)] hover:text-[var(--ink)]"
                       >
@@ -111,7 +111,7 @@ export default function MonitorTable({ targets, onToggle }: Props) {
                       t.inactiveFunnels.map((f) => (
                         <Link
                           key={f.id}
-                          href={`/funnels/${f.id}`}
+                          href={funnelHref(f)}
                           title={`Страница не проверяется: ${INACTIVE_HINT[f.status]}. Вернут воронку в активные — проверка возобновится сама`}
                           className="rounded-[5px] bg-[var(--chip)] px-1.5 py-0.5 text-[11px] text-[var(--faint)] hover:text-[var(--ink)]"
                         >

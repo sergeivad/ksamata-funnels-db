@@ -232,6 +232,7 @@ describe('isPublicReadPath', () => {
       // анониму редиректом на вход, и инструкция открывается битой.
       '/help', '/help/', '/help/01-list.webp', '/help/06-monitoring.webp',
       '/robots.txt',
+      '/funnels/f86', '/funnels/f86/', '/funnels/F86',
     ]) {
       expect(isPublicReadPath(p), p).toBe(true);
     }
@@ -248,6 +249,7 @@ describe('isPublicReadPath', () => {
       '/funnels/abc', '/api/funnels/abc',
       // Открыт ровно каталог справки и ровно webp — не «всё, что под /help».
       '/help/../ksamata_funnels.db', '/help/sub/shot.webp', '/helpdesk',
+      '/funnels/f86/edit', '/funnels/f', '/funnels/f86x',
     ]) {
       expect(isPublicReadPath(p), p).toBe(false);
     }
