@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Wand2, Copy, Check, AlertCircle, X, RotateCcw } from 'lucide-react';
 import type { FunnelDetail } from '@/lib/funnels';
 import { copyText } from '@/lib/clipboard';
@@ -32,7 +31,6 @@ type IdentitySnapshot = {
 interface Props { funnel: FunnelDetail; onDirtyChange?: (dirty: boolean) => void }
 
 export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
-  const router = useRouter();
   const canEdit = useCanEdit();
   // Код, на который сейчас стоит адресная строка вкладки — отдельно от
   // `saved.frontCode` (снимок формы), потому что форма хранит то, что ввёл
@@ -261,7 +259,13 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
       // его в истории «назад» незачем.
       if (typeof body?.frontCode === 'string' && body.frontCode !== urlCodeRef.current) {
         urlCodeRef.current = body.frontCode;
-        router.replace(funnelHref({ frontCode: body.frontCode, id: funnel.id }));
+        // Нативный History API, не router.replace: адрес карточки — это
+        // динамический сегмент /funnels/[ref], и смена его значения меняет
+        // ключ сегмента. Next 15 на смену ключа пересоздаёт поддерево
+        // (FunnelSections — единый хост несохранённых правок блоков, комнат
+        // и своих же тегов) и сбрасывает его состояние. window.history
+        // Next 15 подхватывает сам, без пересоздания.
+        window.history.replaceState(null, '', funnelHref({ frontCode: body.frontCode, id: funnel.id }));
       }
       // Осевые теги пересчитал сервер, но ответ PATCH — это сводка воронки без
       // tagSets, поэтому дочитываем деталь. Без этого чипы показывали бы теги
