@@ -5,7 +5,7 @@ describe('blocks catalog', () => {
   it('lists the 9 kinds in card order', () => {
     expect(BLOCK_KINDS.map((b) => b.kind)).toEqual([
       'landings', 'records', 'tariffs', 'applications', 'bonuses',
-      'oto', 'processes', 'meditation', 'links',
+      'oto', 'processes', 'upsell', 'links',
     ]);
   });
 

@@ -30,7 +30,8 @@ const DAY_COLUMN_TO_KIND: { col: string; kind: string; labelCol?: string }[] = [
   { col: 'tariffs',    kind: 'tariffs' },
   { col: 'oto',        kind: 'oto' },
   { col: 'bonuses',    kind: 'bonuses' },
-  { col: 'meditation', kind: 'meditation' },
+  // Колонка легаси осталась `meditation`, вид блока с Phase-13 — `upsell`.
+  { col: 'meditation', kind: 'upsell' },
   { col: 'mission',    kind: 'processes', labelCol: 'mission_type' },
 ];
 

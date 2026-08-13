@@ -690,7 +690,7 @@ describe('предпочтение группы наследуется новы�
     clearMonitoringState();
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
-    addUrl(makeBlock(f1, 'meditation'), 'https://med.example.ru/single');
+    addUrl(makeBlock(f1, 'upsell'), 'https://med.example.ru/single');
 
     syncMonitorTargets(db);
     const target = targetRow('https://med.example.ru/single')!;

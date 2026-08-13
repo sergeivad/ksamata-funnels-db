@@ -1,6 +1,6 @@
 export type BlockKind =
   | 'landings' | 'records' | 'tariffs' | 'applications' | 'bonuses'
-  | 'oto' | 'processes' | 'meditation' | 'links';
+  | 'oto' | 'processes' | 'upsell' | 'links';
 
 export type BlockMode = 'common' | 'by_time';
 
@@ -24,7 +24,9 @@ export const BLOCK_KINDS: BlockKindDef[] = [
   { kind: 'bonuses',      title: 'Бонусы',            icon: 'Gift',       fields: 1, modes: CB, defaultEnabled: false },
   { kind: 'oto',          title: 'ОТО',               icon: 'Flame',      fields: 1, modes: CB, defaultEnabled: false },
   { kind: 'processes',    title: 'Процессы',          icon: 'Settings',   fields: 2, modes: CB, defaultEnabled: false },
-  { kind: 'meditation',   title: 'Медитация / дожим', icon: 'Sparkles',   fields: 1, modes: CB, defaultEnabled: false },
+  // Слаг `meditation` до Phase-13 — переименован вместе с заголовком, см.
+  // scripts/migrate-phase13.ts. Старого слага в базе не остаётся.
+  { kind: 'upsell',       title: 'Допродажи / дожим', icon: 'Sparkles',   fields: 1, modes: CB, defaultEnabled: false },
   { kind: 'links',        title: 'Ссылки / дашборды', icon: 'Link',       fields: 2, modes: CB, defaultEnabled: true  },
 ];
 

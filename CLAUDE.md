@@ -111,7 +111,12 @@ Drizzle SQLite. Core + lookup + content + tags tables:
 
 **Block kinds** (`app/src/lib/blocks.ts`, canonical slugs): `landings`,
 `records`, `tariffs`, `applications`, `bonuses`, `oto`, `processes`,
-`meditation`, `links`.
+`upsell`, `links`.
+
+`upsell` («Допродажи / дожим») до Phase 13 назывался `meditation` — слаг остался
+от первой версии карточки и обещал не то содержимое, которое в блок кладут.
+Не спутать с `funnel_days.meditation`: это **другая** сущность, легаси-колонка,
+в которую до сих пор пишет Python-импорт, и её Phase 13 не трогает.
 
 ### Tags: three layers
 
@@ -571,9 +576,26 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
   Прямая правка `funnel_tags` здесь законна: удаляются ровно те строки,
   которых `computeTagSet` теперь и не построит, что закреплено тестом
   «материализация после фазы даёт тот же набор».
+- **Phase 13** — вид блока `meditation` переименован в `upsell` вслед за
+  заголовком «Допродажи / дожим»: в блок кладут дожимные материалы и
+  допродажи, а слаг обещал медитации. Наружу он не виден — и CSV-экспорт, и
+  подписи групп мониторинга берут заголовок из `BLOCK_KINDS`, — так что фаза
+  меняет только строки: `funnel_blocks.kind` (30 в репозиторной базе),
+  `monitor_targets.source_kind` и `monitor_source_kind_prefs.source_kind`.
+  Прямой `UPDATE`, а не пересоздание: на `id` цели висят `monitor_state` и
+  `monitor_events`, и удаление со вставкой стёрло бы историю проверок; по той
+  же причине `updated_at` не трогается. `funnel_blocks(funnel_id, kind)`
+  уникален, поэтому воронка, где оба блока есть сразу, **пропускается и
+  логируется**, а не роняет фазу: слить два блока автоматически нельзя (у
+  каждого свои `enabled`, `mode` и пункты), а падение под `set -e` не пустило
+  бы контейнер. Решение человека по группе переносится, только если под новым
+  слагом его ещё нет — такая строка могла появиться лишь после переименования,
+  то есть она свежее. После первого прогона фазе нечего делать (старый слаг
+  никто больше не пишет: Phase 3 разбирает легаси-колонки один раз по маркеру
+  и уже с новым слагом), но из цепочки её не убираем.
 
 **Docker runs, in order** (`app/docker-entrypoint.sh`): Phase 2 → 3 (+data) →
-4 → 5 → legacy-tag-override backfill → 6 → 7 → 8 → 9 → 10 → 11 → 12.
+4 → 5 → legacy-tag-override backfill → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13.
 
 **A migration script must never run itself.** esbuild bundles the runner and the
 migration into one file, and inside that bundle `require.main === module` is

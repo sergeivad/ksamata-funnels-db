@@ -121,4 +121,14 @@ if [ -n "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] Phase-12 migration done."
 fi
 
+# Apply Phase-13 migration (idempotent: вид блока `meditation` → `upsell` в
+# funnel_blocks и в группах мониторинга). После первого прогона ей нечего
+# делать — старый слаг никто больше не пишет, — но из цепочки не убираем:
+# пустой прогон стоит трёх UPDATE по индексу.
+if [ -n "$FUNNELS_DB_PATH" ]; then
+  echo "[entrypoint] Running Phase-13 migration against $FUNNELS_DB_PATH"
+  node /app/migrate-phase13.cjs
+  echo "[entrypoint] Phase-13 migration done."
+fi
+
 exec node server.js
