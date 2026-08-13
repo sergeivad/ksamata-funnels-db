@@ -81,6 +81,8 @@ After the seed check, the entrypoint runs the idempotent migration chain on
 9. `migrate-phase9.cjs` — merges the monitoring group `funnel_landing_url` into `landings`
 10. `migrate-phase10.cjs` — moves `funnels.landing_url` into the «Лендинги» block and blanks the column
 11. `migrate-phase11.cjs` — moves the seven dashboard/registration URL columns into the «Ссылки» block and blanks them
+12. `migrate-phase12.cjs` — `funnel_types.has_time` + removes «АВ Время: …» tags from funnels of timeless types
+13. `migrate-phase13.cjs` — renames the block kind `meditation` to `upsell` in `funnel_blocks` and in the monitoring groups
 
 All steps are marker-gated or `IF NOT EXISTS`, so re-running them is safe.
 
