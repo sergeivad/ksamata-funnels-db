@@ -30,7 +30,9 @@ File-level map of the repo. For architecture and conventions see
   url-field), the three-layer tags system (`ab-tags`, `tag-templates`,
   `tag-overrides`) plus the identity-layer fifth axis (`funnel-type.ts` -
   `funnel_types` seed values and label, no `db`/network access of its own),
-  status, rooms-grid, funnel-compact, export, validation, авторизация
+  status, rooms-grid (+ room-urls - правила адресов комнат: Web из GC,
+  зеркало по дням, зеркало 15↔19 двух семей), funnel-compact, export,
+  validation, авторизация
   (`auth` - чистое Edge-безопасное ядро, `auth-server` - Node-обвязка), plus
   http/errors and client hooks; monitoring (`monitor-status`, `monitor-urls`,
   `monitor-kinds`, `monitor-targets`, `monitor-check`, `monitor-run`,
