@@ -15,11 +15,19 @@ def empty_result():
 
 
 def report(label='f11', has_tariffs=False, has_apps=False,
-           tariffs=EMPTY, apps=EMPTY):
+           tariffs=EMPTY, apps=EMPTY, key='rooms'):
     return FunnelReport(label=label, product_name='ДБО NR ВК',
-                        block_name='ДБО ВК', sheet='ДБО', row=51, key='rooms',
+                        block_name='ДБО ВК', sheet='ДБО', row=51, key=key,
                         has_tariffs=has_tariffs, has_apps=has_apps,
                         tariffs=tariffs, apps=apps)
+
+
+def _section(text, title):
+    """Текст одной секции ## title, до следующего заголовка ## ."""
+    start = text.index(f'## {title}')
+    rest = text[start:]
+    end = rest.find('\n## ', 1)
+    return rest if end == -1 else rest[:end]
 
 
 def test_header_carries_date_and_counts():
@@ -34,9 +42,11 @@ def test_fillable_section_lists_urls_by_slot():
                                ('15', 'https://t.ksamata.ru/b')], [], [], 0))
     text = build_report(TODAY, 26, empty_result(), [rep], [], {}, 54)
     assert 'Можно залить' in text
-    assert 'https://t.ksamata.ru/a' in text
-    assert 'https://t.ksamata.ru/b' in text
-    assert '19' in text and '15' in text
+    # Пины ориентации: слот привязан именно к своему адресу, а не просто
+    # присутствует где-то в тексте — перестановка `slot`/`url` в f-строке
+    # эти строки бы не прошла.
+    assert '  - `19` https://t.ksamata.ru/a' in text
+    assert '  - `15` https://t.ksamata.ru/b' in text
 
 
 def test_funnel_with_matching_block_is_silent():
@@ -60,8 +70,9 @@ def test_slot_disagreement_is_shown():
     rep = report(has_tariffs=True,
                  tariffs=Diff([], [], [('https://t.ksamata.ru/a', '19', '15')], 0))
     text = build_report(TODAY, 26, empty_result(), [rep], [], {}, 54)
-    assert 'https://t.ksamata.ru/a' in text
-    assert '19' in text and '15' in text
+    # Пин ориентации: таблица говорит 19, база говорит 15 — не наоборот.
+    # Слово 'a' и обе цифры "где-то в тексте" эту перестановку бы не поймали.
+    assert ('  - https://t.ksamata.ru/a: в таблице `19`, в базе `15`') in text
 
 
 def test_ambiguous_section_names_candidates():
@@ -107,6 +118,99 @@ def test_empty_run_still_produces_all_sections():
                   'Неоднозначные блоки', 'Слот не определён',
                   'Живые блоки без воронки', 'Отключённые блоки'):
         assert f'## {title}' in text
+
+
+def test_funnel_fillable_in_one_kind_diverges_in_other():
+    """Классификация идёт по виду блока, а не по воронке целиком: тарифов
+    нет вовсе (таблица предлагает адрес — заливаемо), а заявки в базе есть
+    и несут лишний адрес (расхождение). Воронка обязана появиться в обеих
+    секциях, и адрес расхождения обязан реально быть напечатан — раньше
+    он терялся вовсе, потому что «заливаемо» и «расходится» были
+    взаимоисключающими ярлыками на всю воронку."""
+    rep = report(
+        has_tariffs=False, has_apps=True,
+        tariffs=Diff([('19', 'https://t.ksamata.ru/fill-me')], [], [], 0),
+        apps=Diff([], [('19', 'https://t.ksamata.ru/db-only')], [], 2),
+    )
+    text = build_report(TODAY, 26, empty_result(), [rep], [], {}, 54)
+
+    fillable_text = _section(text, 'Можно залить')
+    diverging_text = _section(text, 'Расхождения')
+
+    assert 'f11' in fillable_text
+    assert 'https://t.ksamata.ru/fill-me' in fillable_text
+    # Тарифы (заливаемо) не должны тянуть за собой заявки в этой секции.
+    assert 'https://t.ksamata.ru/db-only' not in fillable_text
+
+    assert 'f11' in diverging_text
+    assert 'https://t.ksamata.ru/db-only' in diverging_text
+    assert 'Только в базе' in diverging_text
+
+
+def test_room_key_wording_is_plain():
+    rep = report(key='rooms',
+                 tariffs=Diff([('19', 'https://t.ksamata.ru/a')], [], [], 0))
+    text = build_report(TODAY, 26, empty_result(), [rep], [], {}, 54)
+    assert 'по вебинарной комнате' in text
+
+
+def test_address_key_wording_flags_weaker_match():
+    rep = report(key='urls',
+                 tariffs=Diff([('19', 'https://t.ksamata.ru/a')], [], [], 0))
+    text = build_report(TODAY, 26, empty_result(), [rep], [], {}, 54)
+    assert 'более слабая примета' in text
+    assert 'проверить' in text
+
+
+def test_applications_heading_is_covered():
+    """KIND_TITLE['applications'] должен где-то реально печататься — до
+    этого теста все проверки шли через tariffs."""
+    rep = report(has_apps=False,
+                 apps=Diff([('19', 'https://t.ksamata.ru/app')], [], [], 0))
+    text = build_report(TODAY, 26, empty_result(), [rep], [], {}, 54)
+    assert 'Оформление заявки' in text
+    assert 'https://t.ksamata.ru/app' in text
+
+
+def test_ambiguous_candidates_without_known_funnel_are_named():
+    """Если ни один id кандидата не нашёлся в funnels (funnels пуст),
+    строка не должна заканчиваться голой стрелкой без текста — вместо
+    этого она обязана назвать id кандидатов и сказать, что они не найдены."""
+    block = SheetBlock(sheet='БОО', name='БОО Ютуб мир', row=477)
+    from links_match import Ambiguous
+    result = MatchResult(matched=[], ambiguous=[Ambiguous(block, [(1, 10), (2, 10)])],
+                         orphans=[], dead=[])
+    text = build_report(TODAY, 26, result, [], [], {}, 54)
+    line = next(l for l in text.splitlines() if 'БОО Ютуб мир' in l)
+    assert not line.rstrip().endswith('→')
+    assert '1' in line and '2' in line
+    assert 'не найдены' in line
+
+
+def test_ambiguous_candidate_weight_is_labelled():
+    block = SheetBlock(sheet='БОО', name='БОО Ютуб мир', row=477)
+    from links_match import Ambiguous
+    result = MatchResult(matched=[], ambiguous=[Ambiguous(block, [(1, 10), (2, 10)])],
+                         orphans=[], dead=[])
+    funnels = {1: FunnelRow(1, 'f70', 'БОО Ютуб', 'active'),
+               2: FunnelRow(2, 'f69', 'БОО Ютуб мир', 'active')}
+    text = build_report(TODAY, 26, result, [], [], funnels, 54)
+    assert 'f70 (совпадений: 10)' in text
+    assert 'f69 (совпадений: 10)' in text
+
+
+def test_dead_blocks_numeral_agreement():
+    block = SheetBlock(sheet='ДБО', name='ДБО старая', row=2, dead=True)
+    result = MatchResult(matched=[], ambiguous=[], orphans=[], dead=[block])
+    text = build_report(TODAY, 26, result, [], [], {}, 54)
+    assert '1 блок ' in text
+    assert '1 блоков' not in text
+
+    blocks5 = [SheetBlock(sheet='ДБО', name=f'ДБО старая {i}', row=i, dead=True)
+              for i in range(5)]
+    result5 = MatchResult(matched=[], ambiguous=[], orphans=[], dead=blocks5)
+    text5 = build_report(TODAY, 26, result5, [], [], {}, 54)
+    assert '5 блоков' in text5
 
 
 def test_slot_differs_section_is_deterministically_ordered():
