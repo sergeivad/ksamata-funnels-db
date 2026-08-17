@@ -67,11 +67,22 @@ def _head_name(value):
 
 
 def _looks_dead(rows, head_row):
-    """head_row — номер строки-заголовка, 1-based."""
-    text = ' '.join(
-        cell(rows[n], i)
-        for n in range(head_row - 1, min(head_row + 3, len(rows)))
-        for i in (COL_TAG, COL_DAY, COL_WEBINAR)).lower()
+    """head_row — номер строки-заголовка, 1-based.
+
+    Окно — до четырёх строк, но не дальше следующего заголовка [Название]:
+    строки следующего блока — не его строки, и их маркер (в т.ч. маркер,
+    затесавшийся в само имя следующего блока) не должен красить текущий.
+    """
+    texts = []
+    for n in range(head_row - 1, min(head_row + 3, len(rows))):
+        row = rows[n]
+        if n > head_row - 1:
+            next_head = (_head_name(cell(row, COL_TAG))
+                         or _head_name(cell(row, COL_DAY)))
+            if next_head:
+                break
+        texts.extend(cell(row, i) for i in (COL_TAG, COL_DAY, COL_WEBINAR))
+    text = ' '.join(texts).lower()
     return any(m in text for m in DEAD_MARKERS)
 
 
@@ -101,8 +112,8 @@ def parse_blocks(sheet_title, rows):
         note = cell(row, COL_NOTE)
         for col, bucket in ((COL_TARIFF, cur.tariffs), (COL_APP, cur.apps)):
             url = cell(row, col)
-            if url.lower().startswith('http'):
-                bucket.append(Link(row=n, url=url, anchor=slug or last_slug,
+            if url.lower().startswith(('http://', 'https://')):
+                bucket.append(Link(row=n, url=url, anchor=last_slug,
                                    note=note))
     for block in blocks:
         block.dead = _looks_dead(rows, block.row)

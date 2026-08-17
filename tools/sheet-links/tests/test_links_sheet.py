@@ -78,6 +78,17 @@ def test_link_anchors_to_room_of_its_own_row():
     assert [l.anchor for l in block.tariffs] == ['dbo1-vk', 'dbo2-vk']
 
 
+def test_link_anchors_to_replay_room_when_webinar_is_absent():
+    """Комната есть только в E (повтор) — якорь берётся из неё."""
+    rows = [
+        ['', '[ДБО ВК]'],
+        ['', '4 день', '', '', 'https://gc.ksamata.ru/dbo4r-vk',
+         'https://t.ksamata.ru/dbo/tarif-4vk'],
+    ]
+    block = parse_blocks('ДБО', rows)[0]
+    assert block.tariffs[0].anchor == 'dbo4r-vk'
+
+
 def test_link_without_room_falls_back_to_nearest_room_above():
     rows = [
         ['', '[ДБО ВК]'],
@@ -123,6 +134,8 @@ def test_non_url_cells_are_not_links():
         ['', '[ДБО ВК]'],
         ['', '1 день', 'https://gc.ksamata.ru/dbo1-vk', '', '', 'сайты', '',
          'геткурс'],
+        ['', '2 день', 'https://gc.ksamata.ru/dbo2-vk', '', '',
+         'httpfoo bar', '', 'httpsnotaurl'],
     ]
     block = parse_blocks('ДБО', rows)[0]
     assert block.tariffs == []
@@ -172,6 +185,20 @@ def test_live_block_is_not_dead():
         ['', '1 день', 'https://gc.ksamata.ru/dbo1-vk'],
     ]
     assert parse_blocks('ДБО', rows)[0].dead is False
+
+
+def test_dead_marker_does_not_leak_from_next_block_within_four_rows():
+    """Короткий (<=4 строк) блок не наследует маркер следующего блока —
+    даже когда маркер сидит прямо в имени следующего блока, без отдельной
+    строки-маркера."""
+    rows = [
+        ['', '[ДБО ВК]'],
+        ['', '1 день', 'https://gc.ksamata.ru/dbo1-vk'],
+        ['', '[ДБО ТГ архив]'],
+        ['', '1 день', 'https://gc.ksamata.ru/dbo1-tg'],
+    ]
+    blocks = parse_blocks('ДБО', rows)
+    assert blocks[0].dead is False
 
 
 def test_dead_marker_below_the_first_four_rows_does_not_count():
