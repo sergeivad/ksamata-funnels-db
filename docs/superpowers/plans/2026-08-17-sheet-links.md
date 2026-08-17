@@ -799,26 +799,76 @@ def sheet_items(block, kind, room_slots):
 
 
 def diff_items(sheet_pairs, db_items):
-    """Различия между таблицей и базой по одному виду блока."""
-    sheet_by_url = {}
-    for slot, url in sheet_pairs:
-        sheet_by_url.setdefault(normalize_url(url), (slot, url))
-    db_by_url = {}
-    for item in db_items:
-        db_by_url.setdefault(normalize_url(item.url), (item.slot, item.url))
+    """Различия между таблицей и базой по одному виду блока.
 
-    only_sheet = [v for k, v in sheet_by_url.items() if k not in db_by_url]
-    only_db = [v for k, v in db_by_url.items() if k not in sheet_by_url]
-    slot_differs, same = [], 0
-    for k, (slot, url) in sheet_by_url.items():
-        if k not in db_by_url:
+    Сравнение идёт по ПАРАМ (слот, адрес), а не по голому адресу. Один и тот
+    же тарифный адрес законно встречается в двух слотах разом — на f83 и f92
+    один адрес обслуживает и 15:00, и 19:00. Сравнение по адресу схлопывало
+    бы такую пару в одну запись и произвольно (по порядку появления) решало
+    бы, какой слот «выжил» — обе стороны совпадают полностью, а инструмент
+    рисовал бы несуществующее расхождение слота. Проверено на живой базе
+    17.08.2026: 27 групп (блок, адрес) из 263 несут больше одного слота.
+
+    Шаг 1 — снимаем точные пары (тот же слот, тот же адрес): это `same`.
+    Шаг 2 — то, что осталось, группируем по нормализованному адресу и
+    разбираем отдельно:
+      - на каждой стороне ровно по одной оставшейся записи с известными,
+        но разными слотами → это и есть расхождение слота (`slot_differs`);
+      - на каждой стороне ровно по одной записи, но слот неизвестен хотя бы
+        с одной стороны → неизвестный слот — это незнание, а не
+        расхождение, засчитываем в `same`;
+      - иначе (на какой-то стороне больше одной оставшейся записи для этого
+        адреса) — случай не пытаемся разобрать автоматически и оставляем
+        как есть, честными односторонними строками, а не выдумываем
+        аккуратную сводку для нетипичного случая.
+    Остаток после шага 2 — это `only_sheet` / `only_db`.
+    """
+    sheet = [{'slot': slot, 'url': url, 'norm': normalize_url(url),
+              'resolved': False} for slot, url in sheet_pairs]
+    db = [{'slot': item.slot, 'url': item.url, 'norm': normalize_url(item.url),
+           'resolved': False} for item in db_items]
+
+    same = 0
+
+    # Шаг 1: точная пара (слот, адрес) совпала — снимаем сразу с обеих сторон.
+    for s in sheet:
+        for d in db:
+            if d['resolved']:
+                continue
+            if s['norm'] == d['norm'] and s['slot'] == d['slot']:
+                s['resolved'] = d['resolved'] = True
+                same += 1
+                break
+
+    # Шаг 2: остаток группируем по адресу и разбираем расхождение слота.
+    sheet_by_norm = defaultdict(list)
+    for s in sheet:
+        if not s['resolved']:
+            sheet_by_norm[s['norm']].append(s)
+    db_by_norm = defaultdict(list)
+    for d in db:
+        if not d['resolved']:
+            db_by_norm[d['norm']].append(d)
+
+    slot_differs = []
+    for norm in sheet_by_norm.keys() & db_by_norm.keys():
+        s_entries, d_entries = sheet_by_norm[norm], db_by_norm[norm]
+        if len(s_entries) != 1 or len(d_entries) != 1:
+            # На одной из сторон несколько записей на этот адрес — не гадаем,
+            # какая какой соответствует, оставляем честными односторонними
+            # строками.
             continue
-        db_slot = db_by_url[k][0]
-        # Неизвестный слот — незнание, а не расхождение: молча считаем совпавшим.
-        if slot and db_slot and slot != db_slot:
-            slot_differs.append((url, slot, db_slot))
+        s, d = s_entries[0], d_entries[0]
+        if s['slot'] and d['slot']:
+            slot_differs.append((s['url'], s['slot'], d['slot']))
         else:
+            # Неизвестный слот хотя бы с одной стороны — незнание, а не
+            # расхождение: молча считаем совпавшим.
             same += 1
+        s['resolved'] = d['resolved'] = True
+
+    only_sheet = [(s['slot'], s['url']) for s in sheet if not s['resolved']]
+    only_db = [(d['slot'], d['url']) for d in db if not d['resolved']]
     return Diff(only_sheet, only_db, slot_differs, same)
 ```
 
