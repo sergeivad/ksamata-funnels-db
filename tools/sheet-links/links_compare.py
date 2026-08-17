@@ -49,6 +49,23 @@ def sheet_items(block, kind, room_slots):
     return out
 
 
+def sheet_notes(block, kind, room_slots):
+    """(слот, нормализованный адрес) → подпись из колонки G, первая
+    непустая. Не участвует в сравнении — справочная, для владельца, как и
+    задумано спекой («подпись попадает в отчёт справочно»). Дедуп той же
+    парой ключа, что и sheet_items — иначе адрес мог бы получить две разные
+    подписи от двух своих вхождений в лист."""
+    links = getattr(block, KIND_FIELD[kind])
+    out = {}
+    for link in links:
+        if not link.note:
+            continue
+        slot = room_slots.get(link.anchor) if link.anchor else None
+        key = (slot, normalize_url(link.url))
+        out.setdefault(key, link.note)
+    return out
+
+
 def diff_items(sheet_pairs, db_items):
     """Различия между таблицей и базой по одному виду блока.
 

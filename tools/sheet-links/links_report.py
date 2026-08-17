@@ -10,8 +10,7 @@
 данных, — это шум, который прячет настоящие изменения. `diff_items` в
 links_compare группирует slot_differs через пересечение множеств, поэтому
 порядок между разными адресами от прогона к прогону не гарантирован —
-здесь, при печати, список сортируется явно. links_compare и links_match не
-трогаем, они уже проверены и закрыты.
+здесь, при печати, список сортируется явно.
 
 «Можно залить» и «Расхождения» классифицируют ВИД блока (тарифы, заявки,
 допродажи — см. KIND_ORDER), а не воронку целиком — у одной воронки тарифы
@@ -23,8 +22,9 @@ links_compare группирует slot_differs через пересечени�
 """
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from links_compare import normalize_url
 from links_db import label_of
 
 # Порядок видов блока — общий для всех циклов печати и для сортировки
@@ -32,11 +32,14 @@ from links_db import label_of
 # чтобы тарифы шли раньше заявок и допродаж, как в остальных секциях).
 KIND_ORDER = ('tariffs', 'applications', 'upsell')
 
+ACTIVE = 'active'
+
 
 @dataclass(frozen=True)
 class KindReport:
-    has_block: bool     # блок этого вида есть в базе
-    diff: object         # Diff
+    has_block: bool             # блок этого вида есть в базе
+    diff: object                 # Diff
+    notes: dict = field(default_factory=dict)  # (слот, норм.адрес) → G, справочно
 
 
 @dataclass(frozen=True)
@@ -60,6 +63,17 @@ class Unslotted:
     row: int
 
 
+@dataclass(frozen=True)
+class DeadActiveMatch:
+    """Отключённый в таблице блок, чья вебинарная комната всё равно
+    указывает на активную воронку в базе (пункт D task-8-review: источники
+    расходятся, а раньше это тонуло в одной цифре «отключённых»)."""
+    block_name: str
+    sheet: str
+    row: int
+    label: str
+
+
 KIND_TITLE = {'tariffs': 'Тарифы', 'applications': 'Оформление заявки',
              'upsell': 'Допродажи / дожим'}
 
@@ -73,10 +87,25 @@ KEY_NOTE = {
              'действительно относится к этой воронке.'),
 }
 
+# Статус воронки словами — для «Неоднозначных блоков» (пункт C): статус
+# самый дешёвый факт, который решает единственный вопрос, где инструмент
+# спрашивает человека, а архивная воронка иначе проходит наравне с активной,
+# ничем не помеченная.
+STATUS_LABEL = {'active': 'активна', 'draft': 'черновик', 'archive': 'архив'}
 
-def _pairs(lines, pairs):
+
+def _pairs(lines, pairs, notes=None):
+    """Печатает пары (слот, адрес). `notes` — необязательная подпись из
+    колонки G (Link.note), по ключу (слот, нормализованный адрес); печатается
+    после адреса, только когда непуста, и только когда вызывающий её передал
+    — сегодня это только «Можно залить» (F, task-8-review): подпись уместна
+    там, где владелец копирует адрес, а не там, где он разбирает конфликт."""
     for slot, url in pairs:
-        lines.append(f'  - `{slot or "?"}` {url}')
+        line = f'  - `{slot or "?"}` {url}'
+        note = notes.get((slot, normalize_url(url))) if notes else None
+        if note:
+            line += f' — {note}'
+        lines.append(line)
 
 
 def _fillable_kinds(rep):
@@ -131,8 +160,12 @@ def _heading_title(rep):
 def _print_block_heading(out, rep, claim_counts):
     out.append(f'### {rep.label} — {_heading_title(rep)}')
     out.append('')
-    out.append(f'Блок таблицы «{rep.block_name}», лист {rep.sheet}, '
-               f'строка {rep.row}. {KEY_NOTE.get(rep.key, "")}')
+    heading = (f'Блок таблицы «{rep.block_name}», лист {rep.sheet}, '
+              f'строка {rep.row}.')
+    key_note = KEY_NOTE.get(rep.key, '')
+    if key_note:
+        heading += f' {key_note}'
+    out.append(heading)
     if claim_counts[rep.label] > 1:
         out.append('')
         out.append(
@@ -144,7 +177,7 @@ def _print_block_heading(out, rep, claim_counts):
 
 
 def build_report(today, sheets_count, result, reports, unslotted, funnels,
-                 active_total):
+                 active_total, dead_active=()):
     # Заливаемо и расходится — свойства вида блока (тарифы/заявки), а не
     # воронки целиком: одна и та же воронка может быть заливаема по одному
     # виду и расходиться по другому, и обе секции обязаны её показать —
@@ -158,6 +191,14 @@ def build_report(today, sheets_count, result, reports, unslotted, funnels,
     # претендуют на одну воронку разом (B2), и это стоит сказать в лоб на
     # каждой её записи, а не оставлять владельца гадать по совпавшему имени.
     claim_counts = Counter(r.label for r in reports)
+    # Сматченных блоков может быть больше, чем записей в подробной части:
+    # охват отчёта — активные воронки (см. модульный докстринг), и блок
+    # архивной/черновой воронки матчится, но в reports не попадает. Без этой
+    # цифры «сматчено с воронкой: 44» и «34 записи ниже» расходятся без
+    # объяснения (пункт B task-8-review) — 34 + это число обязано дать 44.
+    archived_matched = sum(
+        1 for m in result.matched
+        if funnels.get(m.funnel_id) and funnels[m.funnel_id].status != ACTIVE)
 
     out = [
         '# Тарифы, оформление заявки и допродажи: таблица ↔ база',
@@ -171,7 +212,11 @@ def build_report(today, sheets_count, result, reports, unslotted, funnels,
         f'- блоков в них: {blocks_total}',
         f'- сматчено с воронкой: {len(result.matched)} '
         f'(по комнатам {sum(1 for m in result.matched if m.key == "rooms")}, '
-        f'по адресам тарифов {sum(1 for m in result.matched if m.key == "urls")})',
+        f'по адресам тарифов и заявок '
+        f'{sum(1 for m in result.matched if m.key == "urls")})',
+        f'- из них принадлежат неактивным (архив/черновик) воронкам: '
+        f'{archived_matched} — в разделы ниже не попадают, там разбираются '
+        f'только активные',
         f'- неоднозначных: {len(result.ambiguous)}',
         f'- живых блоков без воронки: {len(result.orphans)}',
         f'- помечены в таблице отключёнными: {len(result.dead)}',
@@ -188,7 +233,7 @@ def build_report(today, sheets_count, result, reports, unslotted, funnels,
         for kind in _fillable_kinds(rep):
             diff = rep.kinds[kind].diff
             out.append(f'**{KIND_TITLE[kind]}**')
-            _pairs(out, diff.only_sheet)
+            _pairs(out, diff.only_sheet, rep.kinds[kind].notes)
             out.append('')
 
     out += ['## Расхождения', '']
@@ -222,8 +267,13 @@ def build_report(today, sheets_count, result, reports, unslotted, funnels,
         known = [(fid, weight) for fid, weight in amb.candidates
                  if fid in funnels]
         if known:
+            # Статус — самый дешёвый факт, который решает единственный
+            # вопрос, где инструмент прямо просит человека выбрать: без
+            # него архивная воронка предлагается наравне с активной,
+            # ничем не помеченная (пункт C task-8-review).
             names = ', '.join(
-                f'{label_of(funnels[fid])} (совпадений: {weight})'
+                f'{label_of(funnels[fid])} (совпадений: {weight}, '
+                f'{STATUS_LABEL.get(funnels[fid].status, funnels[fid].status)})'
                 for fid, weight in known)
             tail = f' → {names}'
         else:
@@ -256,5 +306,22 @@ def build_report(today, sheets_count, result, reports, unslotted, funnels,
     out += ['## Отключённые блоки', '',
             f'Помечено отключёнными в таблице: '
             f'{_plural_ru(len(result.dead), "блок", "блока", "блоков")} '
-            f'(«отключена», «Комнаты удалены») — в разбор не идут.', '']
+            f'(«отключена», «Комнаты удалены») — в разбор не идут.']
+    if dead_active:
+        # Пункт D task-8-review: таблица говорит «отключено», а комната
+        # блока всё равно указывает на активную воронку в базе — источники
+        # расходятся, и это ровно тот класс несогласия, ради которого
+        # инструмент существует. Список короткий и адресный — не все 47
+        # отключённых, а только те, что реально совпали с активной воронкой.
+        out.append('')
+        n = len(dead_active)
+        verb = 'совпадает' if n % 10 == 1 and n % 100 != 11 else 'совпадают'
+        out.append(
+            f'Из них {_plural_ru(n, "блок", "блока", "блоков")} по '
+            f'вебинарной комнате всё равно {verb} с активной воронкой в '
+            'базе — стоит свериться:')
+        for d in dead_active:
+            out.append(f'- «{d.block_name}», лист {d.sheet}, '
+                       f'строка {d.row} → {d.label}')
+    out.append('')
     return '\n'.join(out)

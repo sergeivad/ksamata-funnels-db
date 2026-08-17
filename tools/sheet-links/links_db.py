@@ -31,7 +31,6 @@ class FunnelRow:
 class BlockItem:
     slot: str | None
     url: str
-    label: str
 
 
 def connect_ro(db_path):
@@ -70,16 +69,23 @@ def load_rooms(con):
 
 
 def load_blocks(con):
-    """(воронка, вид) → пункты блока, в порядке position."""
+    """(воронка, вид) → пункты блока, в порядке position.
+
+    Не фильтрует по `funnel_blocks.enabled` — сегодня это инертно (все 94
+    блока трёх видов в живой базе `enabled = 1`), но не безопасно молча:
+    отключённый блок с пунктами дал бы `has_block = True` и без
+    предупреждения спрятал бы заливаемое предложение из «Можно залить» —
+    для владельца это выглядело бы так, будто блок уже заполнен.
+    """
     out = defaultdict(list)
     placeholders = ','.join('?' * len(BLOCK_KINDS))
-    for fid, kind, slot, label, url in con.execute(
-            'SELECT b.funnel_id, b.kind, i.slot, i.label, i.url '
+    for fid, kind, slot, url in con.execute(
+            'SELECT b.funnel_id, b.kind, i.slot, i.url '
             'FROM funnel_blocks b '
             'JOIN funnel_block_items i ON i.block_id = b.id '
             f'WHERE b.kind IN ({placeholders}) '
             'ORDER BY b.funnel_id, b.kind, i.position', BLOCK_KINDS):
-        out[(fid, kind)].append(BlockItem(slot, url or '', label or ''))
+        out[(fid, kind)].append(BlockItem(slot, url or ''))
     return dict(out)
 
 

@@ -61,6 +61,10 @@ def _ambiguous_key(amb):
     return (amb.block.sheet, amb.block.row)
 
 
+def _dead_active_key(item):
+    return (item[0].sheet, item[0].row)
+
+
 def collect(sheets, db_path):
     blocks = []
     for title, rows in sheets.items():
@@ -85,6 +89,28 @@ def collect(sheets, db_path):
     result.orphans.sort(key=_orphan_key)
     result.ambiguous.sort(key=_ambiguous_key)
 
+    # Пункт D task-8-review: отключённые в таблице блоки обычно не
+    # разбираются вовсе, но комната иногда всё равно указывает на активную
+    # воронку в базе — источники расходятся, и это стоит показать отдельным
+    # коротким списком, а не топить в одной цифре «47 отключённых». Ключ —
+    # только комнаты (первичный), как и сказано в задаче: секондарный
+    # (адреса) для отключённых блоков не проверяем.
+    dead_matches = []
+    for block in result.dead:
+        top = links_match.top_room_candidate(block, funnel_rooms)
+        if top is None:
+            continue
+        fid, _weight = top
+        funnel = funnels.get(fid)
+        if funnel and funnel.status == ACTIVE:
+            dead_matches.append((block, funnel))
+    dead_matches.sort(key=_dead_active_key)
+    dead_active = [
+        links_report.DeadActiveMatch(
+            block_name=block.name, sheet=block.sheet, row=block.row,
+            label=links_db.label_of(funnel))
+        for block, funnel in dead_matches]
+
     reports, unslotted = [], []
     for match in result.matched:
         funnel = funnels.get(match.funnel_id)
@@ -97,7 +123,8 @@ def collect(sheets, db_path):
             db_items = db_blocks.get((match.funnel_id, kind), [])
             kinds[kind] = links_report.KindReport(
                 has_block=bool(db_items),
-                diff=links_compare.diff_items(pairs, db_items))
+                diff=links_compare.diff_items(pairs, db_items),
+                notes=links_compare.sheet_notes(match.block, kind, room_slots))
             # Слот ссылки без якорной комнаты берём с самой ссылки
             # (Link.row), а не со строки заголовка блока (match.block.row):
             # sheet_items уже свернул пары (слот, адрес) и потерял, на какой
@@ -118,7 +145,7 @@ def collect(sheets, db_path):
             row=match.block.row, key=match.key, kinds=kinds))
     reports.sort(key=_sort_key)
     unslotted.sort(key=_unslotted_key)
-    return result, reports, unslotted, funnels, active_total
+    return result, reports, unslotted, funnels, active_total, dead_active
 
 
 def _cache_age_str(mtime):
@@ -177,14 +204,15 @@ def main(argv=None):
         print(f'Таблица взята из кеша {cache}, возраст снимка: '
               f'{_cache_age_str(cache_mtime)}. Свежий снимок — флаг --refresh.')
 
-    result, reports, unslotted, funnels, active_total = collect(
+    result, reports, unslotted, funnels, active_total, dead_active = collect(
         sheets, args.db)
     print(f'Блоков сматчено: {len(result.matched)}, '
           f'неоднозначных: {len(result.ambiguous)}, '
           f'сирот: {len(result.orphans)}, отключённых: {len(result.dead)}')
 
     text = links_report.build_report(today, len(sheets), result, reports,
-                                     unslotted, funnels, active_total)
+                                     unslotted, funnels, active_total,
+                                     dead_active)
     out_path = args.out or os.path.join(
         links_settings.OUT_DIR, f'sheet-links-{today.isoformat()}.md')
     out_dir = os.path.dirname(out_path)

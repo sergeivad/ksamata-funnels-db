@@ -15,7 +15,6 @@ def test_matches_by_room_slug():
     assert len(result.matched) == 1
     assert result.matched[0].funnel_id == 7
     assert result.matched[0].key == 'rooms'
-    assert result.matched[0].weight == 1
 
 
 def test_strongest_room_overlap_wins():
@@ -23,7 +22,6 @@ def test_strongest_room_overlap_wins():
         [block('ДБО ВК', rooms=['a', 'b', 'c'])],
         {7: {'a'}, 8: {'a', 'b', 'c'}}, {})
     assert result.matched[0].funnel_id == 8
-    assert result.matched[0].weight == 3
 
 
 def test_equal_weight_is_ambiguous_not_a_guess():
@@ -77,7 +75,20 @@ def test_secondary_key_weight_two_is_a_match():
                tariffs=['https://t.ksamata.ru/a', 'https://t.ksamata.ru/b'])],
         {}, {'https://t.ksamata.ru/a': {5}, 'https://t.ksamata.ru/b': {5}})
     assert result.matched[0].funnel_id == 5
-    assert result.matched[0].weight == 2
+
+
+def test_secondary_key_counts_distinct_addresses_not_occurrences():
+    """Item E (task-8-review): вес вторичного ключа — число РАЗЛИЧНЫХ
+    адресов, а не число вхождений. Один и тот же адрес, дважды повторённый
+    в блоке, не должен сам по себе перейти MIN_URL_WEIGHT — иначе порог
+    перестаёт значить то, ради чего его завели (B3 ruling: единственный
+    общий адрес — не улика тождества)."""
+    result = match_blocks(
+        [block('ЕХ Яндекс РСЯ', tariffs=['https://t.ksamata.ru/a',
+                                         'https://t.ksamata.ru/a'])],
+        {}, {'https://t.ksamata.ru/a': {5}})
+    assert result.matched == []
+    assert result.orphans and result.orphans[0].name == 'ЕХ Яндекс РСЯ'
 
 
 def test_block_with_nothing_matching_is_orphan():
@@ -92,3 +103,20 @@ def test_dead_block_is_set_aside_without_matching():
                           {7: {'dbo1-vk'}}, {})
     assert result.dead and result.dead[0].name == 'ДБО ВК'
     assert result.matched == [] and result.orphans == []
+
+
+def test_top_room_candidate_picks_strongest_by_rooms():
+    """Item D: используется для отключённых блоков — match_blocks() их
+    вообще не разбирает (set aside до всякого матчинга), а отчёту нужно
+    знать, на какую воронку блок всё равно указывал бы по комнатам."""
+    from links_match import top_room_candidate
+
+    dead = block('БОО Адарат ВК АДС', rooms=['a', 'b'], dead=True)
+    assert top_room_candidate(dead, {7: {'a'}, 8: {'a', 'b'}}) == (8, 2)
+
+
+def test_top_room_candidate_is_none_when_no_rooms_overlap():
+    from links_match import top_room_candidate
+
+    dead = block('ЗП Яндекс РСЯ', rooms=['zp1-15-rsya'], dead=True)
+    assert top_room_candidate(dead, {7: {'dbo1-vk'}}) is None

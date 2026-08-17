@@ -40,9 +40,18 @@ load_url_owners` (правая, эталонная сторона сравнен
 После всей этой правки вторичный ключ на сегодняшних данных не матчит ничего
 — это верный результат, а не потеря покрытия.
 
+**Вес вторичного ключа — число различных адресов, а не число вхождений**
+(поправка ревью на Task 8, замер 18.08.2026: на живых данных этого не меняет
+ни одного исхода — совпадений с повтором адреса внутри блока сегодня нет,
+дефект был латентным). До поправки адрес, повторённый в блоке дважды, сам
+переходил порог `MIN_URL_WEIGHT` — то есть ту самую ситуацию, ради которой
+порог и завели («один общий адрес не улика»), обходило простое дублирование
+строки в таблице. См. `_by_urls`.
+
 Неоднозначность инструмент НЕ разрешает: выбор воронки за человеком.
 """
 
+from collections import defaultdict
 from dataclasses import dataclass
 
 from links_compare import normalize_url
@@ -53,7 +62,6 @@ class Match:
     block: object
     funnel_id: int
     key: str        # 'rooms' | 'urls'
-    weight: int
 
 
 @dataclass(frozen=True)
@@ -82,12 +90,34 @@ def _by_urls(block, url_owners):
     # block.upsell намеренно не сканируется — см. докстринг модуля про
     # асимметрию с load_url_owners, которая индексирует адреса всех видов
     # блока в базе, включая upsell.
-    weights = {}
+    #
+    # Вес — число РАЗЛИЧНЫХ нормализованных адресов, а не число вхождений.
+    # Один и тот же адрес, повторённый в блоке дважды, не должен сам по себе
+    # перейти порог MIN_URL_WEIGHT — иначе порог перестаёт значить то, ради
+    # чего его завели (что единственный общий адрес не улика тождества, а не
+    # что этот адрес просто не встретился человеку на глаза дважды).
+    addrs = defaultdict(set)
     for link in list(block.tariffs) + list(block.apps):
-        for fid in url_owners.get(normalize_url(link.url), ()):
-            weights[fid] = weights.get(fid, 0) + 1
+        norm = normalize_url(link.url)
+        for fid in url_owners.get(norm, ()):
+            addrs[fid].add(norm)
     # Один общий адрес не считается уликой — см. докстринг модуля.
-    return {fid: w for fid, w in weights.items() if w >= MIN_URL_WEIGHT}
+    return {fid: len(a) for fid, a in addrs.items() if len(a) >= MIN_URL_WEIGHT}
+
+
+def top_room_candidate(block, funnel_rooms):
+    """Сильнейший кандидат по комнатам, без разрешения неоднозначности —
+    для вызывающих, которые сами решают, что делать с находкой. Сегодня
+    единственный такой вызывающий — подсветка отключённых в таблице блоков,
+    чья комната всё равно указывает на активную воронку в базе (расхождение
+    источников, которое стоит показать, а не спрятать одним числом). Тем же
+    правилом выбора верхнего кандидата (по убыванию веса, при равенстве —
+    по id), что и в match_blocks, но без проверки на равенство — здесь это
+    не решение матчинга, а информация к размышлению."""
+    weights = _by_rooms(block, funnel_rooms)
+    if not weights:
+        return None
+    return sorted(weights.items(), key=lambda kv: (-kv[1], kv[0]))[0]
 
 
 def match_blocks(blocks, funnel_rooms, url_owners):
@@ -110,5 +140,5 @@ def match_blocks(blocks, funnel_rooms, url_owners):
         if len(top) > 1 and top[0][1] == top[1][1]:
             ambiguous.append(Ambiguous(block, top[:3]))
         else:
-            matched.append(Match(block, top[0][0], key, top[0][1]))
+            matched.append(Match(block, top[0][0], key))
     return MatchResult(matched, ambiguous, orphans, dead)

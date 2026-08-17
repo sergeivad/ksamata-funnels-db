@@ -218,8 +218,26 @@ def test_ambiguous_candidate_weight_is_labelled():
     funnels = {1: FunnelRow(1, 'f70', 'БОО Ютуб', 'active'),
                2: FunnelRow(2, 'f69', 'БОО Ютуб мир', 'active')}
     text = build_report(TODAY, 26, result, [], [], funnels, 54)
-    assert 'f70 (совпадений: 10)' in text
-    assert 'f69 (совпадений: 10)' in text
+    assert 'f70 (совпадений: 10, активна)' in text
+    assert 'f69 (совпадений: 10, активна)' in text
+
+
+def test_ambiguous_candidates_show_status_so_archive_is_not_offered_blind():
+    """Пункт C task-8-review: единственный вопрос, который отчёт прямо
+    задаёт человеку — какая из совпавших воронок верная. Статус — самый
+    дешёвый факт, который его решает, и до этой правки архивная воронка
+    печаталась наравне с активной, ничем не отличаясь."""
+    block = SheetBlock(sheet='БОО', name='БОО ВК ИНХАУС', row=926)
+    from links_match import Ambiguous
+    result = MatchResult(
+        matched=[], ambiguous=[Ambiguous(block, [(16, 10), (28, 10)])],
+        orphans=[], dead=[])
+    funnels = {16: FunnelRow(16, 'f16', 'БОО ВК', 'archive'),
+              28: FunnelRow(28, 'f28', 'БОО ВК ИНХАУС', 'active')}
+    text = build_report(TODAY, 26, result, [], [], funnels, 54)
+    line = next(l for l in text.splitlines() if 'БОО ВК ИНХАУС' in l)
+    assert 'f16 (совпадений: 10, архив)' in line
+    assert 'f28 (совпадений: 10, активна)' in line
 
 
 def test_dead_blocks_numeral_agreement():
@@ -328,3 +346,115 @@ def test_heading_is_silent_about_claims_when_funnel_has_a_single_block():
         tariffs=Diff([('19', 'https://t.ksamata.ru/a')], [], [], 0))
     text = build_report(TODAY, 26, empty_result(), [rep], [], {}, 54)
     assert 'верным может быть только один' not in text
+
+
+def test_summary_accounts_for_matched_blocks_of_archived_funnels():
+    """Пункт B task-8-review: сматченных блоков может быть больше, чем
+    записей в подробной части — блок архивной воронки матчится, но в отчёт
+    не попадает (охват — активные). Без отдельной строки арифметика в
+    сводке не сходится у читателя на глазах: «сматчено: 2», а ниже только
+    одна запись."""
+    from links_match import Match
+
+    active_block = SheetBlock(sheet='ДБО', name='ДБО ВК', row=1)
+    archived_block = SheetBlock(sheet='ДБО', name='ДБО ТГ', row=9)
+    result = MatchResult(
+        matched=[Match(active_block, 1, 'rooms'),
+                Match(archived_block, 2, 'rooms')],
+        ambiguous=[], orphans=[], dead=[])
+    funnels = {1: FunnelRow(1, 'f11', 'ДБО NR ВК', 'active'),
+              2: FunnelRow(2, 'f99', 'ДБО архив', 'archive')}
+    rep = report(label='f11')
+    text = build_report(TODAY, 26, result, [rep], [], funnels, 54)
+    assert 'сматчено с воронкой: 2' in text
+    assert 'неактивным (архив/черновик) воронкам: 1' in text
+
+
+def test_summary_secondary_key_wording_covers_applications_too():
+    """F: секондарный ключ сканирует и тарифы, и заявки — формулировка «по
+    адресам тарифов» называла только половину входа `_by_urls`."""
+    text = build_report(TODAY, 26, empty_result(), [], [], {}, 54)
+    assert 'по адресам тарифов и заявок' in text
+    assert 'по адресам тарифов (' not in text
+
+
+def test_key_note_heading_has_no_trailing_space_for_unknown_key():
+    """F: KEY_NOTE.get(rep.key, '') раньше оставлял висящий пробел на конце
+    строки заголовка, когда ключ неизвестен ('' не в KEY_NOTE)."""
+    rep = report(key='неизвестный',
+                 tariffs=Diff([('19', 'https://t.ksamata.ru/a')], [], [], 0))
+    text = build_report(TODAY, 26, empty_result(), [rep], [], {}, 54)
+    line = next(l for l in text.splitlines() if l.startswith('Блок таблицы'))
+    assert line == line.rstrip()
+
+
+def test_fillable_entry_shows_note_when_present():
+    """F: Link.note (колонка G) собирается и раньше нигде не читался — спека
+    обещает, что подпись попадает в отчёт справочно. Печатается после
+    адреса, только в «Можно залить»."""
+    kinds = {
+        'tariffs': KindReport(
+            False, Diff([('19', 'https://t.ksamata.ru/a')], [], [], 0),
+            notes={('19', 'https://t.ksamata.ru/a'):
+                   'тарифы с записью ГЛАВНОГО занятия'}),
+        'applications': KindReport(False, EMPTY),
+        'upsell': KindReport(False, EMPTY),
+    }
+    rep = FunnelReport(label='f11', product_name='ДБО NR ВК',
+                       block_name='ДБО ВК', sheet='ДБО', row=51, key='rooms',
+                       kinds=kinds)
+    text = build_report(TODAY, 26, empty_result(), [rep], [], {}, 54)
+    assert ('  - `19` https://t.ksamata.ru/a — '
+           'тарифы с записью ГЛАВНОГО занятия') in text
+
+
+def test_fillable_entry_without_note_prints_plain_address():
+    rep = report(tariffs=Diff([('19', 'https://t.ksamata.ru/a')], [], [], 0))
+    text = build_report(TODAY, 26, empty_result(), [rep], [], {}, 54)
+    assert '  - `19` https://t.ksamata.ru/a' in text
+    assert '  - `19` https://t.ksamata.ru/a —' not in text
+
+
+def test_divergence_entries_do_not_show_notes():
+    """Note справочна только для «Можно залить» — в «Расхождениях» тот же
+    Diff.only_sheet печатается без неё, чтобы не путать подпись из таблицы с
+    диагностикой конфликта."""
+    kinds = {
+        'tariffs': KindReport(
+            True, Diff([('19', 'https://t.ksamata.ru/new')],
+                       [('19', 'https://t.ksamata.ru/old')], [], 1),
+            notes={('19', 'https://t.ksamata.ru/new'): 'подпись из G'}),
+        'applications': KindReport(False, EMPTY),
+        'upsell': KindReport(False, EMPTY),
+    }
+    rep = FunnelReport(label='f11', product_name='ДБО NR ВК',
+                       block_name='ДБО ВК', sheet='ДБО', row=51, key='rooms',
+                       kinds=kinds)
+    text = build_report(TODAY, 26, empty_result(), [rep], [], {}, 54)
+    assert 'подпись из G' not in text
+
+
+def test_disabled_section_lists_blocks_matching_an_active_funnel():
+    """Пункт D task-8-review: блок помечен отключённым в таблице, но по
+    вебинарной комнате всё равно совпадает с активной воронкой в базе —
+    источники расходятся, и это стоит показать отдельным коротким списком
+    под общим счётчиком «Отключённые блоки», а не топить в одной цифре."""
+    from links_report import DeadActiveMatch
+
+    block = SheetBlock(sheet='БОО', name='БОО Адарат ВК АДС', row=101,
+                       dead=True)
+    result = MatchResult(matched=[], ambiguous=[], orphans=[], dead=[block])
+    dead_active = [DeadActiveMatch(block_name='БОО Адарат ВК АДС',
+                                   sheet='БОО', row=101, label='f24')]
+    text = build_report(TODAY, 26, result, [], [], {}, 54,
+                        dead_active=dead_active)
+    section = _section(text, 'Отключённые блоки')
+    assert '«БОО Адарат ВК АДС», лист БОО, строка 101 → f24' in section
+
+
+def test_disabled_section_stays_plain_when_nothing_matches_active():
+    block = SheetBlock(sheet='ДБО', name='ДБО старая', row=2, dead=True)
+    result = MatchResult(matched=[], ambiguous=[], orphans=[], dead=[block])
+    text = build_report(TODAY, 26, result, [], [], {}, 54)
+    section = _section(text, 'Отключённые блоки')
+    assert '→' not in section

@@ -59,8 +59,8 @@ SHEETS = {'ДБО': [
 
 
 def test_collect_matches_and_fills(tmp_path):
-    result, reports, unslotted, funnels, active = collect(SHEETS,
-                                                          make_db(tmp_path))
+    result, reports, unslotted, funnels, active, dead_active = collect(
+        SHEETS, make_db(tmp_path))
     assert len(result.matched) == 1
     assert active == 1
     assert reports[0].label == 'f11'
@@ -83,7 +83,7 @@ def test_collect_skips_non_active_funnels(tmp_path):
     sheets = {'БОО': [['', '[БОО старое]'],
                       ['', '1 день', 'https://gc.ksamata.ru/boo-arch', '', '',
                        'https://t.ksamata.ru/boo/tarif']]}
-    result, reports, _, _, _ = collect(sheets, make_db(tmp_path))
+    result, reports, _, _, _, _ = collect(sheets, make_db(tmp_path))
     assert len(result.matched) == 1        # блок опознан...
     assert result.matched[0].funnel_id == 2
     assert reports == []                   # ...но в отчёт не попал
@@ -117,7 +117,7 @@ def test_collect_unslotted_uses_link_row_not_block_header_row(tmp_path):
         ['', '1 день', 'https://gc.ksamata.ru/dbo1-vk', '', '',
          'https://t.ksamata.ru/dbo/tarif-19'],                            # row 3: тут появляется комната
     ]}
-    result, reports, unslotted, funnels, active = collect(
+    result, reports, unslotted, funnels, active, dead_active = collect(
         sheets, make_db(tmp_path))
     assert len(result.matched) == 1
     assert len(unslotted) == 1
@@ -218,7 +218,8 @@ def test_collect_sorts_reports_by_front_code_number(tmp_path):
         ['', '1 день', 'https://gc.ksamata.ru/room-3', '', '',
          'https://t.ksamata.ru/x/3'],
     ]}
-    result, reports, unslotted, funnels, active = collect(sheets, str(path))
+    result, reports, unslotted, funnels, active, dead_active = collect(
+        sheets, str(path))
     assert [r.label for r in reports] == ['f2', 'f11', '#3']
 
 
@@ -337,7 +338,7 @@ def test_collect_splits_column_f_by_host_into_tariffs_and_upsell(tmp_path):
     """Task 8: колонка F с хостом gc.ksamata.ru должна уйти в блок
     «Допродажи / дожим» (`upsell`), а не в «Тарифы» — без этой развязки
     отчёт предлагал бы владельцу вставить дожимные ссылки в тарифы."""
-    result, reports, unslotted, funnels, active = collect(
+    result, reports, unslotted, funnels, active, dead_active = collect(
         UPSELL_SHEETS, make_db(tmp_path))
     assert len(result.matched) == 1
     rep = reports[0]
@@ -353,7 +354,7 @@ def test_collect_reports_upsell_only_fillable_funnel(tmp_path):
     from links_report import build_report
     import datetime
 
-    result, reports, unslotted, funnels, active = collect(
+    result, reports, unslotted, funnels, active, dead_active = collect(
         UPSELL_SHEETS, make_db(tmp_path))
     text = build_report(datetime.date(2026, 8, 18), 1, result, reports,
                         unslotted, funnels, active)
@@ -375,3 +376,38 @@ def test_kind_registries_agree():
     from links_report import KIND_ORDER
 
     assert set(BLOCK_KINDS) == set(KIND_ORDER) == set(KIND_FIELD)
+
+
+def test_collect_flags_disabled_block_matching_an_active_funnel(tmp_path):
+    """Task 8 review, пункт D: таблица помечает блок отключённым, а его
+    вебинарная комната всё равно совпадает с активной воронкой в базе —
+    источники расходятся, и `collect` обязан вынести это отдельно, а не
+    оставить блок молча тонуть среди «отключённых»."""
+    sheets = {'БОО': [
+        ['', '[БОО Адарат отключена]'],
+        ['', '1 день', 'https://gc.ksamata.ru/dbo1-vk', '', '',
+         'https://t.ksamata.ru/boo/tarif'],
+    ]}
+    result, reports, unslotted, funnels, active, dead_active = collect(
+        sheets, make_db(tmp_path))
+    assert len(result.dead) == 1
+    assert len(dead_active) == 1
+    assert dead_active[0].label == 'f11'
+    assert dead_active[0].block_name == 'БОО Адарат отключена'
+    assert dead_active[0].sheet == 'БОО'
+
+
+def test_collect_does_not_flag_disabled_block_matching_an_archived_funnel(
+        tmp_path):
+    """Симметричный случай: отключённый блок, чья комната совпадает с
+    АРХИВНОЙ (не активной) воронкой, не расхождение источников — таблица и
+    база согласны, что это не действующий блок."""
+    sheets = {'БОО': [
+        ['', '[БОО архив отключена]'],
+        ['', '1 день', 'https://gc.ksamata.ru/boo-arch', '', '',
+         'https://t.ksamata.ru/boo/tarif'],
+    ]}
+    result, reports, unslotted, funnels, active, dead_active = collect(
+        sheets, make_db(tmp_path))
+    assert len(result.dead) == 1
+    assert dead_active == []

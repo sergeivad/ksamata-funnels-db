@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from links_compare import diff_items, normalize_url, sheet_items
+from links_compare import diff_items, normalize_url, sheet_items, sheet_notes
 from links_sheet import parse_blocks
 
 
@@ -71,6 +71,26 @@ def test_sheet_items_dedupe_same_url_same_slot():
     block = parse_blocks('ДБО', rows)[0]
     assert sheet_items(block, 'tariffs', SLOTS) == [
         ('19', 'https://t.ksamata.ru/dbo/tarif-19')]
+
+
+def test_sheet_notes_collects_column_g_by_slot_and_address():
+    """F: Link.note (колонка G) собиралась и никогда не читалась — спека
+    обещает, что подпись попадает в отчёт справочно (см. README)."""
+    rows = [
+        ['', '[ДБО ВК]'],
+        ['', '1 день', 'https://gc.ksamata.ru/dbo1-vk', '', '',
+         'https://t.ksamata.ru/dbo/tarif-19',
+         'тарифы с записью ГЛАВНОГО занятия'],
+    ]
+    block = parse_blocks('ДБО', rows)[0]
+    assert sheet_notes(block, 'tariffs', SLOTS) == {
+        ('19', 'https://t.ksamata.ru/dbo/tarif-19'):
+            'тарифы с записью ГЛАВНОГО занятия'}
+
+
+def test_sheet_notes_skips_empty_notes():
+    block = parse_blocks('ДБО', ROWS)[0]
+    assert sheet_notes(block, 'tariffs', SLOTS) == {}
 
 
 def test_diff_all_new_when_db_empty():
