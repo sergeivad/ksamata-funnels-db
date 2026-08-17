@@ -25,6 +25,7 @@ build and export the same database from Excel sources.
 | `tools/data-export/` | Python scripts that export the DB to XLSX reports. |
 | `tools/audit/` | Tag drift map: reconciles the GetCourse offer registry, `deal_export` history, and the DB. Read-only; output is an XLSX in `data/generated/`. See [tools/audit/README.md](tools/audit/README.md). |
 | `tools/reconcile/` | **Сверка источников по воронкам** — база ↔ таблица маркетологов ↔ выгрузка заказов, в один markdown-отчёт по этапам разбора. Read-only. **Начинать с него любую сессию по сверке данных.** См. [tools/reconcile/README.md](tools/reconcile/README.md) и [порядок разбора](docs/plans/2026-08-04-razbor-design.md). |
+| `tools/sheet-links/` | **Тарифы и оформление заявки из таблицы «Воронки ссылки»** — сверка гугл-таблицы маркетологов с блоками `tariffs`/`applications` активных воронок. Read-only, отчёт в `data/generated/`. См. [tools/sheet-links/README.md](tools/sheet-links/README.md). |
 | `docs/` | Development notes, project map, docs index, and historical plans/specs. See [docs/README.md](docs/README.md). |
 
 `ksamata-leak-funnels/` (local reference dataset) and `*.db.bak_*` backups are
