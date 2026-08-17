@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Сверка тарифов и оформления заявки: таблица «Воронки ссылки» ↔ база.
+"""Сверка тарифов, оформления заявки и допродаж: таблица «Воронки ссылки» ↔ база.
 
 Запуск из корня репозитория:
 
@@ -138,7 +138,7 @@ def _cache_age_str(mtime):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description='Тарифы и оформление заявки: таблица ↔ база')
+        description='Тарифы, оформление заявки и допродажи: таблица ↔ база')
     parser.add_argument('--db', default=links_settings.DB_PATH)
     parser.add_argument('--out', help='куда положить отчёт '
                                       '(по умолчанию data/generated/)')

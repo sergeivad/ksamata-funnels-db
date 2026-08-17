@@ -274,16 +274,31 @@ def test_orphan_key_sorts_by_sheet_then_row():
     assert sorted([a, b, c], key=_orphan_key) == [c, b, a]
 
 
-def test_ambiguous_key_sorts_by_block_sheet_then_row():
-    """B6: не было теста на ключ сортировки неоднозначных блоков."""
+def test_ambiguous_key_sorts_by_sheet_then_row():
+    """B6/ревью: исходная версия варьировала лист и строку ОДНОВРЕМЕННО и в
+    одном направлении (больший лист → и строка больше), так что тест прошёл
+    бы и для ключа, сортирующего только по строке — лист как будто бы не
+    проверялся вовсе. Здесь два независимых случая: лист решает вопреки
+    строке, и строка решает при одинаковом листе."""
     from links_match import Ambiguous
     from links_sheet import SheetBlock
 
-    blk_late = SheetBlock(sheet='Я', name='x', row=5)
-    blk_early = SheetBlock(sheet='А', name='y', row=1)
-    later = Ambiguous(blk_late, [(1, 1)])
-    earlier = Ambiguous(blk_early, [(2, 1)])
-    assert sorted([later, earlier], key=_ambiguous_key) == [earlier, later]
+    # Лист важнее строки: у "раннего" листа строка БОЛЬШЕ — ключ, глядящий
+    # только на строку, отсортировал бы эту пару наоборот.
+    early_sheet_late_row = Ambiguous(SheetBlock(sheet='А', name='x', row=9),
+                                     [(1, 1)])
+    late_sheet_early_row = Ambiguous(SheetBlock(sheet='Я', name='y', row=1),
+                                     [(2, 1)])
+    assert sorted([late_sheet_early_row, early_sheet_late_row],
+                 key=_ambiguous_key) == [early_sheet_late_row, late_sheet_early_row]
+
+    # Одинаковый лист — решает строка.
+    same_sheet_late_row = Ambiguous(SheetBlock(sheet='А', name='x', row=9),
+                                    [(1, 1)])
+    same_sheet_early_row = Ambiguous(SheetBlock(sheet='А', name='y', row=2),
+                                     [(2, 1)])
+    assert sorted([same_sheet_late_row, same_sheet_early_row],
+                 key=_ambiguous_key) == [same_sheet_early_row, same_sheet_late_row]
 
 
 def test_unslotted_key_orders_by_kind_then_row():
@@ -345,3 +360,18 @@ def test_collect_reports_upsell_only_fillable_funnel(tmp_path):
     assert 'из них можно заполнить: 1' in text
     assert 'Допродажи / дожим' in text
     assert 'https://gc.ksamata.ru/dbo/meditation-vk' in text
+
+
+def test_kind_registries_agree():
+    """Ревью: три реестра видов блока обязаны перечислять одни и те же виды.
+    Вид, забытый в links_compare.KIND_FIELD, падает громко (KeyError при
+    первом же sheet_items) — а забытый в links_db.BLOCK_KINDS падает МОЛЧА:
+    load_blocks его просто не найдёт, has_block станет False, и отчёт
+    честно соврёт владельцу, что заливать нечего залитого, хотя блок такого
+    вида в базе уже есть. Тихая неверная строка в документе, который читают
+    как факт, хуже падения."""
+    from links_compare import KIND_FIELD
+    from links_db import BLOCK_KINDS
+    from links_report import KIND_ORDER
+
+    assert set(BLOCK_KINDS) == set(KIND_ORDER) == set(KIND_FIELD)

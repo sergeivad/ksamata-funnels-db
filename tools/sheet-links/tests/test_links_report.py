@@ -119,12 +119,19 @@ def test_unslotted_section():
 def test_unslotted_section_names_the_sheet():
     """B8: раздел «Слот не определён» печатал блок и строку, но не лист —
     хотя остальные секции лист называют. Без него владелец не может отличить
-    две воронки, у которых обеих строка 3, но в разных листах."""
-    un = [Unslotted(label='f8', block_name='ЖКТ Ютуб мир', sheet='ЖКТ',
+    две воронки, у которых обеих строка 3, но в разных листах.
+
+    Ревью на первую версию этого теста: sheet='ЖКТ' — подстрока самого
+    block_name ('ЖКТ Ютуб мир'), поэтому `assert 'ЖКТ' in line` был бы
+    истинным и на СТАРОЙ, безлистовой строке — тест не ловил регрессию,
+    ровно тот класс дефекта, что убирал B5. Лист теперь не пересекается с
+    именем блока, и проверяется точный фрагмент `лист {sheet},`, а не просто
+    вхождение подстроки где-то в строке."""
+    un = [Unslotted(label='f8', block_name='ЖКТ Ютуб мир', sheet='Основной',
                     kind='tariffs', url='https://t.ksamata.ru/a', row=3)]
     text = build_report(TODAY, 26, empty_result(), [], un, {}, 54)
     line = next(l for l in text.splitlines() if 'ЖКТ Ютуб мир' in l)
-    assert 'ЖКТ' in line
+    assert 'лист Основной,' in line
 
 
 def test_empty_run_still_produces_all_sections():
