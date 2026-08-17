@@ -7,7 +7,26 @@ tools/audit и tools/reconcile: все три каталога лежат в о�
 """
 
 import os
+import socket
 import sys
+
+import pytest
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE)
+
+
+@pytest.fixture(autouse=True)
+def _block_network(monkeypatch):
+    """Сервисный аккаунт на этой машине держит настоящий ключ — даже без
+    подмены `_fetch_from_api` он пойдёт за токеном на реальный эндпоинт, а
+    не молча вернёт пустоту. Блокируем создание сокетов на время каждого
+    теста, чтобы забытый monkeypatch падал громко, а не делал живой запрос."""
+
+    def _guard(*args, **kwargs):
+        raise RuntimeError(
+            'Сетевой доступ заблокирован в тестах tools/sheet-links '
+            '(conftest.py) — подмените точку входа в сеть через monkeypatch, '
+            'не полагайтесь на реальный сокет.')
+
+    monkeypatch.setattr(socket, 'socket', _guard)
