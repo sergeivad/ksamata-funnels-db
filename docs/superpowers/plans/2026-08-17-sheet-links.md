@@ -113,7 +113,7 @@ DEAD_MARKERS = ('отключен', 'комнаты удален', 'не исп�
 ```python
 import pytest
 
-from links_sheet import Link, cell, parse_blocks, room_slug
+from links_sheet import cell, parse_blocks, room_slug
 
 
 def test_room_slug_takes_one_segment_hosts():
@@ -623,7 +623,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```python
 from dataclasses import dataclass
 
-from links_compare import Diff, diff_items, normalize_url, sheet_items
+from links_compare import diff_items, normalize_url, sheet_items
 from links_sheet import parse_blocks
 
 
@@ -1531,7 +1531,7 @@ def build_report(today, sheets_count, result, reports, unslotted, funnels,
                     + len(result.orphans) + len(result.dead))
 
     out = [
-        f'# Тарифы и оформление заявки: таблица ↔ база',
+        '# Тарифы и оформление заявки: таблица ↔ база',
         '',
         f'Прогон {today.isoformat()}. Источник — гугл-таблица «Воронки ссылки», '
         f'читается через сервисный аккаунт. Инструмент ничего не пишет.',
@@ -1803,6 +1803,14 @@ import links_sheet      # noqa: E402
 ACTIVE = 'active'
 
 
+def _sort_key(rep):
+    """По числу в F-коде: иначе f11 встаёт раньше f2. Воронки без кода — в конец."""
+    label = rep.label
+    if label.startswith('f') and label[1:].isdigit():
+        return (0, int(label[1:]), '')
+    return (1, 0, label)
+
+
 def collect(sheets, db_path):
     blocks = []
     for title, rows in sheets.items():
@@ -1843,7 +1851,7 @@ def collect(sheets, db_path):
             has_tariffs=bool(db_blocks.get((match.funnel_id, 'tariffs'))),
             has_apps=bool(db_blocks.get((match.funnel_id, 'applications'))),
             tariffs=diffs['tariffs'], apps=diffs['applications']))
-    reports.sort(key=lambda r: r.label)
+    reports.sort(key=_sort_key)
     return result, reports, unslotted, funnels, active_total
 
 
