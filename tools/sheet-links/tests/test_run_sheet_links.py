@@ -1,7 +1,13 @@
 import json
 import sqlite3
 
-from run_sheet_links import collect, main
+from run_sheet_links import (
+    _ambiguous_key,
+    _orphan_key,
+    _unslotted_key,
+    collect,
+    main,
+)
 
 # Схема повторена намеренно: каталог tests не пакет, и импорт из соседнего
 # тестового файла зависел бы от того, как pytest собрал sys.path.
@@ -58,8 +64,8 @@ def test_collect_matches_and_fills(tmp_path):
     assert len(result.matched) == 1
     assert active == 1
     assert reports[0].label == 'f11'
-    assert reports[0].has_tariffs is False
-    assert reports[0].tariffs.only_sheet == [
+    assert reports[0].kinds['tariffs'].has_block is False
+    assert reports[0].kinds['tariffs'].diff.only_sheet == [
         ('19', 'https://t.ksamata.ru/dbo/tarif-19')]
     assert unslotted == []
 
@@ -175,7 +181,10 @@ def test_main_prints_cache_age_when_reading_from_cache(tmp_path, capsys):
           '--today', '2026-08-17'])
     captured = capsys.readouterr()
     assert 'кеш' in captured.out.lower()
-    assert 'ч' in captured.out  # часы возраста упомянуты в каком-то виде
+    # B5: 'ч' в тексте — вакуумная проверка, она истинна для любого прогона
+    # (само слово «Отчёт:» содержит «ч»). Пин на конкретную фразу возраста —
+    # backdate ровно на 5 часов, значит "5 ч 0 мин".
+    assert '5 ч 0 мин' in captured.out
 
 
 def test_collect_sorts_reports_by_front_code_number(tmp_path):
@@ -211,3 +220,128 @@ def test_collect_sorts_reports_by_front_code_number(tmp_path):
     ]}
     result, reports, unslotted, funnels, active = collect(sheets, str(path))
     assert [r.label for r in reports] == ['f2', 'f11', '#3']
+
+
+def test_main_refresh_keeps_old_cache_when_fetch_fails(tmp_path, monkeypatch):
+    """B1: неудачный --refresh не должен уничтожать рабочий снимок. Раньше
+    файл кеша удалялся ДО похода в сеть, и упавший фетч (таблица не
+    расшарена, ноутбук офлайн) оставлял инструмент вовсе без кеша —
+    сломанным именно тогда, когда снимок нужнее всего."""
+    import links_fetch
+
+    cache = tmp_path / 'cache.json'
+    cache.write_text(json.dumps(SHEETS), encoding='utf-8')
+    before = cache.read_text(encoding='utf-8')
+
+    def failing_fetch():
+        raise RuntimeError('таблица недоступна (офлайн/не расшарена)')
+
+    monkeypatch.setattr(links_fetch, '_fetch_from_api', failing_fetch)
+
+    db = make_db(tmp_path)
+    out = tmp_path / 'report.md'
+    try:
+        main(['--db', db, '--cache', str(cache), '--out', str(out),
+              '--today', '2026-08-17', '--refresh'])
+    except RuntimeError:
+        pass
+
+    assert cache.exists()
+    assert cache.read_text(encoding='utf-8') == before
+
+
+def test_main_out_accepts_bare_filename(tmp_path, monkeypatch):
+    """B4: `--out report.md` (без каталога в пути) не должен падать —
+    os.makedirs(os.path.dirname(out_path)) получал '' и ронял
+    FileNotFoundError."""
+    monkeypatch.chdir(tmp_path)
+    cache = tmp_path / 'cache.json'
+    cache.write_text(json.dumps(SHEETS), encoding='utf-8')
+    db = make_db(tmp_path)
+    code = main(['--db', db, '--cache', str(cache), '--out', 'report.md',
+                 '--today', '2026-08-17'])
+    assert code == 0
+    assert (tmp_path / 'report.md').exists()
+
+
+def test_orphan_key_sorts_by_sheet_then_row():
+    """B6: не было теста на ключ сортировки сирот."""
+    from links_sheet import SheetBlock
+
+    a = SheetBlock(sheet='Я', name='a', row=5)
+    b = SheetBlock(sheet='А', name='b', row=9)
+    c = SheetBlock(sheet='А', name='c', row=2)
+    assert sorted([a, b, c], key=_orphan_key) == [c, b, a]
+
+
+def test_ambiguous_key_sorts_by_block_sheet_then_row():
+    """B6: не было теста на ключ сортировки неоднозначных блоков."""
+    from links_match import Ambiguous
+    from links_sheet import SheetBlock
+
+    blk_late = SheetBlock(sheet='Я', name='x', row=5)
+    blk_early = SheetBlock(sheet='А', name='y', row=1)
+    later = Ambiguous(blk_late, [(1, 1)])
+    earlier = Ambiguous(blk_early, [(2, 1)])
+    assert sorted([later, earlier], key=_ambiguous_key) == [earlier, later]
+
+
+def test_unslotted_key_orders_by_kind_then_row():
+    """B6: не было теста на порядок вида блока/строки внутри «слот не
+    определён» — только на F-код (test_collect_sorts_reports_by_front_code_
+    number). Тарифы должны идти раньше заявок раньше допродаж, как и в
+    остальных секциях (links_report.KIND_ORDER), а внутри одного вида —
+    по возрастанию строки."""
+    from links_report import Unslotted
+
+    upsell_first_row = Unslotted(label='f1', block_name='x', sheet='Л',
+                                 kind='upsell', url='u', row=1)
+    tariffs_late_row = Unslotted(label='f1', block_name='x', sheet='Л',
+                                 kind='tariffs', row=5, url='u')
+    tariffs_early_row = Unslotted(label='f1', block_name='x', sheet='Л',
+                                  kind='tariffs', row=2, url='u')
+    applications = Unslotted(label='f1', block_name='x', sheet='Л',
+                             kind='applications', row=3, url='u')
+    ordered = sorted(
+        [upsell_first_row, tariffs_late_row, applications, tariffs_early_row],
+        key=_unslotted_key)
+    assert ordered == [tariffs_early_row, tariffs_late_row, applications,
+                       upsell_first_row]
+
+
+# Комната та же, что в make_db() (funnel_id=1, f11) — иначе блок не
+# опознаётся вовсе и падает в сироты вместо matched.
+UPSELL_SHEETS = {'ДБО': [
+    ['', '[ДБО ВК]'],
+    ['', '1 день', 'https://gc.ksamata.ru/dbo1-vk', '', '',
+     'https://gc.ksamata.ru/dbo/meditation-vk'],
+]}
+
+
+def test_collect_splits_column_f_by_host_into_tariffs_and_upsell(tmp_path):
+    """Task 8: колонка F с хостом gc.ksamata.ru должна уйти в блок
+    «Допродажи / дожим» (`upsell`), а не в «Тарифы» — без этой развязки
+    отчёт предлагал бы владельцу вставить дожимные ссылки в тарифы."""
+    result, reports, unslotted, funnels, active = collect(
+        UPSELL_SHEETS, make_db(tmp_path))
+    assert len(result.matched) == 1
+    rep = reports[0]
+    assert rep.kinds['tariffs'].diff.only_sheet == []
+    assert rep.kinds['upsell'].diff.only_sheet == [
+        ('19', 'https://gc.ksamata.ru/dbo/meditation-vk')]
+
+
+def test_collect_reports_upsell_only_fillable_funnel(tmp_path):
+    """Task 8: воронка, у которой тарифов и заявок в таблице нет вовсе, а
+    допродажи есть и заливаемы, обязана всё равно попасть в отчёт и в
+    counters «можно заполнить»."""
+    from links_report import build_report
+    import datetime
+
+    result, reports, unslotted, funnels, active = collect(
+        UPSELL_SHEETS, make_db(tmp_path))
+    text = build_report(datetime.date(2026, 8, 18), 1, result, reports,
+                        unslotted, funnels, active)
+    assert 'из них можно заполнить: 1' in text
+    assert 'Допродажи / дожим' in text
+    assert 'https://gc.ksamata.ru/dbo/meditation-vk' in text

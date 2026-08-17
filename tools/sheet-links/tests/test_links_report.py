@@ -3,7 +3,7 @@ import datetime
 from links_compare import Diff
 from links_db import FunnelRow
 from links_match import MatchResult
-from links_report import FunnelReport, Unslotted, build_report
+from links_report import FunnelReport, KindReport, Unslotted, build_report
 from links_sheet import SheetBlock
 
 TODAY = datetime.date(2026, 8, 17)
@@ -14,12 +14,17 @@ def empty_result():
     return MatchResult(matched=[], ambiguous=[], orphans=[], dead=[])
 
 
-def report(label='f11', has_tariffs=False, has_apps=False,
-           tariffs=EMPTY, apps=EMPTY, key='rooms'):
-    return FunnelReport(label=label, product_name='ДБО NR ВК',
-                        block_name='ДБО ВК', sheet='ДБО', row=51, key=key,
-                        has_tariffs=has_tariffs, has_apps=has_apps,
-                        tariffs=tariffs, apps=apps)
+def report(label='f11', has_tariffs=False, has_apps=False, has_upsell=False,
+           tariffs=EMPTY, apps=EMPTY, upsell=EMPTY, key='rooms',
+           product_name='ДБО NR ВК', block_name='ДБО ВК'):
+    kinds = {
+        'tariffs': KindReport(has_tariffs, tariffs),
+        'applications': KindReport(has_apps, apps),
+        'upsell': KindReport(has_upsell, upsell),
+    }
+    return FunnelReport(label=label, product_name=product_name,
+                        block_name=block_name, sheet='ДБО', row=51, key=key,
+                        kinds=kinds)
 
 
 def _section(text, title):
@@ -104,11 +109,22 @@ def test_dead_blocks_are_only_a_number():
 
 
 def test_unslotted_section():
-    un = [Unslotted(label='f11', block_name='ДБО ВК', kind='tariffs',
-                    url='https://t.ksamata.ru/x', row=60)]
+    un = [Unslotted(label='f11', block_name='ДБО ВК', sheet='ДБО',
+                    kind='tariffs', url='https://t.ksamata.ru/x', row=60)]
     text = build_report(TODAY, 26, empty_result(), [], un, {}, 54)
     assert 'Слот не определён' in text
     assert 'https://t.ksamata.ru/x' in text
+
+
+def test_unslotted_section_names_the_sheet():
+    """B8: раздел «Слот не определён» печатал блок и строку, но не лист —
+    хотя остальные секции лист называют. Без него владелец не может отличить
+    две воронки, у которых обеих строка 3, но в разных листах."""
+    un = [Unslotted(label='f8', block_name='ЖКТ Ютуб мир', sheet='ЖКТ',
+                    kind='tariffs', url='https://t.ksamata.ru/a', row=3)]
+    text = build_report(TODAY, 26, empty_result(), [], un, {}, 54)
+    line = next(l for l in text.splitlines() if 'ЖКТ Ютуб мир' in l)
+    assert 'ЖКТ' in line
 
 
 def test_empty_run_still_produces_all_sections():
@@ -229,3 +245,79 @@ def test_slot_differs_section_is_deterministically_ordered():
     pos_b = text.index('t.ksamata.ru/b')
     pos_c = text.index('t.ksamata.ru/c')
     assert pos_a < pos_b < pos_c
+
+
+def test_upsell_heading_is_covered():
+    """Task 8: KIND_TITLE['upsell'] должен где-то реально печататься."""
+    rep = report(has_upsell=False,
+                 upsell=Diff([('19', 'https://gc.ksamata.ru/dbo/meditation-vk')],
+                             [], [], 0))
+    text = build_report(TODAY, 26, empty_result(), [rep], [], {}, 54)
+    assert 'Допродажи / дожим' in text
+    assert 'https://gc.ksamata.ru/dbo/meditation-vk' in text
+
+
+def test_funnel_fillable_in_tariffs_diverges_in_upsell():
+    """Task 8, тот же тест-принцип, что закрывал Task 6, но на третьем виде
+    блока: тарифов в базе нет вовсе (заливаемо), а допродажи есть и несут
+    лишний адрес (расхождение) — воронка обязана появиться в обеих секциях."""
+    rep = report(
+        has_tariffs=False, has_upsell=True,
+        tariffs=Diff([('19', 'https://t.ksamata.ru/fill-me')], [], [], 0),
+        upsell=Diff([], [('19', 'https://gc.ksamata.ru/db-only')], [], 2),
+    )
+    text = build_report(TODAY, 26, empty_result(), [rep], [], {}, 54)
+
+    fillable_text = _section(text, 'Можно залить')
+    diverging_text = _section(text, 'Расхождения')
+
+    assert 'https://t.ksamata.ru/fill-me' in fillable_text
+    assert 'https://gc.ksamata.ru/db-only' not in fillable_text
+
+    assert 'https://gc.ksamata.ru/db-only' in diverging_text
+    assert 'Только в базе' in diverging_text
+
+
+def test_heading_always_shows_block_name():
+    """B2: две записи одной воронки от разных блоков листа должны быть
+    различимы по заголовку — имя блока в него теперь входит всегда, а не
+    только в тексте абзаца под заголовком."""
+    rep = report(block_name='ДБО ВК Особый', product_name='ДБО NR ВК',
+                 has_tariffs=False,
+                 tariffs=Diff([('19', 'https://t.ksamata.ru/x')], [], [], 0))
+    text = build_report(TODAY, 26, empty_result(), [rep], [], {}, 54)
+    assert '### f11 — ДБО NR ВК · ДБО ВК Особый' in text
+
+
+def test_heading_falls_back_to_block_name_when_product_name_is_empty():
+    """B7: пустое имя товара раньше рисовало висящее тире («### f84 — »).
+    Имя блока листа — осмысленный заменитель, а не пустая строка."""
+    rep = report(block_name='ДБО ВК Особый', product_name='',
+                 has_tariffs=False,
+                 tariffs=Diff([('19', 'https://t.ksamata.ru/x')], [], [], 0))
+    text = build_report(TODAY, 26, empty_result(), [rep], [], {}, 54)
+    assert '### f11 — ДБО ВК Особый' in text
+    assert '### f11 —  ' not in text
+    assert '### f11 — \n' not in text
+
+
+def test_heading_warns_when_funnel_is_claimed_by_more_than_one_block():
+    """B2: когда два блока листа матчатся на одну воронку, каждая её запись
+    должна явно сказать, что верным может быть только одна из них — иначе
+    владелец видит два одноимённых ### и не понимает, что они спорят
+    за одну и ту же воронку."""
+    rep_a = report(label='f11', block_name='ДБО ВК',
+                   tariffs=Diff([('19', 'https://t.ksamata.ru/a')], [], [], 0))
+    rep_b = report(label='f11', block_name='ДБО ТГ',
+                   tariffs=Diff([('19', 'https://t.ksamata.ru/b')], [], [], 0))
+    text = build_report(TODAY, 26, empty_result(), [rep_a, rep_b], [], {}, 54)
+    assert text.count('### f11') == 2
+    # Обе записи этой воронки обязаны нести предупреждение.
+    assert text.count('верным может быть только один') == 2
+
+
+def test_heading_is_silent_about_claims_when_funnel_has_a_single_block():
+    rep = report(
+        tariffs=Diff([('19', 'https://t.ksamata.ru/a')], [], [], 0))
+    text = build_report(TODAY, 26, empty_result(), [rep], [], {}, 54)
+    assert 'верным может быть только один' not in text

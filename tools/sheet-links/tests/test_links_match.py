@@ -37,8 +37,8 @@ def test_equal_weight_is_ambiguous_not_a_guess():
 def test_secondary_key_used_only_when_rooms_find_nothing():
     result = match_blocks(
         [block('ДБО ВК', rooms=['unknown'],
-               tariffs=['https://t.ksamata.ru/a'])],
-        {}, {'https://t.ksamata.ru/a': {5}})
+               tariffs=['https://t.ksamata.ru/a', 'https://t.ksamata.ru/b'])],
+        {}, {'https://t.ksamata.ru/a': {5}, 'https://t.ksamata.ru/b': {5}})
     assert result.matched[0].funnel_id == 5
     assert result.matched[0].key == 'urls'
 
@@ -54,9 +54,30 @@ def test_rooms_beat_urls_when_both_available():
 
 def test_secondary_key_normalizes_url():
     result = match_blocks(
-        [block('ДБО ВК', tariffs=['https://T.Ksamata.ru/a/'])],
-        {}, {'https://t.ksamata.ru/a': {5}})
+        [block('ДБО ВК', tariffs=['https://T.Ksamata.ru/a/',
+                                  'https://T.Ksamata.ru/b/'])],
+        {}, {'https://t.ksamata.ru/a': {5}, 'https://t.ksamata.ru/b': {5}})
     assert result.matched[0].funnel_id == 5
+
+
+def test_secondary_key_weight_one_is_not_a_match():
+    """B3 ruling (замер 18.08.2026): единственный общий адрес — не улика
+    тождества. «ЕХ Яндекс РСЯ» так примкнула к чужой воронке в первом живом
+    прогоне; после правки блок остаётся сиротой, а не матчится вслепую."""
+    result = match_blocks(
+        [block('ЕХ Яндекс РСЯ', tariffs=['https://t.ksamata.ru/a'])],
+        {}, {'https://t.ksamata.ru/a': {5}})
+    assert result.matched == []
+    assert result.orphans and result.orphans[0].name == 'ЕХ Яндекс РСЯ'
+
+
+def test_secondary_key_weight_two_is_a_match():
+    result = match_blocks(
+        [block('ЖКТ Ютуб мир',
+               tariffs=['https://t.ksamata.ru/a', 'https://t.ksamata.ru/b'])],
+        {}, {'https://t.ksamata.ru/a': {5}, 'https://t.ksamata.ru/b': {5}})
+    assert result.matched[0].funnel_id == 5
+    assert result.matched[0].weight == 2
 
 
 def test_block_with_nothing_matching_is_orphan():

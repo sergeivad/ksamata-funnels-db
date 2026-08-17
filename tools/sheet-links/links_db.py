@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from links_compare import normalize_url
 from links_sheet import room_slug
 
-BLOCK_KINDS = ('tariffs', 'applications')
+BLOCK_KINDS = ('tariffs', 'applications', 'upsell')
 
 
 @dataclass(frozen=True)

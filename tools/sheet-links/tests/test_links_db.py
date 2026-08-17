@@ -131,6 +131,20 @@ def test_load_blocks_groups_by_funnel_and_kind(tmp_path):
     assert (1, 'bonuses') not in blocks
 
 
+def test_load_blocks_includes_upsell_kind(tmp_path):
+    """Task 8: третий вид блока сверки — `upsell` («Допродажи / дожим»)."""
+    path = make_db(
+        tmp_path,
+        funnels=[(1, 'f1', 'ДБО ВК', 'active')],
+        blocks=[(10, 1, 'upsell')],
+        items=[(10, '19', '', 'https://gc.ksamata.ru/dbo/meditation-vk', 0)])
+    con = connect_ro(path)
+    blocks = load_blocks(con)
+    con.close()
+    assert [i.url for i in blocks[(1, 'upsell')]] == [
+        'https://gc.ksamata.ru/dbo/meditation-vk']
+
+
 def test_load_url_owners_normalizes(tmp_path):
     path = make_db(
         tmp_path,

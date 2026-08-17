@@ -12,7 +12,7 @@ funnel_days.time_slot знает только 15 и 19.
 from collections import defaultdict
 from dataclasses import dataclass
 
-KIND_FIELD = {'tariffs': 'tariffs', 'applications': 'apps'}
+KIND_FIELD = {'tariffs': 'tariffs', 'applications': 'apps', 'upsell': 'upsell'}
 
 
 @dataclass(frozen=True)

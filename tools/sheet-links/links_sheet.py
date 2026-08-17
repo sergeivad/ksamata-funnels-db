@@ -11,18 +11,30 @@
     B  [Название воронки] либо маркер дня «1 день»…«5 день»
     C  ссылка на вебинар          → комната
     E  ссылка на повтор           → комната
-    F  ссылка на продажную стр.   → блок «Тарифы»          (t.ksamata.ru)
+    F  ссылка на продажную стр.   → t.ksamata.ru → блок «Тарифы»
+                                     gc.ksamata.ru → блок «Допродажи / дожим»
     G  подпись, справочно
     H  страница в ГК для тарифов  → блок «Оформление заявки» (gc.ksamata.ru)
+
+Разделение колонки F по хосту, а не по слову в пути: замер 17.08.2026 на
+живых листах показал, что `t.ksamata.ru`-адреса (289 штук) сплошь лежат в
+базе в блоке `tariffs` и никогда в `upsell`, а `gc.ksamata.ru`-адреса
+(86 штук) — наоборот, сплошь в `upsell` и никогда в `tariffs`. Правило без
+исключений на всей выборке: третьего хоста в колонке F нет.
 """
 
 import re
 from dataclasses import dataclass, field
+from urllib.parse import urlsplit
 
 from links_settings import DEAD_MARKERS
 
 COL_TAG, COL_DAY, COL_WEBINAR = 0, 1, 2
 COL_REPLAY, COL_TARIFF, COL_NOTE, COL_APP = 4, 5, 6, 7
+
+# Единственный хост колонки F, который идёт в «Тарифы» — остальное (на
+# практике только gc.ksamata.ru) идёт в «Допродажи / дожим».
+TARIFF_HOST = 't.ksamata.ru'
 
 # Комната — это ОДИН сегмент пути. Адрес заявки gc.ksamata.ru/dbo/tarif/curator-y
 # тоже начинается с gc.ksamata.ru, и без якоря на конец он бы сюда попал.
@@ -47,6 +59,7 @@ class SheetBlock:
     dead: bool = False
     rooms: set = field(default_factory=set)
     tariffs: list = field(default_factory=list)
+    upsell: list = field(default_factory=list)
     apps: list = field(default_factory=list)
 
 
@@ -57,6 +70,10 @@ def cell(row, i):
 def room_slug(url):
     m = ROOM_RE.match((url or '').strip())
     return m.group(1).lower() if m else None
+
+
+def _host(url):
+    return (urlsplit(url).hostname or '').lower()
 
 
 def _head_name(value):
@@ -110,11 +127,15 @@ def parse_blocks(sheet_title, rows):
         if slug:
             last_slug = slug
         note = cell(row, COL_NOTE)
-        for col, bucket in ((COL_TARIFF, cur.tariffs), (COL_APP, cur.apps)):
-            url = cell(row, col)
-            if url.lower().startswith(('http://', 'https://')):
-                bucket.append(Link(row=n, url=url, anchor=last_slug,
-                                   note=note))
+        tariff_url = cell(row, COL_TARIFF)
+        if tariff_url.lower().startswith(('http://', 'https://')):
+            link = Link(row=n, url=tariff_url, anchor=last_slug, note=note)
+            bucket = cur.tariffs if _host(tariff_url) == TARIFF_HOST else cur.upsell
+            bucket.append(link)
+        app_url = cell(row, COL_APP)
+        if app_url.lower().startswith(('http://', 'https://')):
+            cur.apps.append(Link(row=n, url=app_url, anchor=last_slug,
+                                 note=note))
     for block in blocks:
         block.dead = _looks_dead(rows, block.row)
     return blocks

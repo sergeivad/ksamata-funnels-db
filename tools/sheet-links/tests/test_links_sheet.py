@@ -66,6 +66,50 @@ def test_tariff_goes_to_f_application_to_h():
         'https://gc.ksamata.ru/dbo/tarif/curator-vk']
 
 
+def test_column_f_on_t_host_goes_to_tariffs_not_upsell():
+    """Task 8: t.ksamata.ru в колонке F — это тариф, как и раньше."""
+    rows = [
+        ['', '[ДБО ВК]'],
+        ['', '1 день', 'https://gc.ksamata.ru/dbo1-vk', '', '',
+         'https://t.ksamata.ru/dbo/tarif-1vk'],
+    ]
+    block = parse_blocks('ДБО', rows)[0]
+    assert [l.url for l in block.tariffs] == ['https://t.ksamata.ru/dbo/tarif-1vk']
+    assert block.upsell == []
+
+
+def test_column_f_on_gc_host_goes_to_upsell_not_tariffs():
+    """Task 8: gc.ksamata.ru в колонке F — дожим/допродажа, а не тариф.
+    Без разделения по хосту отчёт предлагал бы владельцу вставить 86
+    дожимных ссылок в блок «Тарифы» (замер 17.08.2026)."""
+    rows = [
+        ['', '[СВС ВК НИМБ]'],
+        ['', '1 день', 'https://gc.ksamata.ru/cvc1-vk', '', '',
+         'https://gc.ksamata.ru/cvc/meditation-vknimb'],
+    ]
+    block = parse_blocks('ДБО', rows)[0]
+    assert block.tariffs == []
+    assert [l.url for l in block.upsell] == [
+        'https://gc.ksamata.ru/cvc/meditation-vknimb']
+
+
+def test_tariff_and_upsell_links_get_same_anchor_and_note():
+    """И тарифный, и дожимный адрес в колонке F берут якорь и подпись по
+    тем же правилам, что и раньше — правило слота от вида блока не зависит."""
+    rows = [
+        ['', '[ДБО ВК]'],
+        ['', '1 день', 'https://gc.ksamata.ru/dbo1-vk', '', '',
+         'https://t.ksamata.ru/dbo/tarif-1vk', 'подпись тарифа'],
+        ['', '2 день', 'https://gc.ksamata.ru/dbo2-vk', '', '',
+         'https://gc.ksamata.ru/dbo/meditation-2vk', 'подпись дожима'],
+    ]
+    block = parse_blocks('ДБО', rows)[0]
+    assert block.tariffs[0].anchor == 'dbo1-vk'
+    assert block.tariffs[0].note == 'подпись тарифа'
+    assert block.upsell[0].anchor == 'dbo2-vk'
+    assert block.upsell[0].note == 'подпись дожима'
+
+
 def test_link_anchors_to_room_of_its_own_row():
     rows = [
         ['', '[ДБО ВК]'],

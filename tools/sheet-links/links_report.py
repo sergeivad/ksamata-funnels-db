@@ -21,9 +21,21 @@ links_compare группирует slot_differs через пересечени�
 на разные вопросы владельца («что скопировать» и «что пойти проверить»).
 """
 
+from collections import Counter
 from dataclasses import dataclass
 
 from links_db import label_of
+
+# Порядок видов блока — общий для всех циклов печати и для сортировки
+# «слот не определён» в run_sheet_links (там же порядок должен совпадать,
+# чтобы тарифы шли раньше заявок и допродаж, как в остальных секциях).
+KIND_ORDER = ('tariffs', 'applications', 'upsell')
+
+
+@dataclass(frozen=True)
+class KindReport:
+    has_block: bool     # блок этого вида есть в базе
+    diff: object         # Diff
 
 
 @dataclass(frozen=True)
@@ -34,23 +46,21 @@ class FunnelReport:
     sheet: str
     row: int
     key: str
-    has_tariffs: bool
-    has_apps: bool
-    tariffs: object     # Diff
-    apps: object        # Diff
+    kinds: dict          # вид -> KindReport, в порядке KIND_ORDER
 
 
 @dataclass(frozen=True)
 class Unslotted:
     label: str
     block_name: str
+    sheet: str
     kind: str
     url: str
     row: int
 
 
-KIND_TITLE = {'tariffs': 'Тарифы', 'applications': 'Оформление заявки'}
-KINDS = ('tariffs', 'applications')
+KIND_TITLE = {'tariffs': 'Тарифы', 'applications': 'Оформление заявки',
+             'upsell': 'Допродажи / дожим'}
 
 # Как воронка была опознана за блоком листа — печатается в заголовке
 # каждого разбираемого блока, словами, а не голым значением `key`.
@@ -68,30 +78,23 @@ def _pairs(lines, pairs):
         lines.append(f'  - `{slot or "?"}` {url}')
 
 
-def _kind_has(rep, kind):
-    return rep.has_tariffs if kind == 'tariffs' else rep.has_apps
-
-
-def _kind_diff(rep, kind):
-    return rep.tariffs if kind == 'tariffs' else rep.apps
-
-
 def _fillable_kinds(rep):
     """Виды блока этой воронки, которых в базе нет, а в таблице есть чем
     заполнить. Классификация идёт по виду, а не по воронке целиком — у
     одной воронки тарифы могут быть заливаемы, а заявки уже разойтись."""
-    return [kind for kind in KINDS
-            if not _kind_has(rep, kind) and _kind_diff(rep, kind).only_sheet]
+    return [kind for kind in KIND_ORDER
+            if not rep.kinds[kind].has_block and rep.kinds[kind].diff.only_sheet]
 
 
 def _diverging_kinds(rep):
     """Виды блока этой воронки, которые в базе есть и не совпадают с
     таблицей. Независимо от `_fillable_kinds` — см. её докстринг."""
     out = []
-    for kind in KINDS:
-        if not _kind_has(rep, kind):
+    for kind in KIND_ORDER:
+        kind_report = rep.kinds[kind]
+        if not kind_report.has_block:
             continue
-        diff = _kind_diff(rep, kind)
+        diff = kind_report.diff
         if diff.only_sheet or diff.only_db or diff.slot_differs:
             out.append(kind)
     return out
@@ -114,11 +117,28 @@ def _plural_ru(n, one, few, many):
     return f'{n} {word}'
 
 
-def _print_block_heading(out, rep):
-    out.append(f'### {rep.label} — {rep.product_name}')
+def _heading_title(rep):
+    """Заголовок записи: имя блока листа — всегда, чтобы две записи одной
+    воронки от разных блоков не выглядели одинаково (B2). Имя товара — когда
+    оно не пусто; пустое имя товара раньше давало висящее тире («### f84 — »,
+    B7), а имя блока — осмысленный заменитель, а не пустая строка."""
+    if rep.product_name:
+        return f'{rep.product_name} · {rep.block_name}'
+    return rep.block_name
+
+
+def _print_block_heading(out, rep, claim_counts):
+    out.append(f'### {rep.label} — {_heading_title(rep)}')
     out.append('')
     out.append(f'Блок таблицы «{rep.block_name}», лист {rep.sheet}, '
                f'строка {rep.row}. {KEY_NOTE.get(rep.key, "")}')
+    if claim_counts[rep.label] > 1:
+        out.append('')
+        out.append(
+            f'Внимание: на эту воронку в таблице претендует ещё '
+            f'{_plural_ru(claim_counts[rep.label] - 1, "блок", "блока", "блоков")} '
+            '— смотрите остальные записи этой воронки в отчёте ниже или '
+            'выше; верным может быть только один из них.')
     out.append('')
 
 
@@ -132,6 +152,11 @@ def build_report(today, sheets_count, result, reports, unslotted, funnels,
     diverging = [r for r in reports if _diverging_kinds(r)]
     blocks_total = (len(result.matched) + len(result.ambiguous)
                     + len(result.orphans) + len(result.dead))
+    # Сколько раз каждая воронка (по F-коду/лейблу) встречается среди
+    # опознанных блоков — больше одного значит, что два блока листа
+    # претендуют на одну воронку разом (B2), и это стоит сказать в лоб на
+    # каждой её записи, а не оставлять владельца гадать по совпавшему имени.
+    claim_counts = Counter(r.label for r in reports)
 
     out = [
         '# Тарифы и оформление заявки: таблица ↔ база',
@@ -158,9 +183,9 @@ def build_report(today, sheets_count, result, reports, unslotted, funnels,
     if not fillable:
         out += ['Нечего.', '']
     for rep in fillable:
-        _print_block_heading(out, rep)
+        _print_block_heading(out, rep, claim_counts)
         for kind in _fillable_kinds(rep):
-            diff = _kind_diff(rep, kind)
+            diff = rep.kinds[kind].diff
             out.append(f'**{KIND_TITLE[kind]}**')
             _pairs(out, diff.only_sheet)
             out.append('')
@@ -169,9 +194,9 @@ def build_report(today, sheets_count, result, reports, unslotted, funnels,
     if not diverging:
         out += ['Нет.', '']
     for rep in diverging:
-        _print_block_heading(out, rep)
+        _print_block_heading(out, rep, claim_counts)
         for kind in _diverging_kinds(rep):
-            diff = _kind_diff(rep, kind)
+            diff = rep.kinds[kind].diff
             out.append(f'**{KIND_TITLE[kind]}** — совпало {diff.same}')
             if diff.only_sheet:
                 out.append('')
@@ -212,7 +237,7 @@ def build_report(today, sheets_count, result, reports, unslotted, funnels,
     if not unslotted:
         out += ['Нет.', '']
     for item in unslotted:
-        out.append(f'- {item.label} «{item.block_name}», '
+        out.append(f'- {item.label} «{item.block_name}», лист {item.sheet}, '
                    f'{KIND_TITLE[item.kind]}, строка {item.row}: {item.url}')
     out.append('')
 
@@ -221,7 +246,8 @@ def build_report(today, sheets_count, result, reports, unslotted, funnels,
         out += ['Нет.', '']
     for block in result.orphans:
         out.append(f'- «{block.name}», лист {block.sheet}, строка {block.row}: '
-                   f'тарифов {len(block.tariffs)}, заявок {len(block.apps)}')
+                   f'тарифов {len(block.tariffs)}, допродаж {len(block.upsell)}, '
+                   f'заявок {len(block.apps)}')
     out.append('')
 
     out += ['## Отключённые блоки', '',

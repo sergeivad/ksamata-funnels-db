@@ -42,14 +42,15 @@ def _sort_key(rep):
     return _label_key(rep.label)
 
 
-# Порядок видов блока — тот же, что и в links_report.KINDS, чтобы «слот не
-# определён» шёл в том же порядке, в котором остальные секции показывают
-# тарифы раньше заявок.
-_KIND_ORDER = {'tariffs': 0, 'applications': 1}
+# Порядок видов блока — тот же, что и в links_report.KIND_ORDER, чтобы «слот
+# не определён» шёл в том же порядке, в котором остальные секции показывают
+# тарифы раньше заявок раньше допродаж.
+_KIND_RANK = {kind: i for i, kind in enumerate(links_report.KIND_ORDER)}
 
 
 def _unslotted_key(item):
-    return _label_key(item.label) + (_KIND_ORDER.get(item.kind, 2), item.row)
+    return _label_key(item.label) + (
+        _KIND_RANK.get(item.kind, len(_KIND_RANK)), item.row)
 
 
 def _orphan_key(block):
@@ -90,11 +91,13 @@ def collect(sheets, db_path):
         if funnel is None or funnel.status != ACTIVE:
             continue
         label = links_db.label_of(funnel)
-        diffs = {}
-        for kind in ('tariffs', 'applications'):
+        kinds = {}
+        for kind in links_report.KIND_ORDER:
             pairs = links_compare.sheet_items(match.block, kind, room_slots)
-            diffs[kind] = links_compare.diff_items(
-                pairs, db_blocks.get((match.funnel_id, kind), []))
+            db_items = db_blocks.get((match.funnel_id, kind), [])
+            kinds[kind] = links_report.KindReport(
+                has_block=bool(db_items),
+                diff=links_compare.diff_items(pairs, db_items))
             # Слот ссылки без якорной комнаты берём с самой ссылки
             # (Link.row), а не со строки заголовка блока (match.block.row):
             # sheet_items уже свернул пары (слот, адрес) и потерял, на какой
@@ -106,15 +109,13 @@ def collect(sheets, db_path):
                 slot = room_slots.get(link.anchor) if link.anchor else None
                 if slot is None:
                     unslotted.append(links_report.Unslotted(
-                        label=label, block_name=match.block.name, kind=kind,
+                        label=label, block_name=match.block.name,
+                        sheet=match.block.sheet, kind=kind,
                         url=link.url, row=link.row))
         reports.append(links_report.FunnelReport(
             label=label, product_name=funnel.product_name,
             block_name=match.block.name, sheet=match.block.sheet,
-            row=match.block.row, key=match.key,
-            has_tariffs=bool(db_blocks.get((match.funnel_id, 'tariffs'))),
-            has_apps=bool(db_blocks.get((match.funnel_id, 'applications'))),
-            tariffs=diffs['tariffs'], apps=diffs['applications']))
+            row=match.block.row, key=match.key, kinds=kinds))
     reports.sort(key=_sort_key)
     unslotted.sort(key=_unslotted_key)
     return result, reports, unslotted, funnels, active_total
@@ -153,17 +154,24 @@ def main(argv=None):
              else datetime.date.today())
 
     cache = args.cache
-    if args.refresh and cache and os.path.exists(cache):
-        # Устаревший снимок — это не «безобидно медленнее», а уверенно
-        # неверный отчёт: расхождения посчитаются по вчерашним ссылкам.
-        # Удаляем файл, чтобы load_sheets не увидел кеш и пошёл в сеть; она
-        # же и перезапишет файл свежими данными.
-        os.remove(cache)
-
-    from_cache = bool(cache) and os.path.exists(cache)
+    # from_cache/cache_mtime читаются ДО фетча и ДО --refresh: возраст
+    # печатается только когда прогон реально читает старый файл, а не идёт
+    # в сеть.
+    from_cache = bool(cache) and os.path.exists(cache) and not args.refresh
     cache_mtime = os.path.getmtime(cache) if from_cache else None
 
-    sheets = links_fetch.load_sheets(cache)
+    if args.refresh and cache:
+        # B1: сначала забираем свежие данные, потом перезаписываем файл —
+        # никогда наоборот. Раньше кеш стирался ДО похода в сеть: неудачный
+        # фетч (таблица расшарена не туда, ноутбук офлайн) уничтожал
+        # единственный рабочий снимок именно тогда, когда он нужнее всего, и
+        # инструмент переставал запускаться вовсе. _write_cache сама
+        # атомарна (пишет во временный файл и переименовывает), так что
+        # порядок «фетч → запись» ничем не платит за надёжность.
+        sheets = links_fetch._fetch_from_api()
+        links_fetch._write_cache(cache, sheets)
+    else:
+        sheets = links_fetch.load_sheets(cache)
     print(f'Листов видимых: {len(sheets)}')
     if from_cache:
         print(f'Таблица взята из кеша {cache}, возраст снимка: '
@@ -179,7 +187,12 @@ def main(argv=None):
                                      unslotted, funnels, active_total)
     out_path = args.out or os.path.join(
         links_settings.OUT_DIR, f'sheet-links-{today.isoformat()}.md')
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    out_dir = os.path.dirname(out_path)
+    if out_dir:
+        # B4: bare-имя файла (--out report.md) даёт dirname('') == '' —
+        # makedirs('') падает FileNotFoundError. Пустой dirname значит
+        # «текущая директория», её создавать не нужно и незачем пытаться.
+        os.makedirs(out_dir, exist_ok=True)
     with open(out_path, 'w', encoding='utf-8') as fh:
         fh.write(text)
     print(f'Отчёт: {out_path}')
