@@ -110,3 +110,46 @@ def test_diff_unknown_sheet_slot_does_not_count_as_disagreement():
                    [FakeItem('15', 'https://t.ksamata.ru/a')])
     assert d.slot_differs == []
     assert d.same == 1
+
+
+def test_diff_unknown_db_slot_does_not_count_as_disagreement():
+    """Симметрично предыдущему: неизвестный слот бывает и в базе (4 такие
+    записи на живой базе, обычно из блоков в режиме common)."""
+    d = diff_items([('15', 'https://t.ksamata.ru/a')],
+                   [FakeItem(None, 'https://t.ksamata.ru/a')])
+    assert d.slot_differs == []
+    assert d.same == 1
+
+
+def test_diff_same_url_two_known_slots_on_both_sides_is_not_a_phantom_disagreement():
+    """f83/f92: один тарифный адрес законно обслуживает оба слота разом.
+    Обе стороны несут пару (19, u) и (15, u) — это два совпадения, а не
+    расхождение по тому, какой слот "выжил" при сравнении по адресу."""
+    d = diff_items(
+        [('19', 'https://t.ksamata.ru/a'), ('15', 'https://t.ksamata.ru/a')],
+        [FakeItem('19', 'https://t.ksamata.ru/a'),
+         FakeItem('15', 'https://t.ksamata.ru/a')])
+    assert d.same == 2
+    assert d.only_sheet == []
+    assert d.only_db == []
+    assert d.slot_differs == []
+
+
+def test_diff_single_slot_each_side_still_reports_slot_differs():
+    d = diff_items([('19', 'https://t.ksamata.ru/a')],
+                   [FakeItem('15', 'https://t.ksamata.ru/a')])
+    assert d.slot_differs == [('https://t.ksamata.ru/a', '19', '15')]
+    assert d.only_sheet == []
+    assert d.only_db == []
+
+
+def test_diff_sheet_has_extra_slot_db_lacks_is_a_real_only_sheet_finding():
+    """Лист несёт адрес в обоих слотах, база — только в одном: это не
+    расхождение слота, а честная нехватка строки в базе."""
+    d = diff_items(
+        [('19', 'https://t.ksamata.ru/a'), ('15', 'https://t.ksamata.ru/a')],
+        [FakeItem('19', 'https://t.ksamata.ru/a')])
+    assert d.same == 1
+    assert d.only_sheet == [('15', 'https://t.ksamata.ru/a')]
+    assert d.only_db == []
+    assert d.slot_differs == []
