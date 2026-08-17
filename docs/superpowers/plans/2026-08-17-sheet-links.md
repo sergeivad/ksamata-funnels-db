@@ -398,9 +398,16 @@ def parse_blocks(sheet_title, rows):
             continue
         if cur is None:
             continue
-        slug = room_slug(cell(row, COL_WEBINAR)) or room_slug(cell(row, COL_REPLAY))
+        # Обе комнаты строки идут в ключ матчинга; якорем служит вебинарная,
+        # а повтор — только если вебинарной в строке нет.
+        webinar_slug = room_slug(cell(row, COL_WEBINAR))
+        replay_slug = room_slug(cell(row, COL_REPLAY))
+        slug = webinar_slug or replay_slug
+        if webinar_slug:
+            cur.rooms.add(webinar_slug)
+        if replay_slug:
+            cur.rooms.add(replay_slug)
         if slug:
-            cur.rooms.add(slug)
             last_slug = slug
         note = cell(row, COL_NOTE)
         for col, bucket in ((COL_TARIFF, cur.tariffs), (COL_APP, cur.apps)):
