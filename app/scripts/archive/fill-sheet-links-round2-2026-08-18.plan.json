@@ -1,0 +1,282 @@
+{
+  "generated": "2026-08-18",
+  "source": "гугл-таблица «Воронки ссылки», раздел «Можно залить»",
+  "blocks": [
+    {
+      "funnel": "f24",
+      "kind": "applications",
+      "mode": "by_time",
+      "enabled": true,
+      "items": [
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://gc.ksamata.ru/dtx/tarif/max-int-yr"
+        },
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://gc.ksamata.ru/dtx/tarif/max-yr"
+        },
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://gc.ksamata.ru/dtx/tarif/curator-yr"
+        }
+      ]
+    },
+    {
+      "funnel": "f34",
+      "kind": "tariffs",
+      "mode": "by_time",
+      "enabled": true,
+      "items": [
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://t.ksamata.ru/tkm/tarif-rsya"
+        },
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://t.ksamata.ru/tkm/tarifz-rsya"
+        }
+      ]
+    },
+    {
+      "funnel": "f34",
+      "kind": "applications",
+      "mode": "by_time",
+      "enabled": true,
+      "items": [
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://gc.ksamata.ru/tkm/tarif/curator_rsya"
+        }
+      ]
+    },
+    {
+      "funnel": "f37",
+      "kind": "applications",
+      "mode": "by_time",
+      "enabled": true,
+      "items": [
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://gc.ksamata.ru/dtx/tarif/curator-yons"
+        },
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://gc.ksamata.ru/dtx/tarif/max-yons"
+        },
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://gc.ksamata.ru/dtx/tarif/max-int-yons"
+        },
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://gc.ksamata.ru/dtx/tarif/transform-yons"
+        }
+      ]
+    },
+    {
+      "funnel": "f61",
+      "kind": "tariffs",
+      "mode": "by_time",
+      "enabled": true,
+      "items": [
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://t.ksamata.ru/gp/tarif-1y"
+        },
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://t.ksamata.ru/gp/tarif-zy"
+        },
+        {
+          "slot": "15",
+          "label": "",
+          "url": "https://t.ksamata.ru/gp/tarif-yl"
+        },
+        {
+          "slot": "15",
+          "label": "",
+          "url": "https://t.ksamata.ru/gp/tarif-yz"
+        }
+      ]
+    },
+    {
+      "funnel": "f61",
+      "kind": "applications",
+      "mode": "by_time",
+      "enabled": true,
+      "items": [
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://gc.ksamata.ru/gp/tarif/curator-y"
+        },
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://gc.ksamata.ru/gp/tarif/max-y"
+        },
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://gc.ksamata.ru/gp/tarif/max-int-y"
+        },
+        {
+          "slot": "15",
+          "label": "",
+          "url": "https://gc.ksamata.ru/gp/tarif/y-curator"
+        },
+        {
+          "slot": "15",
+          "label": "",
+          "url": "https://gc.ksamata.ru/gp/tarif/y-max"
+        },
+        {
+          "slot": "15",
+          "label": "",
+          "url": "https://gc.ksamata.ru/gp/tarif/y-max-int"
+        }
+      ]
+    },
+    {
+      "funnel": "f61",
+      "kind": "upsell",
+      "mode": "common",
+      "enabled": true,
+      "items": [
+        {
+          "slot": null,
+          "label": "",
+          "url": "https://gc.ksamata.ru/meditation-gpy"
+        }
+      ]
+    },
+    {
+      "funnel": "f69",
+      "kind": "tariffs",
+      "mode": "by_time",
+      "enabled": true,
+      "items": [
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://t.ksamata.ru/dtx/tarif-1sns"
+        },
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://t.ksamata.ru/dtx/tarif-2sns"
+        },
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://t.ksamata.ru/dtx/tarif-2zsns"
+        },
+        {
+          "slot": "15",
+          "label": "",
+          "url": "https://t.ksamata.ru/dtx/tarif-1sns"
+        },
+        {
+          "slot": "15",
+          "label": "",
+          "url": "https://t.ksamata.ru/dtx/tarif-2sns"
+        },
+        {
+          "slot": "15",
+          "label": "",
+          "url": "https://t.ksamata.ru/dtx/tarif-2zsns"
+        }
+      ]
+    },
+    {
+      "funnel": "f69",
+      "kind": "applications",
+      "mode": "by_time",
+      "enabled": true,
+      "items": [
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://gc.ksamata.ru/dtx/tarif/max-int-sns"
+        },
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://gc.ksamata.ru/dtx/tarif/max-sns"
+        },
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://gc.ksamata.ru/dtx/tarif/curator-sns"
+        },
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://gc.ksamata.ru/dtx/tarif/transform-sns"
+        }
+      ]
+    },
+    {
+      "funnel": "f69",
+      "kind": "upsell",
+      "mode": "common",
+      "enabled": true,
+      "items": [
+        {
+          "slot": null,
+          "label": "",
+          "url": "https://gc.ksamata.ru/meditation-boosns"
+        },
+        {
+          "slot": null,
+          "label": "",
+          "url": "https://gc.ksamata.ru/abl-boosns"
+        }
+      ]
+    },
+    {
+      "funnel": "f78",
+      "kind": "tariffs",
+      "mode": "by_time",
+      "enabled": true,
+      "items": [
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://t.ksamata.ru/tkm/tarif-nr"
+        },
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://t.ksamata.ru/tkm/tarifz-nr"
+        }
+      ]
+    },
+    {
+      "funnel": "f78",
+      "kind": "applications",
+      "mode": "by_time",
+      "enabled": true,
+      "items": [
+        {
+          "slot": "19",
+          "label": "",
+          "url": "https://gc.ksamata.ru/tkm/tarif/curator_nr"
+        }
+      ]
+    }
+  ]
+}
