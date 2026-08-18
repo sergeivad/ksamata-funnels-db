@@ -70,7 +70,16 @@ def _dead_active_key(item):
 def collect(sheets, db_path):
     blocks = []
     for title, rows in sheets.items():
-        blocks += links_sheet.parse_blocks(title, rows)
+        # Раскладку определяем для КАЖДОГО листа: она различается (ТКМ,
+        # ЧО, Детокс + ич, Жизнь, ЗВ, ДББ, РД — семь листов из 26), и
+        # чтение по номерам когда-то увело предсписок ТКМ в допродажи.
+        layout = links_sheet.resolve_columns(rows)
+        if layout is None:
+            # Молчать нельзя: лист будет прочитан обычной раскладкой, и
+            # это может оказаться неверно — пусть человек знает.
+            print(f'  ! лист «{title}»: строку заголовков не нашёл, '
+                  f'читаю обычной раскладкой')
+        blocks += links_sheet.parse_blocks(title, rows, layout)
 
     con = links_db.connect_ro(db_path)
     try:
