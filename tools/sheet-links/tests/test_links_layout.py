@@ -141,3 +141,38 @@ def test_sheet_without_gk_column_yields_no_applications():
     b = parse_blocks('ЧО', rows, resolve_columns(rows))[0]
     assert [l.url for l in b.tariffs] == ['https://t.ksamata.ru/cho/tarif-vk']
     assert b.apps == []
+
+
+# --- несколько адресов в одной ячейке --------------------------------------
+
+def links(rows, field='apps'):
+    return [l.url for l in getattr(parse_blocks('Л', rows)[0], field)]
+
+
+def test_cell_with_several_urls_becomes_several_items():
+    """Живой случай: БОО стр.130 держит три адреса заявки через перенос
+    строки. Склеенное значение админка отвергает — «в ссылке лишний текст»."""
+    rows = [HEAD_STD, ['', '[БОО ЯР]'],
+            ['', '1 день', 'https://gc.ksamata.ru/boo1-yr', '', '', '', '',
+             'https://gc.ksamata.ru/a\nhttps://gc.ksamata.ru/b\n'
+             'https://gc.ksamata.ru/c']]
+    assert links(rows) == ['https://gc.ksamata.ru/a',
+                           'https://gc.ksamata.ru/b',
+                           'https://gc.ksamata.ru/c']
+
+
+def test_single_url_is_passed_through_untouched():
+    """Слипшаяся подпись — не наш случай: её должна увидеть проверка
+    url-field, а не проглотить разбор."""
+    rows = [HEAD_STD, ['', '[БОО ЯР]'],
+            ['', '1 день', '', '', '', '', '', 'https://gc.ksamata.ru/a (ADS)']]
+    assert links(rows) == ['https://gc.ksamata.ru/a (ADS)']
+
+
+def test_several_urls_in_the_tariff_cell_split_by_host_each():
+    rows = [HEAD_STD, ['', '[БОО ЯР]'],
+            ['', '1 день', '', '', '',
+             'https://t.ksamata.ru/a\nhttps://gc.ksamata.ru/b']]
+    b = parse_blocks('Л', rows)[0]
+    assert [l.url for l in b.tariffs] == ['https://t.ksamata.ru/a']
+    assert [l.url for l in b.upsell] == ['https://gc.ksamata.ru/b']

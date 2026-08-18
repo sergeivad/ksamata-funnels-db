@@ -76,6 +76,10 @@ ROOM_RE = re.compile(
 # скобка (в таблице встречается и опечатка `)`), дальше необязательный хвост.
 HEAD_RE = re.compile(r'^\[([^\[\]]+?)[\]\)]\s*(.*)$', re.S)
 
+# Адрес внутри ячейки. Нужен только чтобы разобрать ячейку с НЕСКОЛЬКИМИ
+# адресами — см. _urls_in.
+URL_TOKEN = re.compile(r'https?://\S+')
+
 
 @dataclass(frozen=True)
 class SheetLayout:
@@ -119,6 +123,25 @@ def room_slug(url):
 
 def _host(url):
     return (urlsplit(url).hostname or '').lower()
+
+
+def _urls_in(value):
+    """Адреса одной ячейки. Обычно один, но не всегда.
+
+    На листе БОО (строка 130, заявки) одна ячейка держит три адреса через
+    перенос строки. Отдать её одним значением нельзя: админка отвергает
+    такую строку как «в ссылке лишний текст» (checkUrlField, класс A), и
+    заливка упала бы четырёхсотым на строке, которую человек не трогал.
+
+    Дробим ТОЛЬКО когда адресов правда несколько. Одиночное значение
+    отдаём как есть — слипшаяся подпись вида `…/a (ADS)` должна дойти до
+    той же проверки и быть замеченной, а не тихо исчезнуть при разборе.
+    """
+    v = (value or '').strip()
+    if not v.lower().startswith(('http://', 'https://')):
+        return []
+    found = URL_TOKEN.findall(v)
+    return found if len(found) > 1 else [v]
 
 
 def resolve_columns(rows, scan=HEADER_SCAN_ROWS):
@@ -234,13 +257,11 @@ def parse_blocks(sheet_title, rows, layout=None):
         if slug:
             last_slug = slug
         note = cell(row, layout.note)
-        tariff_url = cell(row, layout.tariff)
-        if tariff_url.lower().startswith(('http://', 'https://')):
+        for tariff_url in _urls_in(cell(row, layout.tariff)):
             link = Link(row=n, url=tariff_url, anchor=last_slug, note=note)
             bucket = cur.tariffs if _host(tariff_url) == TARIFF_HOST else cur.upsell
             bucket.append(link)
-        app_url = cell(row, layout.app)
-        if app_url.lower().startswith(('http://', 'https://')):
+        for app_url in _urls_in(cell(row, layout.app)):
             cur.apps.append(Link(row=n, url=app_url, anchor=last_slug,
                                  note=note))
     for block in blocks:
