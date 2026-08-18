@@ -13,6 +13,7 @@
 
 import argparse
 import datetime
+import json
 import os
 import sys
 
@@ -23,6 +24,7 @@ import links_compare    # noqa: E402
 import links_db         # noqa: E402
 import links_fetch      # noqa: E402
 import links_match      # noqa: E402
+import links_plan       # noqa: E402
 import links_report     # noqa: E402
 import links_settings   # noqa: E402
 import links_sheet      # noqa: E402
@@ -175,6 +177,8 @@ def main(argv=None):
                         help='не читать существующий кеш — забрать таблицу '
                              'из сети заново и перезаписать файл кеша')
     parser.add_argument('--today', help='дата прогона ГГГГ-ММ-ДД, для тестов')
+    parser.add_argument('--plan', help='дополнительно выписать раздел «Можно '
+                                       'залить» в JSON для скрипта заливки')
     args = parser.parse_args(argv)
 
     today = (datetime.date.fromisoformat(args.today) if args.today
@@ -224,6 +228,21 @@ def main(argv=None):
     with open(out_path, 'w', encoding='utf-8') as fh:
         fh.write(text)
     print(f'Отчёт: {out_path}')
+
+    if args.plan:
+        blocks, skips = links_plan.build_plan(reports)
+        # Скрипт заливки решает по прод-базе, а не по этой: он пишет только
+        # в пустой блок. План поэтому — предложение, а не приказ.
+        with open(args.plan, 'w', encoding='utf-8') as fh:
+            json.dump(links_plan.plan_json(today, blocks), fh,
+                      ensure_ascii=False, indent=2)
+            fh.write('\n')
+        positions = sum(len(b.items) for b in blocks)
+        print(f'План заливки: {args.plan} — {len(blocks)} блоков, '
+              f'{positions} позиций')
+        for skip in skips:
+            print(f'  ! {skip.label} {skip.kind}: {skip.reason}')
+
     return 0
 
 
