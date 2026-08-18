@@ -10,6 +10,9 @@ Navigation for this repo's documentation and planning notes.
 - **Orientation:** [../README.md](../README.md)
 - **Local setup & DB contract:** [development.md](development.md)
 - **File-level map:** [project-map.md](project-map.md)
+- **Карта таблицы «Воронки ссылки»:** [sheet-links-source-map.md](sheet-links-source-map.md)
+  — какая колонка на каком листе, сколько в ней адресов, во что превращается
+  и чему нельзя верить. Начинать с неё любую сборку ссылок из этой таблицы.
 - **Эталон f-кодов (LeakEngine):** [leak-engine.md](leak-engine.md) — откуда
   берётся `funnels.front_code` и как забрать реестр через внутренний API.
 
@@ -49,7 +52,7 @@ the current state. Now split by lifetime, not by session:
 | [plans/2026-08-04-table-sync.md](plans/2026-08-04-table-sync.md) | Сверка с таблицей владельца «Ссылки для сбора статы» | **Active** — применены лендинги и даты (25 воронок), `f28` переведён на нового подрядчика, `f84` активирован. Решено не заводить восемь квизов и прямых продаж. Открыты шесть пунктов: статус `f43`, живая ВК NR «ЖИВО Суставы 490р», комнаты дней 4-5, семь статусов, второй лист (зарубежные), дашборды. **По комнатам таблица не эталон** — она копирует мёртвую `room_id_f1` |
 | [plans/2026-08-04-leak-tag-filter-audit.md](plans/2026-08-04-leak-tag-filter-audit.md) | Сверка ЛИК ↔ база **по множествам заказов**, а не по строкам тегов | **Active** — **начинать с него любую сессию по ЛИК.** Замер на `deal_export_2026-08-01`: выборки совпали у 52 воронок из 60, но наборы тегов — лишь у 37, то есть 15 совпадений сегодняшние и не гарантированы. Сделано: комнаты `f84` (10 шт.) перенесены локально. Открыты три **неизвестных**, без ответа на которые правки правил в ЛИК запрещены: что значит `effectiveFrom = null` (стоит у 43 наборов из 60), есть ли откат активации, снимает ли `INACTIVE` воронку с атрибуции |
 | [reviews/2026-07-26-service-review.md](reviews/2026-07-26-service-review.md) | Service-wide review: 7 dimensions, 48 verified findings + 4-wave action plan | **Closed 2026-07-31** — 40 of 48 fixed across seven waves. Wave 1 (the anonymous-write hole) shipped as the auth model «читают все, пишут свои» + an inert prod kill-switch. Of the eight not fixed, none is debt: DNS rebinding and CSRF were deliberate calls, three are informational, the rest are `tools/audit` tails owned by the tag sessions |
-| [superpowers/specs/2026-08-17-sheet-links-design.md](superpowers/specs/2026-08-17-sheet-links-design.md) | Сверка таблицы «Воронки ссылки» с блоками `tariffs`/`applications`/`upsell` (`tools/sheet-links/`) | **Active** — инструмент собран и отчёт получен на живых данных, читает только. Заливка результата в прод (через его HTTP API, не в репозиторную базу) — отдельная задача, остаётся открытой |
+| [superpowers/specs/2026-08-17-sheet-links-design.md](superpowers/specs/2026-08-17-sheet-links-design.md) | Сверка таблицы «Воронки ссылки» с блоками `tariffs`/`applications`/`upsell` (`tools/sheet-links/`) | **Shipped 18.08.2026** — инструмент собран, разбор починен (раскладка колонок определяется по листу, заголовок блока — по началу строки), результат залит в прод двумя заходами: 57 блоков, 143 позиции. Живая карта источника — [sheet-links-source-map.md](sheet-links-source-map.md); следующие виды ссылок (`records`, `bonuses`, `oto`, `landings`) описаны там же |
 
 ## Shipped — historical record
 

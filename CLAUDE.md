@@ -25,7 +25,7 @@ build and export the same database from Excel sources.
 | `tools/data-export/` | Python scripts that export the DB to XLSX reports. |
 | `tools/audit/` | Tag drift map: reconciles the GetCourse offer registry, `deal_export` history, and the DB. Read-only; output is an XLSX in `data/generated/`. See [tools/audit/README.md](tools/audit/README.md). |
 | `tools/reconcile/` | **Сверка источников по воронкам** — база ↔ таблица маркетологов ↔ выгрузка заказов, в один markdown-отчёт по этапам разбора. Read-only. **Начинать с него любую сессию по сверке данных.** См. [tools/reconcile/README.md](tools/reconcile/README.md) и [порядок разбора](docs/plans/2026-08-04-razbor-design.md). |
-| `tools/sheet-links/` | **Тарифы, оформление заявки и допродажи из таблицы «Воронки ссылки»** — сверка гугл-таблицы маркетологов с блоками `tariffs`/`applications`/`upsell` активных воронок (колонка F листа делится по хосту: `t.ksamata.ru` → тарифы, `gc.ksamata.ru` → допродажи/дожим). Read-only, отчёт в `data/generated/`. См. [tools/sheet-links/README.md](tools/sheet-links/README.md). |
+| `tools/sheet-links/` | **Ссылки воронок из таблицы «Воронки ссылки»** — сверка гугл-таблицы маркетологов с блоками воронки. Сейчас собирает `tariffs`/`applications`/`upsell`; колонка продажной страницы делится по хосту (`t.ksamata.ru` → тарифы, `gc.ksamata.ru` → допродажи/дожим). Read-only, отчёт в `data/generated/`, план заливки — флагом `--plan`. **Колонки ищутся по названию: раскладка листов различается, жёсткие номера верны лишь для 19 из 26.** См. [tools/sheet-links/README.md](tools/sheet-links/README.md) и **[карту источника](docs/sheet-links-source-map.md) — с неё начинать любую новую сборку ссылок из этой таблицы**. |
 | `docs/` | Development notes, project map, docs index, and historical plans/specs. See [docs/README.md](docs/README.md). |
 
 `ksamata-leak-funnels/` (local reference dataset) and `*.db.bak_*` backups are
@@ -950,6 +950,9 @@ invisible until the next container start.
 - [docs/README.md](docs/README.md) — index of plans and specs (shipped vs active).
 - [docs/development.md](docs/development.md) — local setup and DB contract detail.
 - [docs/project-map.md](docs/project-map.md) — file-level map.
+- [docs/sheet-links-source-map.md](docs/sheet-links-source-map.md) — карта
+  таблицы «Воронки ссылки»: колонки по листам, объёмы, во что превращается,
+  ловушки. **Начинать с неё любую сборку ссылок из этой таблицы.**
 - [docs/leak-engine.md](docs/leak-engine.md) — LeakEngine: эталон F-кодов,
   чтение и запись реестра.
 - Живые планы: [ux-improvements-backlog](docs/plans/2026-07-18-ux-improvements-backlog.md)
