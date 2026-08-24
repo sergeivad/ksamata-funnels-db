@@ -958,9 +958,14 @@ invisible until the next container start.
 - Живые планы: [ux-improvements-backlog](docs/plans/2026-07-18-ux-improvements-backlog.md)
   (открытый бэклог), [tag-drift-triage](docs/plans/2026-07-25-tag-drift-triage.md)
   (начинать с него любую сессию по тегам),
+  [leak-new-funnels 24.08](docs/plans/2026-08-24-leak-new-funnels.md)
+  (**начинать с него любую сессию по ЛИК** — заведение воронок, обновлённый
+  контракт формы, правило замены легаси-фильтров и почему она заблокирована),
+  [leak-ui-recon 24.08](docs/plans/2026-08-24-leak-ui-recon.md) (бриф на
+  разведку интерфейса ЛИК),
   [leak-tag-filter-audit 04.08](docs/plans/2026-08-04-leak-tag-filter-audit.md)
-  (**начинать с него любую сессию по ЛИК** — там же три открытых неизвестных,
-  без ответа на которые правки правил в ЛИК запрещены),
+  (три открытых неизвестных; первое из них — что значит `effectiveFrom = null` —
+  закрыто ответом вендора 24.08),
   [leak-sync 02.08](docs/plans/2026-08-02-leak-sync.md) и
   [leak-todo 02.08](docs/plans/2026-08-02-leak-todo.md) (предыдущие сверки с ЛИК),
   [table-sync 04.08](docs/plans/2026-08-04-table-sync.md) — сверка с таблицей
