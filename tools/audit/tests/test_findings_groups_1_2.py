@@ -8,7 +8,6 @@ from findings import (
     find_extra_axes,
     find_missing_in_getcourse,
     find_unresolved,
-    find_unsupported_stage,
     group_observations,
 )
 from normalize import AUTOFUNNEL_TAG, parse_tagset
@@ -35,8 +34,14 @@ def obs(raw, day, deal_id='1'):
                        deal_created='2026-05-01 00:00:00')
 
 
-def test_class_titles_cover_all_sixteen():
-    assert sorted(CLASS_TITLES) == list(range(1, 17))
+def test_class_titles_are_stable_numbers_without_gaps_reused():
+    """Номера классов — адрес в отчёте, их не переиспользуют.
+
+    3 и 6 сняты 2026-08-25 вместе с этапом «Предписок», ставшим сценарием
+    базы (фаза 14). Дыра на их месте намеренная: по номерам ищут в отчётах
+    прошлых прогонов, и «класс 6» не должен однажды начать значить другое.
+    """
+    assert sorted(CLASS_TITLES) == [1, 2, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 
 
 def test_group_observations_aggregates_by_key_type_and_tagset():
@@ -187,34 +192,20 @@ def test_class_2_registry_filter_is_off_when_the_registry_is_empty():
     assert [f.cls for f in found] == [2]
 
 
-def test_class_3_reports_predpisok_stage():
-    groups = group_observations([obs(AV + '|АВ Этап: Предписок', 2)])
-    found = find_unsupported_stage(groups)
-    assert [f.cls for f in found] == [3]
-    assert 'Предписок' in found[0].subject
+def test_predpisok_stage_is_a_scenario_not_a_finding():
+    """Этап «Предписок» — пятый сценарий базы, а не находка.
 
-
-def test_class_3_silent_when_stage_absent():
-    groups = group_observations([obs(AV + '|АВ Этап: Регистрация', 2)])
-    assert find_unsupported_stage(groups) == []
-
-
-def test_class_3_collapses_multiple_predpisok_groups_into_one_finding():
-    """Классы 3 и 6 оба видят один и тот же этап на всех группах — владелец
-
-    решил, что класс 3 даёт одну сводную строку (сколько групп и сколько
-    заказов затронуто), а детальный список per-группа остаётся в классе 6.
+    До 2026-08-25 те же группы разбирали классы 3 (сводка) и 6 (список по
+    связкам): в модели базы этап выразить было нечем. Фаза 14 завела сценарий
+    `predspisok`, и наблюдения теперь получают тип, как все остальные, —
+    расхождения по ним разбирает класс 1.
     """
-    raw_a = AV + '|АВ Этап: Предписок'
-    raw_b = ('АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
-             'АВ Направление: РСЯ|АВ Этап: Предписок')
-    groups = group_observations([obs(raw_a, 2, '1'), obs(raw_b, 2, '2')])
-    found = find_unsupported_stage(groups)
-    assert len(found) == 1
-    assert found[0].cls == 3
-    assert 'этапом: 2' in found[0].detail
-    assert 'заказов: 2' in found[0].detail
-    assert found[0].deals == 2
+    groups = group_observations([obs(AV + '|АВ Этап: Предписок', 2)])
+    assert [g.tag_type for g in groups] == ['predspisok']
+    assert [g.reason for g in groups] == [None]
+
+    # Воронка под эту связку в базе есть — сообщать не о чем.
+    assert find_unresolved(groups, INDEX, set(), {}) == []
 
 
 def test_class_4_reports_contradictory_legacy_direction_tags():
@@ -237,10 +228,14 @@ def test_class_5_reports_payment_without_time():
     assert [f.cls for f in found] == [5]
 
 
-def test_class_6_reports_predpisok_as_unresolved():
+def test_predpisok_group_is_no_longer_unresolved():
+    """Обратная сторона снятия класса 6: группа предсписка молчит.
+
+    Раньше она давала находку «типа в модели базы нет». Теперь у неё есть тип,
+    воронка под связку в индексе есть — сообщать не о чем.
+    """
     groups = group_observations([obs(AV + '|АВ Этап: Предписок', 2)])
-    found = find_unresolved(groups, INDEX)
-    assert [f.cls for f in found] == [6]
+    assert find_unresolved(groups, INDEX) == []
 
 
 def test_class_7_reports_known_type_but_unknown_funnel():
@@ -255,17 +250,20 @@ def test_class_7_reports_known_type_but_unknown_funnel():
     assert 'ЩЖ' in found[0].subject
 
 
-def test_classes_5_6_7_are_mutually_exclusive():
-    """Каждая неопознанная группа попадает ровно в один класс."""
+def test_classes_5_and_7_are_mutually_exclusive():
+    """Каждая неопознанная группа попадает ровно в один класс.
+
+    Третьей в наборе была группа предсписка (класс 6) — с фазой 14 она
+    опознаётся и в find_unresolved не доходит вовсе, поэтому здесь её нет.
+    """
     groups = group_observations([
         obs(AV + '|АВ Этап: Оплата', 2, '1'),
-        obs(AV + '|АВ Этап: Предписок', 2, '2'),
         # class 7 требует полный ключ — см. комментарий в тесте выше.
         obs('АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
             'АВ Направление: РСЯ|АВ Этап: Регистрация|' + AUTOFUNNEL_TAG, 2, '3'),
     ])
     found = find_unresolved(groups, INDEX)
-    assert sorted(f.cls for f in found) == [5, 6, 7]
+    assert sorted(f.cls for f in found) == [5, 7]
     assert len(found) == len(groups)
 
 
@@ -333,14 +331,13 @@ def test_class_7_registry_filter_is_off_when_the_registry_is_empty():
     assert [f.cls for f in found] == [7]
 
 
-def test_class_7_registry_filter_does_not_touch_classes_5_and_6():
-    """Фильтр реестра — только про класс 7. Причины 5 и 6 от него не зависят."""
+def test_class_7_registry_filter_does_not_touch_class_5():
+    """Фильтр реестра — только про класс 7. Причина 5 от него не зависит."""
     groups = group_observations([
         obs(AV + '|АВ Этап: Оплата', 2, '1'),
-        obs(AV + '|АВ Этап: Предписок', 2, '2'),
     ])
     found = find_unresolved(groups, INDEX, registry_keys={OTHER_KEY})
-    assert sorted(f.cls for f in found) == [5, 6]
+    assert sorted(f.cls for f in found) == [5]
 
 
 # ─── класс 5: «нет АВ Этап» отделяет воронки от запусков и клуба ──────────────

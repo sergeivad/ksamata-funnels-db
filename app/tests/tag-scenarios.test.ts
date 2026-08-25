@@ -3,11 +3,11 @@ import { scenarioViews, joinTagsForCopy } from '../src/lib/tag-scenarios';
 import { SCENARIOS } from '../src/lib/ab-tags';
 
 describe('scenarioViews', () => {
-  it('у вебинарной воронки четыре строки в каноническом порядке', () => {
+  it('у вебинарной воронки строки идут в каноническом порядке', () => {
     const views = scenarioViews(true, '15:00', '19:00');
     expect(views.map((v) => v.scenario)).toEqual(SCENARIOS);
     expect(views.map((v) => v.label)).toEqual([
-      'Регистрация', 'Оплата 15:00', 'Оплата 19:00', 'Мессенджер',
+      'Регистрация', 'Оплата 15:00', 'Оплата 19:00', 'Мессенджер', 'Предсписок',
     ]);
   });
 
@@ -20,14 +20,14 @@ describe('scenarioViews', () => {
   it('пустая подпись слота подменяется умолчанием, а не оставляет «Оплата »', () => {
     const views = scenarioViews(true, '', '');
     expect(views.map((v) => v.label)).toEqual([
-      'Регистрация', 'Оплата 15:00', 'Оплата 19:00', 'Мессенджер',
+      'Регистрация', 'Оплата 15:00', 'Оплата 19:00', 'Мессенджер', 'Предсписок',
     ]);
   });
 
   it('у безвременной воронки одна строка оплаты — от time_19', () => {
     const views = scenarioViews(false, '15:00', '19:00');
-    expect(views.map((v) => v.scenario)).toEqual(['reg', 'time_19', 'messenger']);
-    expect(views.map((v) => v.label)).toEqual(['Регистрация', 'Оплата', 'Мессенджер']);
+    expect(views.map((v) => v.scenario)).toEqual(['reg', 'time_19', 'messenger', 'predspisok']);
+    expect(views.map((v) => v.label)).toEqual(['Регистрация', 'Оплата', 'Мессенджер', 'Предсписок']);
   });
 });
 

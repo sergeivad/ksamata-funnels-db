@@ -255,16 +255,16 @@ def test_class_5_still_reports_a_live_key():
     assert [f.cls for f in found] == [5]
 
 
-def test_class_6_skips_a_retired_key():
-    """Класс 6 идёт из той же функции и подчиняется той же проверке."""
-    groups = group_observations([obs(RETIRED_AV + '|АВ Этап: Предписок', BEFORE)])
-    assert find_unresolved(groups, {}, frozenset(), {RETIRED_KEY: BEFORE}) == []
+def test_predpisok_group_falls_out_of_find_unresolved_entirely():
+    """Класс 6 снят вместе с фазой 14 — проверка отставки его больше не касается.
 
-
-def test_class_6_still_reports_a_live_key():
-    groups = group_observations([obs(LIVE_AV + '|АВ Этап: Предписок', BEFORE)])
-    found = find_unresolved(groups, {}, frozenset(), {LIVE_KEY: BEFORE})
-    assert [f.cls for f in found] == [6]
+    Группа предсписка теперь опознана (tag_type = 'predspisok') и до ветки
+    отставки не доходит: молчит и на живой связке, и на отставленной.
+    """
+    live = group_observations([obs(LIVE_AV + '|АВ Этап: Предписок', BEFORE)])
+    assert find_unresolved(live, {}, frozenset(), {LIVE_KEY: BEFORE}) == []
+    retired = group_observations([obs(RETIRED_AV + '|АВ Этап: Предписок', BEFORE)])
+    assert find_unresolved(retired, {}, frozenset(), {RETIRED_KEY: BEFORE}) == []
 
 
 # ─── класс 15 подчиняется тому же правилу отставки ───────────────────────────

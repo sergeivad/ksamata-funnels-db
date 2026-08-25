@@ -12,7 +12,7 @@ import {
   productDurations,
   funnelTypes,
 } from '../db/schema';
-import { AXIS_PREFIXES, isAxisTag, type AbAxes } from './ab-tags';
+import { AXIS_PREFIXES, isAxisTag, type AbAxes, type Scenario } from './ab-tags';
 import { FUNNEL_TYPE_KIND } from './funnel-type';
 
 // Explicit whitelist — never interpolate `kind` into SQL
@@ -323,7 +323,7 @@ function renameOrMergeTag(db: AnyDB, oldName: string, newName: string): void {
     })
     .from(funnelTags)
     .where(eq(funnelTags.tagId, oldTag.id))
-    .all() as { funnelId: number; tagType: 'reg' | 'time_19' | 'time_15' | 'messenger'; position: number }[];
+    .all() as { funnelId: number; tagType: Scenario; position: number }[];
 
   for (const r of rows) {
     db.insert(funnelTags)
@@ -346,7 +346,7 @@ export type RenameRefResult =
  * Rename a reference value. Validates uniqueness within the same table.
  * For products/contractors/channels/directions, also renames (or merges) the
  * mirrored "АВ <Axis>: <value>" tag so every funnel referencing it — via
- * funnel_tags, for all scenario tag types (reg/time_19/time_15/messenger) —
+ * funnel_tags, for every scenario tag type (see SCENARIOS in ab-tags.ts) —
  * picks up the new text immediately. Funnel names are derived live from
  * these tags (see funnelName/getAxesForFunnel in lib/funnels.ts), so no
  * further per-funnel update is needed.

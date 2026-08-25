@@ -12,6 +12,7 @@ import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import { runMigratePhase12 } from '../scripts/migrate-phase12';
+import { runMigratePhase14 } from '../scripts/migrate-phase14';
 import { createFunnel, updateFunnel, getFunnel, applyTagOverrides } from '../src/lib/funnels';
 import { replaceOverrides } from '../src/lib/tag-overrides';
 import type { OverrideMap, Scenario } from '../src/lib/ab-tags';
@@ -29,6 +30,7 @@ runMigrateMessengerTagType(sqlite);
 runMigratePhase5(sqlite);
 runMigratePhase8(sqlite);
 runMigratePhase12(sqlite);
+runMigratePhase14(sqlite);
 const db = drizzle(sqlite, { schema });
 
 afterAll(() => { sqlite.close(); if (existsSync(TMP_DB)) unlinkSync(TMP_DB); });
@@ -72,6 +74,7 @@ describe('Variant A — overrides survive an axis change', () => {
       time_15: { add: [], remove: [] },
       time_19: { add: [], remove: [] },
       messenger: { add: [], remove: [] },
+      predspisok: { add: [], remove: [] },
     };
     replaceOverrides(db, f.id, ov);
     updateFunnel(db, f.id, { product: 'СУСТАВЫ' } as any); // re-materialize, axis unchanged
@@ -144,6 +147,7 @@ describe('тип воронки участвует в материализаци
       time_15: { add: [], remove: [] },
       time_19: { add: [], remove: [] },
       messenger: { add: [], remove: [] },
+      predspisok: { add: [], remove: [] },
     });
     updateFunnel(db, created.id, { product: 'ЖИВО' } as any); // ре-материализация, оси не менялись
 
@@ -166,6 +170,7 @@ describe('тип без эфиров по времени', () => {
   const emptyOv = (): OverrideMap => ({
     reg: { add: [], remove: [] }, time_15: { add: [], remove: [] },
     time_19: { add: [], remove: [] }, messenger: { add: [], remove: [] },
+    predspisok: { add: [], remove: [] },
   });
 
   it('в материализованных тегах времени нет ни в одном сценарии', () => {

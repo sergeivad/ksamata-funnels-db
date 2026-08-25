@@ -14,6 +14,7 @@ import { join } from 'path';
 import { NextRequest } from 'next/server';
 import { copyDbForTest } from './helpers/db';
 import { runMigratePhase12 } from '../scripts/migrate-phase12';
+import { runMigratePhase14 } from '../scripts/migrate-phase14';
 
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
 const TMP_DB = join(tmpdir(), `ksamata_refs_id_route_test_${Date.now()}.db`);
@@ -29,6 +30,7 @@ const rawSqlite = new Database(TMP_DB);
 // Копия реальной базы фазу 12 ещё не проходила — без неё нет колонки has_time,
 // на которой держится и признак типа, и материализация тегов.
 runMigratePhase12(rawSqlite);
+runMigratePhase14(rawSqlite);
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 let refsGET: typeof import('../src/app/api/refs/[kind]/route').GET;

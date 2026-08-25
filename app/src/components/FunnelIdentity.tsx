@@ -11,8 +11,14 @@ import RefSelect from './RefSelect';
 import { useCanEdit } from './AuthProvider';
 import { STATUS_META } from '@/lib/status';
 import { FUNNEL_TYPE_KIND, FUNNEL_TYPE_LABEL } from '@/lib/funnel-type';
+import { SCENARIOS, type Scenario } from '@/lib/ab-tags';
 
-type Scenario = 'reg' | 'pay' | 'messenger';
+/**
+ * Ключ ВИДИМОЙ вкладки — не то же самое, что сценарий хранения: две оплаты
+ * прячутся за одной вкладкой «Оплата» с подпереключателем времени. Остальные
+ * вкладки отображаются в сценарий один в один.
+ */
+type TabKey = 'reg' | 'pay' | 'messenger' | 'predspisok';
 type TimeSlot = '15' | '19';
 
 type IdentitySnapshot = {
@@ -81,7 +87,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   onDirtyChangeRef.current = onDirtyChange;
 
   // AV-tags block: which offer scenario's tag set to show/copy.
-  const [scenario, setScenario] = useState<Scenario>('reg');
+  const [scenario, setScenario] = useState<TabKey>('reg');
   const [timeSlot, setTimeSlot] = useState<TimeSlot>('19');
   // Which tag (or '__all__') currently flashes its copy result.
   const [copyFlash, setCopyFlash] = useState<{ marker: string; ok: boolean } | null>(null);
@@ -92,19 +98,21 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   const timeless = !funnel.typeHasTime;
 
   // Map the visible tab (+ pay timeSlot) to the canonical Scenario key.
-  const activeScenario: 'reg' | 'time_15' | 'time_19' | 'messenger' =
+  const activeScenario: Scenario =
     scenario === 'reg' ? 'reg'
       : scenario === 'messenger' ? 'messenger'
-        : timeless ? 'time_19'
-          : timeSlot === '15' ? 'time_15' : 'time_19';
+        : scenario === 'predspisok' ? 'predspisok'
+          : timeless ? 'time_19'
+            : timeSlot === '15' ? 'time_15' : 'time_19';
 
   // Working copy of overrides, keyed by scenario. Seeded from the server tagSets:
   // custom chips → add[]; suppressed defaults → remove[].
   type Ov = { add: string[]; remove: string[] };
-  const seedOverrides = (): Record<'reg'|'time_15'|'time_19'|'messenger', Ov> => {
-    const out = { reg: { add: [], remove: [] }, time_15: { add: [], remove: [] },
-      time_19: { add: [], remove: [] }, messenger: { add: [], remove: [] } } as Record<'reg'|'time_15'|'time_19'|'messenger', Ov>;
-    (['reg','time_15','time_19','messenger'] as const).forEach((s) => {
+  const seedOverrides = (): Record<Scenario, Ov> => {
+    const out = Object.fromEntries(
+      SCENARIOS.map((s) => [s, { add: [] as string[], remove: [] as string[] }]),
+    ) as Record<Scenario, Ov>;
+    SCENARIOS.forEach((s) => {
       out[s].add = funnel.tagSets[s].tags.filter((t) => t.source === 'custom').map((t) => t.name);
       out[s].remove = [...funnel.tagSets[s].suppressed];
     });
@@ -349,8 +357,8 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
 
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <Segmented
-            options={[{ value: 'reg', label: 'Регистрация' }, { value: 'pay', label: 'Оплата' }, { value: 'messenger', label: 'Мессенджер' }]}
-            value={scenario} onChange={(v) => setScenario(v as Scenario)} />
+            options={[{ value: 'reg', label: 'Регистрация' }, { value: 'pay', label: 'Оплата' }, { value: 'messenger', label: 'Мессенджер' }, { value: 'predspisok', label: 'Предсписок' }]}
+            value={scenario} onChange={(v) => setScenario(v as TabKey)} />
           {scenario === 'pay' && !timeless && (
             <Segmented
               options={[{ value: '15', label: ta || '15:00' }, { value: '19', label: tb || '19:00' }]}

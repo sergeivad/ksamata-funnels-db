@@ -113,13 +113,17 @@ const scenarioOverrideSchema = z.object({
   remove: z.array(tagNameSchema).default([]),
 });
 
-// All four scenarios optional; unknown keys rejected (strict).
+// Все сценарии необязательны; неизвестные ключи отвергаются (strict).
+// Ключи перечислены руками, а не выведены из SCENARIOS: zod-схема — это
+// контракт HTTP, и он должен ломаться на глазах, а не молча расширяться
+// вместе с внутренним типом.
 export const tagsPatchSchema = z
   .object({
     reg: scenarioOverrideSchema.optional(),
     time_15: scenarioOverrideSchema.optional(),
     time_19: scenarioOverrideSchema.optional(),
     messenger: scenarioOverrideSchema.optional(),
+    predspisok: scenarioOverrideSchema.optional(),
   })
   .strict();
 

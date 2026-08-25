@@ -10,6 +10,7 @@ function emptyOverrideMap(): OverrideMap {
     time_15: { add: [], remove: [] },
     time_19: { add: [], remove: [] },
     messenger: { add: [], remove: [] },
+    predspisok: { add: [], remove: [] },
   };
 }
 

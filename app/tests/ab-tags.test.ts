@@ -17,6 +17,7 @@ const emptyOverrides = (): OverrideMap => ({
   time_15: { add: [], remove: [] },
   time_19: { add: [], remove: [] },
   messenger: { add: [], remove: [] },
+  predspisok: { add: [], remove: [] },
 });
 
 const template: TemplateMap = {
@@ -24,6 +25,7 @@ const template: TemplateMap = {
   time_15: ['автоворонки', 'АВ Автоворонка', 'АВ Этап: Оплата', 'АВ Время: 15'],
   time_19: ['автоворонки', 'АВ Автоворонка', 'АВ Этап: Оплата', 'АВ Время: 19'],
   messenger: ['автоворонки', 'АВ Автоворонка', 'АВ Этап: Мессенджер'],
+  predspisok: ['АВ Автоворонка', 'АВ Этап: Предписок'],
 };
 
 describe('axisTagNames', () => {
@@ -131,11 +133,12 @@ describe('tagNamesToAxes (unchanged)', () => {
 describe('пятая ось: маркер типа воронки', () => {
   const axes = { product: 'ЖИВО', contractor: 'НИМБ', channel: 'Яндекс', direction: 'РСЯ' };
   const empty = { reg: { add: [], remove: [] }, time_15: { add: [], remove: [] },
-                  time_19: { add: [], remove: [] }, messenger: { add: [], remove: [] } };
+                  time_19: { add: [], remove: [] }, messenger: { add: [], remove: [] },
+                  predspisok: { add: [], remove: [] } };
   const known = ['АВ Автоворонка', 'АВ Прямые', 'АВ Квиз', 'АВ Квиз-Лайт'];
-  const tpl = { reg: [], time_15: [], time_19: [], messenger: [] };
+  const tpl = { reg: [], time_15: [], time_19: [], messenger: [], predspisok: [] };
 
-  it('кладёт маркер во все четыре сценария как axis', () => {
+  it('кладёт маркер во все сценарии как axis', () => {
     const out = computeTagSet(tpl, axes, empty, { name: 'АВ Квиз', known });
     for (const s of SCENARIOS) {
       const chip = out[s].tags.find((t) => t.name === 'АВ Квиз');
@@ -189,7 +192,8 @@ describe('пятая ось: маркер типа воронки', () => {
 
 describe('время у типа без эфиров', () => {
   const empty: OverrideMap = { reg: { add: [], remove: [] }, time_15: { add: [], remove: [] },
-    time_19: { add: [], remove: [] }, messenger: { add: [], remove: [] } };
+    time_19: { add: [], remove: [] }, messenger: { add: [], remove: [] },
+    predspisok: { add: [], remove: [] } };
   const known = ['АВ Автоворонка', 'АВ Прямые', 'АВ Квиз', 'АВ Квиз-Лайт'];
   const timeless = { name: 'АВ Прямые', known, hasTime: false };
 

@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { copyDbForTest } from './helpers/db';
 import * as schema from '../src/db/schema';
 import { runMigratePhase12 } from '../scripts/migrate-phase12';
+import { runMigratePhase14 } from '../scripts/migrate-phase14';
 import { TIMELESS_FUNNEL_TYPES } from '../src/lib/funnel-type';
 import { resyncFunnelAvTags } from '../src/lib/funnels';
 
@@ -59,6 +60,11 @@ beforeEach(() => {
   copyDbForTest(join(__dirname, '../../ksamata_funnels.db'), dbPath);
   sqlite = new Database(dbPath);
   sqlite.pragma('foreign_keys = ON');
+  // Фаза 14 — до отката: она читает funnel_types.has_time, который undoPhase12
+  // сносит. Здесь она нужна затем же, зачем undoPhase12 строит состояние «до»
+  // руками: чтобы тест не зависел от того, прогнали ли уже миграцию на
+  // репозиторной базе. Без неё resyncFunnelAvTags ниже упрётся в CHECK.
+  runMigratePhase14(sqlite);
   undoPhase12();
 });
 

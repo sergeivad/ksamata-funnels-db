@@ -18,7 +18,7 @@ import { eq } from 'drizzle-orm';
 import * as schema from '../src/db/schema';
 import { funnels, funnelTags, funnelTagOverrides, tags } from '../src/db/schema';
 import { listTemplate } from '../src/lib/tag-templates';
-import { axisTagNames, tagNamesToAxes, type Scenario } from '../src/lib/ab-tags';
+import { SCENARIOS, axisTagNames, tagNamesToAxes, type Scenario } from '../src/lib/ab-tags';
 
 export function backfillLegacyTagOverrides(sqlite: import('better-sqlite3').Database): void {
   sqlite.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY)`);
@@ -42,7 +42,7 @@ export function backfillLegacyTagOverrides(sqlite: import('better-sqlite3').Data
       const regNames = rows.filter((r) => r.tagType === 'reg').map((r) => r.name);
       const axisSet = new Set(axisTagNames(tagNamesToAxes(regNames)));
 
-      const posByType: Record<Scenario, number> = { reg: 0, time_15: 0, time_19: 0, messenger: 0 };
+      const posByType = Object.fromEntries(SCENARIOS.map((s) => [s, 0])) as Record<Scenario, number>;
 
       for (const r of rows) {
         // A tag the default set regenerates (template static OR axis tag) is NOT legacy — skip.

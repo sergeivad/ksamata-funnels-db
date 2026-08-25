@@ -19,6 +19,7 @@ import {
 } from '../src/lib/refs';
 import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import { runMigratePhase12 } from '../scripts/migrate-phase12';
+import { runMigratePhase14 } from '../scripts/migrate-phase14';
 import { copyDbForTest } from './helpers/db';
 
 // __dirname = app/tests/ → go up 2 levels to repo root
@@ -32,6 +33,7 @@ sqlite.pragma('journal_mode = WAL');
 sqlite.pragma('foreign_keys = ON');
 runMigratePhase8(sqlite);
 runMigratePhase12(sqlite);
+runMigratePhase14(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => sqlite.close());

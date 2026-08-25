@@ -57,7 +57,6 @@ def collect_findings(expectations, funnels, vocabulary, index, collisions,
 
     result += F.find_missing_in_getcourse(groups, expectations, index)
     result += F.find_extra_axes(groups, vocabulary, order_dates, registry_tags)
-    result += F.find_unsupported_stage(groups)
     result += F.find_contradictory_legacy(groups, expectations, index)
     result += F.find_unresolved(groups, index, registry_keys, order_dates)
     result += F.find_key_collision_findings(collisions, expectations)

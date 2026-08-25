@@ -847,7 +847,7 @@ function copyFunnelChildren(tx: AnyDB, srcId: number, dstId: number): void {
     })
     .from(funnelTagOverrides)
     .where(eq(funnelTagOverrides.funnelId, srcId))
-    .all() as { tagType: 'reg' | 'time_15' | 'time_19' | 'messenger'; name: string; op: 'add' | 'remove'; position: number }[];
+    .all() as { tagType: Scenario; name: string; op: 'add' | 'remove'; position: number }[];
   for (const o of overrideRows) {
     tx.insert(funnelTagOverrides)
       .values({ funnelId: dstId, tagType: o.tagType, name: o.name, op: o.op, position: o.position })

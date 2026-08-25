@@ -15,6 +15,7 @@ import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import { runMigratePhase12 } from '../scripts/migrate-phase12';
+import { runMigratePhase14 } from '../scripts/migrate-phase14';
 import { PHASE5_DDL, seedTagTemplates } from '../scripts/migrate-phase5-data';
 import { PHASE8_DDL } from '../scripts/migrate-phase8-data';
 import { SEED_FUNNEL_TYPES } from '../src/lib/funnel-type';
@@ -50,6 +51,7 @@ beforeEach(async () => {
   runMigratePhase5(sqlite);
   runMigratePhase8(sqlite);
   runMigratePhase12(sqlite);
+  runMigratePhase14(sqlite);
   db = drizzle(sqlite, { schema });
   vi.doMock('@/db/client', () => ({ db }));
 
@@ -161,6 +163,7 @@ describe('PUT /api/tag-templates/[scenario]', () => {
       time_15: { add: [], remove: [] },
       time_19: { add: [], remove: [] },
       messenger: { add: [], remove: [] },
+      predspisok: { add: [], remove: [] },
     });
 
     const res = await PUT(jsonReq('PUT', { names: ['автоворонки', 'новый-дефолт'] }), params('reg'));

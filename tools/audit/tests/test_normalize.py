@@ -157,7 +157,6 @@ def test_classify_returns_tag_type(raw, expected_type):
     'raw,expected_reason',
     [
         ('АВ Этап: Оплата|АВ Продукт: ДБО', 'no_time'),
-        ('АВ Этап: Предписок|АВ Продукт: ДБО', 'predpisok'),
         ('АВ Продукт: ДБО|ДБО', 'no_stage'),
     ],
 )
@@ -209,8 +208,18 @@ def test_seventeen_alone_still_leaves_the_payment_stage_without_a_time():
         == ('time_15', None)
 
 
+def test_predpisok_is_a_type_not_a_reason():
+    """С фазы 14 этап «Предписок» — пятый сценарий базы, а не отказ.
+
+    До 2026-08-25 classify возвращала здесь (None, 'predpisok'), и группу
+    разбирали классы 3 и 6.
+    """
+    assert classify(parse_tagset('АВ Этап: Предписок|АВ Продукт: ДБО')) == ('predspisok', None)
+
+
 def test_predpisok_spelling_is_exact_and_legacy_variant_is_distinct():
     # Легаси 'предсписок' — ДРУГОЙ тег, автоматически не сводится (спек, «Нормализация»).
+    # Написание с «с» в GetCourse не значит ничего: этап там пишется «Предписок».
     tag_type, reason = classify(parse_tagset('предсписок|АВ Продукт: ДБО'))
     assert reason == 'no_stage'
 

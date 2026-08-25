@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { isAxisTag } from '@/lib/ab-tags';
+import { isAxisTag, type Scenario } from '@/lib/ab-tags';
 
 interface Props {
   label: string;
-  scenario: 'reg' | 'time_15' | 'time_19' | 'messenger';
+  scenario: Scenario;
   initial: string[];
 }
 

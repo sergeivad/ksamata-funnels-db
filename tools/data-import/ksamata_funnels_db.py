@@ -76,7 +76,11 @@ CREATE TABLE IF NOT EXISTS funnel_tags (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     funnel_id   INTEGER NOT NULL REFERENCES funnels(id) ON DELETE CASCADE,
     tag_id      INTEGER NOT NULL REFERENCES tags(id),
-    tag_type    TEXT NOT NULL CHECK(tag_type IN ('reg', 'time_19', 'time_15')),
+    -- Пять сценариев, как в app/src/lib/ab-tags.ts. Список отставал: `messenger`
+    -- завёл migrate-messenger-tagtype.ts (2026-07), `predspisok` — фаза 14
+    -- (2026-08-25), а этот DDL пересобирает базу с нуля и обоих не знал —
+    -- пересобранная им база отвергала половину тегов.
+    tag_type    TEXT NOT NULL CHECK(tag_type IN ('reg', 'time_19', 'time_15', 'messenger', 'predspisok')),
     position    INTEGER NOT NULL DEFAULT 0,
     UNIQUE(funnel_id, tag_id, tag_type)
 );

@@ -12,6 +12,7 @@ import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import { runMigratePhase12 } from '../scripts/migrate-phase12';
+import { runMigratePhase14 } from '../scripts/migrate-phase14';
 import { backfillLegacyTagOverrides } from '../scripts/backfill-legacy-tag-overrides';
 import { updateFunnel, getFunnel } from '../src/lib/funnels';
 import { copyDbForTest } from './helpers/db';
@@ -27,6 +28,7 @@ runMigrateMessengerTagType(sqlite);
 runMigratePhase5(sqlite);
 runMigratePhase8(sqlite);
 runMigratePhase12(sqlite);
+runMigratePhase14(sqlite);
 // The real DB this fixture is copied from has already been through the
 // legacy-overrides backfill in production (Task 12 bakes the marker into
 // the committed ksamata_funnels.db). Clear it here so this test exercises

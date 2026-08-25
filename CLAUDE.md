@@ -124,7 +124,7 @@ Drizzle SQLite. Core + lookup + content + tags tables:
 Tags are resolved, not stored once. Understand the layering before editing:
 
 1. **`tag_templates`** — the global A/B template per scenario (`reg`, `time_15`,
-   `time_19`, `messenger`). Edited at `/tags`.
+   `time_19`, `messenger`, `predspisok`). Edited at `/tags`.
 2. **`funnel_tag_overrides`** — per-funnel `add`/`remove` deltas layered on top
    of the template. Edited on the funnel page.
 3. **`funnel_tags`** — the materialized result (template + overrides), computed
@@ -160,6 +160,26 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 В реестре GetCourse значений времени **четыре** (`15`, `19`, `17`, `20`), и
 часть предложений несёт сразу два — у нас зашиты только 15 и 19; расхождение
 известное, отдельная тема.
+
+**Сценариев пять** (Phase 14, 25.08.2026): пятый — `predspisok`, и устроен он
+как `messenger`, а не как пара оплат: одна строка шаблона, ни тега времени, ни
+зеркалирования, ни своей raw-колонки (их три, не четыре, и у мессенджера её
+тоже нет). Машинерия пары `time_15`/`time_19` его не касается вовсе.
+Набор получают **все** воронки — сценарий часть модели, а не свойство воронки;
+предложения этого этапа в GetCourse заведены у 16 из 76, и это расхождение
+разбирает аудит, а не схема.
+
+**Тег пишется `АВ Этап: Предписок`, без «с».** Это опечатка GetCourse, и
+повторять её обязательно: наборы сравниваются с реестром предложений дословно,
+а исправление написания у себя развело бы базу со всеми живыми предложениями
+этапа. Человеческая подпись строки при этом — «Предсписок», через «с»
+(`scenarioViews` в `tag-scenarios.ts`): подпись называет шаг воронки, тег
+повторяет реестр. Легаси-тег `предсписок` — **третья**, посторонняя сущность:
+другой тег, автоматически ни к чему не сводится. Одна строка написания живёт в
+двух местах, на двух языках — `PHASE14_STAGE_TAG`
+([app/scripts/migrate-phase14-data.ts](app/scripts/migrate-phase14-data.ts)) и
+`PREDPISOK_STAGE` ([tools/audit/normalize.py](tools/audit/normalize.py));
+править обе.
 
 ## Domain helpers (`app/src/lib/`)
 
@@ -235,9 +255,10 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   эвристике: код воронки и чужой `id` совпадают сплошь и рядом — у F37 `id`
   равен 1, а `id` 37 принадлежит другой воронке.
 - `tag-scenarios.ts` — порядок и подписи сценариев тегов на все экраны
-  (`scenarioViews`, `joinTagsForCopy`). У безвременной воронки строк три, и
+  (`scenarioViews`, `joinTagsForCopy`). У безвременной воронки строк четыре, и
   оплата берётся от `time_19`. Вынесено из компонентов, чтобы «Оплата 15:00»
-  в просмотре и в редакторе не разошлись словами.
+  в просмотре и в редакторе не разошлись словами. Здесь же живёт подпись
+  «Предсписок» — через «с», в отличие от самого тега (см. раздел про теги).
 - `funnel-search.ts` — видимость строки в списке: поиск по имени и F-коду плюс
   вкладка статуса, условия перемножаются (`isFunnelVisible`). По всем воронкам
   поиск идёт не потому, что функция игнорирует вкладку, а потому, что список
@@ -604,9 +625,27 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
   то есть она свежее. После первого прогона фазе нечего делать (старый слаг
   никто больше не пишет: Phase 3 разбирает легаси-колонки один раз по маркеру
   и уже с новым слагом), но из цепочки её не убираем.
+- **Phase 14** — пятый сценарий тегов `predspisok` («Предсписок»). Этап живёт в
+  реестре GetCourse (16 предложений), а `tag_type` разрешал ровно четыре
+  значения — наблюдения не привязывались ни к чему, чем и занимались классы 3 и
+  6 отчёта аудита. **CHECK-ограничений при этом три, не одно** (`funnel_tags`,
+  `tag_templates`, `funnel_tag_overrides`), и `PHASE5_DDL` расширить их не
+  может: он `CREATE TABLE IF NOT EXISTS`, то есть на существующей базе не
+  делает ничего. SQLite не умеет `ALTER` для CHECK, так что фаза перестраивает
+  каждую таблицу — по идиоме `migrate-messenger-tagtype.ts`, но DDL не
+  переписывает руками, а правит точечно текст из `sqlite_master`: колонки,
+  внешние ключи и UNIQUE переезжают дословно. Дальше разовый сид строки шаблона
+  за маркером `phase14_predspisok_seed` (не «вставить, если строк нет»: человек
+  вправе очистить набор в `/tags`, и безусловный сид возвращал бы снятое при
+  каждом старте контейнера) и **безусловная** материализация набора в
+  `funnel_tags` — 456 строк на 76 воронок, ровно столько же, сколько у
+  мессенджера. Прямая правка `funnel_tags` законна по доводу фазы 12: пишутся
+  те и только те строки, которые построит движок, что закреплено тестом
+  «материализация после фазы даёт тот же набор». Третий шаг
+  самовосстанавливающийся, поэтому из цепочки фазу не убираем.
 
 **Docker runs, in order** (`app/docker-entrypoint.sh`): Phase 2 → 3 (+data) →
-4 → 5 → legacy-tag-override backfill → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13.
+4 → 5 → legacy-tag-override backfill → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14.
 
 **A migration script must never run itself.** esbuild bundles the runner and the
 migration into one file, and inside that bundle `require.main === module` is
@@ -811,7 +850,9 @@ invisible until the next container start.
   Tests: `python3 -m pytest tools/data-export/tests`.
 - **Audit** (`tools/audit/`): `run_audit.py` builds a tag drift map across
   three sources — the GetCourse offer registry, `deal_export` history, and
-  the DB — into an XLSX report with 16 finding classes; it fixes nothing, in
+  the DB — into an XLSX report with 14 finding classes (3 and 6 retired by
+  Phase 14 — the stage they reported is a scenario now, and class numbers
+  are never reused); it fixes nothing, in
   the DB or in GetCourse. The DB is opened read-only; GetCourse credentials
   are read from the environment (`GC_DEV_KEY`, `GC_API_KEY`, `GC_DOMAIN`) and
   never committed. `--no-api` skips GetCourse (classes 9-12 and 14 stay

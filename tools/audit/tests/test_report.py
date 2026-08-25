@@ -95,7 +95,7 @@ def test_summary_never_drops_findings_without_a_single_funnel():
         finding(1, funnel='f11'),
         finding(4, funnel='f12'),
         finding(2, funnel='—'),
-        finding(3, funnel='—'),
+        finding(5, funnel='—'),
         finding(9, funnel='—'),
         finding(8, funnel='no-such-funnel-label'),
     ]
@@ -112,7 +112,7 @@ def test_unassigned_row_carries_findings_with_no_matching_funnel_label():
         finding(1, funnel='f11'),
         finding(2, funnel='—'),
         finding(2, funnel='—'),
-        finding(3, funnel='—'),
+        finding(5, funnel='—'),
         finding(9, funnel='some-nonexistent-label'),
     ]
     rows = build_summary_rows(findings, FUNNELS)
@@ -120,7 +120,7 @@ def test_unassigned_row_carries_findings_with_no_matching_funnel_label():
     unassigned = next(row for row in rows if row[0] == UNASSIGNED_LABEL)
     assert unassigned[header.index('Класс 1')] == 0
     assert unassigned[header.index('Класс 2')] == 2
-    assert unassigned[header.index('Класс 3')] == 1
+    assert unassigned[header.index('Класс 5')] == 1
     assert unassigned[header.index('Класс 9')] == 1
     assert unassigned[header.index('Всего')] == 4
 

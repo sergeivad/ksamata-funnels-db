@@ -104,7 +104,7 @@ export const funnelTags = sqliteTable(
     id:       integer('id').primaryKey({ autoIncrement: true }),
     funnelId: integer('funnel_id').notNull().references(() => funnels.id, { onDelete: 'cascade' }),
     tagId:    integer('tag_id').notNull().references(() => tags.id),
-    tagType:  text('tag_type', { enum: ['reg', 'time_19', 'time_15', 'messenger'] }).notNull(),
+    tagType:  text('tag_type', { enum: ['reg', 'time_19', 'time_15', 'messenger', 'predspisok'] }).notNull(),
     position: integer('position').notNull().default(0),
   },
   (t) => ({
@@ -232,7 +232,7 @@ export const tagTemplates = sqliteTable(
   'tag_templates',
   {
     id:       integer('id').primaryKey({ autoIncrement: true }),
-    scenario: text('scenario', { enum: ['reg', 'time_15', 'time_19', 'messenger'] }).notNull(),
+    scenario: text('scenario', { enum: ['reg', 'time_15', 'time_19', 'messenger', 'predspisok'] }).notNull(),
     name:     text('name').notNull(),
     position: integer('position').notNull().default(0),
   },
@@ -246,7 +246,7 @@ export const funnelTagOverrides = sqliteTable(
   {
     id:       integer('id').primaryKey({ autoIncrement: true }),
     funnelId: integer('funnel_id').notNull().references(() => funnels.id, { onDelete: 'cascade' }),
-    tagType:  text('tag_type', { enum: ['reg', 'time_15', 'time_19', 'messenger'] }).notNull(),
+    tagType:  text('tag_type', { enum: ['reg', 'time_15', 'time_19', 'messenger', 'predspisok'] }).notNull(),
     name:     text('name').notNull(),
     op:       text('op', { enum: ['add', 'remove'] }).notNull(),
     position: integer('position').notNull().default(0),

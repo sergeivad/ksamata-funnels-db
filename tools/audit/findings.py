@@ -33,10 +33,11 @@ from retired import is_retired
 CLASS_TITLES = {
     1: 'Тег ожидается в базе, но в GetCourse отсутствует',
     2: 'Ось есть в GetCourse, но её нет в словаре базы',
-    3: 'Этап не поддержан моделью базы',
+    # Классы 3 и 6 сняты 2026-08-25: этап «Предписок» стал пятым сценарием
+    # базы (фаза 14), и сообщать о его неподдержанности больше не о чем.
+    # Номера не переиспользуем — по ним ищут в прошлых отчётах.
     4: 'Противоречивые легаси-теги на одном предложении',
     5: 'Тип не выводится: оплата без АВ Время или нет АВ Этап',
-    6: 'Этап Предписок — типа в модели базы нет',
     7: 'Полный АВ-ключ (четвёрка + маркер) есть в заказах, но воронки в базе нет',
     8: 'Коллизия АВ-ключа',
     9: 'Полный АВ-ключ (четвёрка + маркер) есть в GetCourse, но нет ни одной воронки',
@@ -230,7 +231,7 @@ def _latest_groups(groups):
 
 
 def _stage_family(tags):
-    """Семейство этапа: reg/messenger/payment/predpisok/none.
+    """Семейство этапа: reg/messenger/predspisok/payment/none.
 
     В отличие от tag_type (см. classify), семейство выводится только из
     тегов этапа и не зависит от того, есть ли АВ Время. Так «Оплата без
@@ -243,7 +244,7 @@ def _stage_family(tags):
     if STAGE_MESSENGER in tags:
         return 'messenger'
     if PREDPISOK_STAGE in tags:
-        return 'predpisok'
+        return 'predspisok'
     if STAGE_PAYMENT in tags:
         return 'payment'
     return 'none'
@@ -308,7 +309,7 @@ def _unresolved_slot(group):
     return slot
 
 
-# Владелец решил свернуть класс 1 так же, как ранее свернули класс 3: тег,
+# Владелец решил свернуть класс 1 так же, как ранее сворачивали класс 3: тег,
 # которого не хватает более чем у этого числа воронок (пар ключ × tag_type),
 # даёт одну сводную находку вместо перечисления по каждой воронке — иначе
 # один шумный тег (например 'автоворонки') делает «Класс 1» равным единице
@@ -413,9 +414,12 @@ def find_extra_axes(groups, vocabulary, order_dates=None, registry_tags=frozense
     именно потому, что воронок под них нет — они отработали. Без общего фильтра
     отставка просто переезжает из класса в класс.
 
-    Этапы (`АВ Этап:`) — ими владеют классы 3 (сводка) и 6 (детально по
-    связкам). Девять находок были `АВ Этап: Предписок`, то есть третьим
-    показом одного и того же на третьем листе отчёта.
+    Этапы (`АВ Этап:`) — они не оси, и класс 2 не про них. До 2026-08-25 ими
+    владели классы 3 и 6 (девять находок `АВ Этап: Предписок` были третьим
+    показом одного и того же на третьем листе отчёта); с фазой 14 этап стал
+    пятым сценарием базы, и расхождения по нему разбирает класс 1 наравне с
+    остальными тегами набора. Фильтр остаётся: причина сменилась, а этап как
+    был не осью, так и остался.
 
     Теги, которых нет в текущем реестре (`registry_tags`) — как `registry_keys`
     в find_unresolved, и по той же причине: см. registry_av_tags. Пустой
@@ -454,47 +458,6 @@ def find_extra_axes(groups, vocabulary, order_dates=None, registry_tags=frozense
             )
         )
     return result
-
-
-def find_unsupported_stage(groups):
-    """Класс 3: этап Предписок — тип в модели базы не поддержан.
-
-    Решение владельца: классы 3 и 6 оба срабатывают на АВ Этап: Предписок,
-    перечисляя одни и те же группы на двух листах отчёта — дублирование.
-    Класс 3 сводится к ОДНОЙ итоговой строке (этап встретился хоть где-то —
-    сколько групп и сколько заказов затронуто), а детальный список
-    по-группе остаётся в классе 6 (find_unresolved). Не трогать класс 6.
-    """
-    hits = [group for group in groups if PREDPISOK_STAGE in group.tags]
-    if not hits:
-        return []
-
-    files = []
-    seen_files = set()
-    for group in hits:
-        for file_name in group.files:
-            if file_name not in seen_files:
-                seen_files.add(file_name)
-                files.append(file_name)
-
-    return [
-        Finding(
-            cls=3,
-            funnel='—',
-            tag_type='',
-            subject=PREDPISOK_STAGE,
-            detail=(
-                'funnel_tags.tag_type разрешает только '
-                'reg/time_19/time_15/messenger. '
-                f'Групп с этим этапом: {len(hits)}, '
-                f'заказов: {sum(g.deals for g in hits)}. Детали — класс 6.'
-            ),
-            evidence='; '.join(files[:3]),
-            first_seen=str(min(g.first_seen for g in hits)),
-            last_seen=str(max(g.last_seen for g in hits)),
-            deals=sum(g.deals for g in hits),
-        )
-    ]
 
 
 def find_contradictory_legacy(groups, expectations, index):
@@ -600,8 +563,6 @@ def find_unresolved(groups, index, registry_keys=frozenset(), order_dates=None):
 
         if group.reason == 'no_time':
             cls, subject = 5, 'Оплата без АВ Время'
-        elif group.reason == 'predpisok':
-            cls, subject = 6, 'Этап Предписок'
         elif group.reason == 'no_stage':
             legacy = legacy_stage_of(group.tags)
             if legacy is None:
@@ -748,7 +709,7 @@ def find_unknown_axes_in_registry(offers, vocabulary, order_dates=None):
     Теги из EXTERNAL_TAG_PREFIXES тоже исключены: база их не знает намеренно,
     так что это не расхождение (см. комментарий в normalize).
 
-    Этапы исключены — ими владеют классы 3 и 6, как и в классе 2.
+    Этапы исключены — они не оси, как и в классе 2 (см. там же).
 
     Отставленные связки пропускаются, как в классах 2, 7, 9, 14, 15. Замер
     2026-07-27: из 24 неизвестных базе значений 20 не встречались НИ НА ОДНОМ

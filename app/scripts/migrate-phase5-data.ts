@@ -8,10 +8,17 @@
  * же маркер каждой воронке и получить второй источник правды.
  */
 
+/**
+ * `predspisok` в обоих CHECK — для СВЕЖЕЙ базы. На уже промигрированной эта
+ * правка не делает ничего: DDL здесь весь `CREATE TABLE IF NOT EXISTS`, а
+ * SQLite не умеет ALTER для CHECK. Существующие базы расширяет фаза 14
+ * перестройкой таблиц; на свежей она застаёт всё готовым и только ставит свой
+ * маркер, чтобы не задвоить строку шаблона.
+ */
 export const PHASE5_DDL = `
 CREATE TABLE IF NOT EXISTS tag_templates (
   id       INTEGER PRIMARY KEY AUTOINCREMENT,
-  scenario TEXT    NOT NULL CHECK(scenario IN ('reg','time_15','time_19','messenger')),
+  scenario TEXT    NOT NULL CHECK(scenario IN ('reg','time_15','time_19','messenger','predspisok')),
   name     TEXT    NOT NULL,
   position INTEGER NOT NULL DEFAULT 0
 );
@@ -20,7 +27,7 @@ CREATE INDEX IF NOT EXISTS idx_tag_templates_scenario ON tag_templates(scenario)
 CREATE TABLE IF NOT EXISTS funnel_tag_overrides (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
   funnel_id INTEGER NOT NULL REFERENCES funnels(id) ON DELETE CASCADE,
-  tag_type  TEXT    NOT NULL CHECK(tag_type IN ('reg','time_15','time_19','messenger')),
+  tag_type  TEXT    NOT NULL CHECK(tag_type IN ('reg','time_15','time_19','messenger','predspisok')),
   name      TEXT    NOT NULL,
   op        TEXT    NOT NULL CHECK(op IN ('add','remove')),
   position  INTEGER NOT NULL DEFAULT 0
@@ -53,6 +60,11 @@ export const PHASE5_TEMPLATE_SEED: { scenario: string; name: string; position: n
   { scenario: 'time_19',   name: 'АВ Время: 19',       position: 2 },
 
   { scenario: 'messenger', name: 'АВ Этап: Мессенджер', position: 0 },
+
+  // Пятый сценарий, заведён фазой 14 (2026-08-25). Написание тега — «Предписок»,
+  // без «с»: так этап называется в живом реестре GetCourse. См.
+  // PHASE14_STAGE_TAG в migrate-phase14-data.ts.
+  { scenario: 'predspisok', name: 'АВ Этап: Предписок', position: 0 },
 ];
 
 /**

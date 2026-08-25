@@ -83,8 +83,19 @@ After the seed check, the entrypoint runs the idempotent migration chain on
 11. `migrate-phase11.cjs` — moves the seven dashboard/registration URL columns into the «Ссылки» block and blanks them
 12. `migrate-phase12.cjs` — `funnel_types.has_time` + removes «АВ Время: …» tags from funnels of timeless types
 13. `migrate-phase13.cjs` — renames the block kind `meditation` to `upsell` in `funnel_blocks` and in the monitoring groups
+14. `migrate-phase14.cjs` — adds the fifth tag scenario `predspisok` («Предсписок»)
 
 All steps are marker-gated or `IF NOT EXISTS`, so re-running them is safe.
+
+**Phase 14 rebuilds three tables** (`funnel_tags`, `tag_templates`,
+`funnel_tag_overrides`) on the first start that carries it: SQLite cannot
+`ALTER` a CHECK constraint, so the only way to widen one is create-copy-drop-
+rename. It runs inside a transaction and verifies `foreign_key_check` before
+committing, but it is still the heaviest migration in the chain — **take a
+`VACUUM INTO` backup of `/data/ksamata_funnels.db` before the deploy that
+first brings it.** Subsequent starts skip the rebuild (the CHECK already lists
+the value) and only re-materialize the tag rows, which is cheap and
+self-healing.
 
 Each step runs exactly once per start, and its runner is the only entry point.
 That is not automatic: esbuild bundles the runner together with the phase file,

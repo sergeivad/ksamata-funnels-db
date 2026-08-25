@@ -18,6 +18,7 @@ import { runMigrateMessengerTagType } from '../scripts/migrate-messenger-tagtype
 import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import { runMigratePhase12 } from '../scripts/migrate-phase12';
+import { runMigratePhase14 } from '../scripts/migrate-phase14';
 import { runBackfillMessengerTags } from '../scripts/backfill-messenger-tags';
 import { copyDbForTest } from './helpers/db';
 
@@ -36,6 +37,7 @@ runMigrateMessengerTagType(sqlite);
 runMigratePhase5(sqlite);
 runMigratePhase8(sqlite);
 runMigratePhase12(sqlite);
+runMigratePhase14(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => {

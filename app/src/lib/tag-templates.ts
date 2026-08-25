@@ -12,7 +12,7 @@ export function listTemplate(db: AnyDB): TemplateMap {
     .orderBy(asc(tagTemplates.scenario), asc(tagTemplates.position))
     .all() as { scenario: Scenario; name: string }[];
 
-  const out = { reg: [], time_15: [], time_19: [], messenger: [] } as TemplateMap;
+  const out = { reg: [], time_15: [], time_19: [], messenger: [], predspisok: [] } as TemplateMap;
   for (const r of rows) out[r.scenario].push(r.name);
   return out;
 }

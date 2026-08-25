@@ -12,8 +12,16 @@ export const AXIS_PREFIXES = {
   direction: 'АВ Направление: ',
 } as const satisfies Record<keyof AbAxes, string>;
 
-export type Scenario = 'reg' | 'time_15' | 'time_19' | 'messenger';
-export const SCENARIOS: Scenario[] = ['reg', 'time_15', 'time_19', 'messenger'];
+/**
+ * Шаг воронки. `predspisok` — пятый и последний, заведён 2026-08-25; устроен
+ * как `messenger`: одна строка шаблона, ни тега времени, ни зеркалирования,
+ * ни своей raw-колонки. Машинерия пары `time_15`/`time_19` его не касается.
+ *
+ * Порядок массива — порядок строк на экранах (см. scenarioViews в
+ * tag-scenarios.ts), и расходиться им нельзя.
+ */
+export type Scenario = 'reg' | 'time_15' | 'time_19' | 'messenger' | 'predspisok';
+export const SCENARIOS: Scenario[] = ['reg', 'time_15', 'time_19', 'messenger', 'predspisok'];
 
 export type TagChip = { name: string; source: 'axis' | 'default' | 'custom' };
 export type ScenarioTags = { tags: TagChip[]; suppressed: string[] };

@@ -30,6 +30,7 @@ import { runMigratePhase5 } from '../scripts/migrate-phase5';
 import { runMigratePhase7 } from '../scripts/migrate-phase7';
 import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import { runMigratePhase12 } from '../scripts/migrate-phase12';
+import { runMigratePhase14 } from '../scripts/migrate-phase14';
 import { replaceDays, listDays } from '../src/lib/funnel-days';
 import { ConflictError } from '../src/lib/errors';
 import { replaceBlock, getBlock } from '../src/lib/funnel-blocks';
@@ -54,6 +55,7 @@ runMigratePhase5(sqlite);
 runMigratePhase7(sqlite);
 runMigratePhase8(sqlite);
 runMigratePhase12(sqlite);
+runMigratePhase14(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => {
@@ -293,6 +295,7 @@ describe('updateFunnel', () => {
       time_15: { add: [], remove: [] },
       time_19: { add: [], remove: [] },
       messenger: { add: [], remove: [] },
+      predspisok: { add: [], remove: [] },
     });
 
     // Now patch axes: change product from ТКМ to БОО

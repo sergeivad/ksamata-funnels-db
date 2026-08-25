@@ -1,14 +1,16 @@
 import { db } from '@/db/client';
 import { listTemplate } from '@/lib/tag-templates';
 import TagTemplateEditor from '@/components/TagTemplateEditor';
+import type { Scenario } from '@/lib/ab-tags';
 
 export default function TagsPage() {
   const t = listTemplate(db);
-  const sections: { label: string; scenario: 'reg' | 'time_15' | 'time_19' | 'messenger' }[] = [
+  const sections: { label: string; scenario: Scenario }[] = [
     { label: 'Регистрация', scenario: 'reg' },
     { label: 'Оплата · 15:00', scenario: 'time_15' },
     { label: 'Оплата · 19:00', scenario: 'time_19' },
     { label: 'Мессенджер', scenario: 'messenger' },
+    { label: 'Предсписок', scenario: 'predspisok' },
   ];
 
   return (

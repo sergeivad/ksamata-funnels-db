@@ -115,6 +115,11 @@ def is_av_tag(tag):
     return tag in MARKER_TAGS or tag.startswith(AV_TAG_PREFIXES)
 
 # Точное написание, сверено с живой выгрузкой: всё кириллицей.
+#
+# Написано без «с» — это опечатка GetCourse, и повторять её обязательно: теги
+# сравниваются с реестром предложений дословно. С 2026-08-25 база этот этап
+# знает как пятый сценарий (`predspisok`, фаза 14), и та же строка продублирована
+# в app/scripts/migrate-phase14-data.ts. При правке — править обе стороны.
 PREDPISOK_STAGE = 'АВ Этап: Предписок'
 
 STAGE_REG = 'АВ Этап: Регистрация'
@@ -251,15 +256,20 @@ def classify(tags):
     """Определяет tag_type по этапу и времени.
 
     Возвращает (tag_type, reason). Ровно одно из двух не None:
-      - ('reg' | 'messenger' | 'time_19' | 'time_15', None) — тип выведен;
-      - (None, 'no_stage' | 'predpisok' | 'no_time') — почему не выведен.
+      - ('reg' | 'messenger' | 'predspisok' | 'time_19' | 'time_15', None) — тип выведен;
+      - (None, 'no_stage' | 'no_time') — почему не выведен.
+
+    `predspisok` перестал быть причиной отказа 2026-08-25: фаза 14 завела его
+    пятым сценарием базы, и наблюдения этапа теперь сопоставляются с набором
+    воронки, как все остальные. До этого он возвращался как (None, 'predpisok')
+    и разбирался классами 3 и 6 — оба уехали вместе с этой строкой.
     """
     if STAGE_REG in tags:
         return 'reg', None
     if STAGE_MESSENGER in tags:
         return 'messenger', None
     if PREDPISOK_STAGE in tags:
-        return None, 'predpisok'
+        return 'predspisok', None
     if STAGE_PAYMENT in tags:
         if TIME_19 in tags:
             return 'time_19', None

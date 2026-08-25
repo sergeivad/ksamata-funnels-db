@@ -131,4 +131,14 @@ if [ -n "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] Phase-13 migration done."
 fi
 
+# Apply Phase-14 migration (idempotent: расширение CHECK у трёх таблиц тегов,
+# разовый сид строки шаблона за маркером и безусловная материализация набора
+# «Предсписок» в funnel_tags). Третий шаг самовосстанавливающийся, поэтому из
+# цепочки не убираем даже после первого прогона.
+if [ -n "$FUNNELS_DB_PATH" ]; then
+  echo "[entrypoint] Running Phase-14 migration against $FUNNELS_DB_PATH"
+  node /app/migrate-phase14.cjs
+  echo "[entrypoint] Phase-14 migration done."
+fi
+
 exec node server.js
