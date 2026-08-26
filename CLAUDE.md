@@ -40,12 +40,34 @@ npm install
 npm run dev          # next dev on :3000
 npx tsc --noEmit     # typecheck
 npx vitest run       # full test suite
+npm run lint         # eslint (.eslintrc.json); `next lint` is deprecated in Next 16
 npm run build        # production build
 ```
+
+One test file, or one case inside it — the suite is ~75 files, so a targeted
+change does not need the whole run:
+
+```sh
+npx vitest run tests/monitor-run.test.ts
+npx vitest run tests/monitor-run.test.ts -t 'ретеншен'
+```
+
+`-t` matches the `describe`/`it` text, and **test names in this repo are
+Russian** — an English filter silently selects nothing and still exits 0.
 
 The dev server uses `FUNNELS_DB_PATH` when set; otherwise it defaults to the
 repo-root database resolved in `app/src/db/client.ts` (relative to `process.cwd()`,
 which is `app/`).
+
+Python tool tests run from the **repo root**, one suite per tool:
+
+```sh
+python3 -m pytest tools/audit/tests
+python3 -m pytest tools/data-import/tests
+python3 -m pytest tools/data-export/tests
+python3 -m pytest tools/reconcile/tests
+python3 -m pytest tools/sheet-links/tests
+```
 
 ## Data model (`app/src/db/schema.ts`)
 
@@ -985,8 +1007,13 @@ invisible until the next container start.
 
 ## Docs & planning
 
-- **[docs/OPEN.md](docs/OPEN.md) — все нерешённые вопросы в одном месте,
-  сгруппированные по тому, кто должен действовать. Начинать сессию с него.**
+- **Начинать сессию по данным с прогона `python3 tools/reconcile/run.py`** —
+  рабочий список расхождений собирает он, отчёт ложится в `data/generated/`,
+  порядок разбора — [2026-08-04-razbor-design.md](docs/plans/2026-08-04-razbor-design.md).
+- [docs/OPEN.md](docs/OPEN.md) — то, чего инструмент не покрывает: вопросы к
+  ЛИК, схема, безопасность. **Ведётся руками и потому устаревает** (актуально
+  на 2026-08-04, часть пунктов уже разошлась с реальностью — файл говорит об
+  этом сам). Указатель, а не источник истины.
 - [README.md](README.md) — high-level orientation.
 - [docs/README.md](docs/README.md) — index of plans and specs (shipped vs active).
 - [docs/development.md](docs/development.md) — local setup and DB contract detail.

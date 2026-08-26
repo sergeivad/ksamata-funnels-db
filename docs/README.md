@@ -2,9 +2,13 @@
 
 Navigation for this repo's documentation and planning notes.
 
-- **Открытые вопросы, все и в одном месте:** [OPEN.md](OPEN.md) — указатель на
-  всё нерешённое, сгруппированное по тому, кто должен действовать (мы в базе,
-  мы в коде, владелец в ЛИК / GetCourse / таблице). **Начинать сессию с него.**
+- **Расхождения по данным:** `python3 tools/reconcile/run.py` — отчёт в
+  `data/generated/`, порядок разбора в
+  [plans/2026-08-04-razbor-design.md](plans/2026-08-04-razbor-design.md).
+  **Начинать сессию по сверке с него.**
+- **Остальное открытое:** [OPEN.md](OPEN.md) — вопросы к ЛИК, схема,
+  безопасность, сгруппированные по тому, кто должен действовать. Ведётся
+  руками и устаревает; указатель, а не источник истины.
 - **Canonical guide:** [../CLAUDE.md](../CLAUDE.md) — architecture, data model,
   migrations, auth, deployment, conventions.
 - **Orientation:** [../README.md](../README.md)
