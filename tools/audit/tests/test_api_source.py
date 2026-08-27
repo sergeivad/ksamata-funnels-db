@@ -118,38 +118,74 @@ def test_fetch_all_raises_instead_of_looping_forever_on_stuck_offset():
     assert 'Authorization' not in message
 
 
-def test_load_offers_fetches_get_offers_in_a_single_request():
-    """Живой факт: 'offer/get-offers' игнорирует limit/offset и всегда
+def _paginating_opener(total, calls=None, tags_total=None):
+    """Заглушка обоих эндпоинтов, честно уважающих limit/offset.
 
-    отдаёт весь реестр целиком (7679 записей на боевом API), в отличие от
-    'offer/get-offers-tags', которая пагинацию уважает по-честному
-    (offset=7000 -> хвост 679 записей, offset=9000 -> пусто).
-
-    Заглушка ниже имитирует именно это: get-offers всегда отдаёт полный
-    список независимо от offset, get-offers-tags — честно пагинирует.
-    load_offers должен дёрнуть get-offers РОВНО один раз и не зациклиться;
-    на старой реализации (fetch_all для обоих) этот тест не проходит —
-    каждая «страница» get-offers больше page_size, цикл считает что данные
-    не кончились и уходит в бесконечную пагинацию до предохранителя.
+    Ровно так живой API вёл себя на замере 28.08.2026: страницы по offset
+    не пересекаются, хвост короче PAGE_SIZE, следующий за ним offset пуст.
     """
-    total = 7679
-    full_offers = [{'id': i, 'title': f'Курс {i}', 'status': 'draft'} for i in range(total)]
-    calls = {'get-offers': 0, 'get-offers-tags': 0}
+    if tags_total is None:
+        tags_total = total
+    offers = [{'id': i, 'title': f'Курс {i}', 'status': 'draft'} for i in range(total)]
+    tags = [{'offerId': i, 'tags': []} for i in range(tags_total)]
 
     def opener(url, headers):
         offset = int(url.split('offset=')[1].split('&')[0])
-        if 'get-offers-tags' in url:
-            calls['get-offers-tags'] += 1
-            page = full_offers[offset:offset + PAGE_SIZE]
-            return json.dumps({'data': [{'offerId': o['id'], 'tags': []} for o in page]})
-        calls['get-offers'] += 1
-        # Баг живого API: возвращает ВСЁ вне зависимости от offset.
-        return json.dumps({'data': full_offers})
+        limit = int(url.split('limit=')[1].split('&')[0])
+        rows = tags if 'get-offers-tags' in url else offers
+        if calls is not None:
+            calls.setdefault(url.split('/v1/')[1].split('?')[0], []).append(offset)
+        return json.dumps({'data': rows[offset:offset + limit]})
 
-    offers = load_offers(CFG, opener)
+    return opener
 
-    assert calls['get-offers'] == 1
+
+def test_load_offers_paginates_get_offers():
+    """С 28.08.2026 'offer/get-offers' уважает limit/offset — реестр больше
+
+    не приходит одним ответом, и load_offers обязан обойти его постранично,
+    иначе карта расхождений строится по первой тысяче предложений вместо
+    всех (боевой замер: 7877).
+
+    Заглушка отдаёт непересекающиеся страницы, как живой API: ключевая
+    проверка — что затребованы все offset'ы и собраны все записи, а не
+    только первая страница.
+    """
+    total = 2 * PAGE_SIZE + 137
+    calls = {}
+
+    offers = load_offers(CFG, _paginating_opener(total, calls))
+
     assert len(offers) == total
+    assert calls['offer/get-offers'] == [0, PAGE_SIZE, 2 * PAGE_SIZE]
+    assert [o.offer_id for o in offers] == list(range(total))
+
+
+def test_load_offers_does_not_stop_at_exactly_page_size():
+    """Пограничный случай: реестр ровно в PAGE_SIZE записей.
+
+    Раньше здесь стоял предохранитель — ровно PAGE_SIZE записей за один
+    запрос считались признаком включившейся пагинации и роняли прогон
+    (см. историю в докстринге модуля). Пагинация включилась, предохранитель
+    снят, и это число больше ничего не значит: просто полная страница, за
+    которой идёт пустая.
+    """
+    calls = {}
+
+    offers = load_offers(CFG, _paginating_opener(PAGE_SIZE, calls))
+
+    assert len(offers) == PAGE_SIZE
+    assert calls['offer/get-offers'] == [0, PAGE_SIZE]
+
+
+def test_load_offers_collects_whole_registry_regardless_of_its_size():
+    """Контроль на живых величинах: 7877 предложений (замер 28.08.2026) и
+
+    небольшие 42 — обход обязан собрать всё до последней записи.
+    """
+    for total in (7877, 42):
+        offers = load_offers(CFG, _paginating_opener(total))
+        assert len(offers) == total
 
 
 def test_load_offers_joins_offers_with_their_tags():
@@ -173,48 +209,6 @@ def test_load_offers_joins_offers_with_their_tags():
     assert by_id[1].title == 'Курс А'
     assert by_id[1].tags == frozenset({'АВ Продукт: ДБО', 'РСЯ'})
     assert by_id[2].tags == frozenset()
-
-
-def test_load_offers_raises_when_get_offers_returns_exactly_page_size():
-    """Если GetCourse однажды начнёт уважать limit/offset у 'offer/get-offers',
-
-    один запрос с limit=PAGE_SIZE молча вернёт только первую страницу вместо
-    всего реестра — карта расхождений станет неверной без предупреждения.
-    load_offers() должен опознать этот сигнал (ровно PAGE_SIZE записей) и
-    поднять исключение вместо того, чтобы молча продолжить с усечённым
-    реестром.
-    """
-
-    def opener(url, headers):
-        if 'get-offers-tags' in url:
-            return json.dumps({'data': []})
-        return json.dumps({'data': [{'id': i, 'title': f'Курс {i}', 'status': 'draft'}
-                                     for i in range(PAGE_SIZE)]})
-
-    with pytest.raises(RuntimeError) as err:
-        load_offers(CFG, opener)
-
-    message = str(err.value)
-    assert str(PAGE_SIZE) in message
-    assert 'пагинац' in message.lower()
-
-
-def test_load_offers_works_as_before_when_count_differs_from_page_size():
-    """Контроль: число записей, отличное от PAGE_SIZE (боевые 7679 и
-
-    небольшое 42), не должно считаться признаком включившейся пагинации —
-    load_offers должен продолжать работать как раньше в обоих случаях.
-    """
-    for total in (7679, 42):
-        full_offers = [{'id': i, 'title': f'Курс {i}', 'status': 'draft'} for i in range(total)]
-
-        def opener(url, headers, full_offers=full_offers):
-            if 'get-offers-tags' in url:
-                return json.dumps({'data': []})
-            return json.dumps({'data': full_offers})
-
-        offers = load_offers(CFG, opener)
-        assert len(offers) == total
 
 
 def test_load_offers_keeps_offers_missing_from_tags_endpoint():
