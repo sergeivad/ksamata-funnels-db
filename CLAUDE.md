@@ -1029,7 +1029,7 @@ invisible until the next container start.
   [leak-new-funnels 24.08](docs/plans/2026-08-24-leak-new-funnels.md)
   (**начинать с него любую сессию по ЛИК** — заведение воронок, обновлённый
   контракт формы, заведение через интерфейс и замена легаси-фильтров —
-  сделана 25.08 у 20 воронок из 22),
+  завершена, 21 набор из 22),
   [leak-ui-recon 24.08](docs/plans/2026-08-24-leak-ui-recon.md) (бриф на
   разведку интерфейса ЛИК),
   [leak-tag-filter-audit 04.08](docs/plans/2026-08-04-leak-tag-filter-audit.md)
