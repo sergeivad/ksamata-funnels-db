@@ -141,4 +141,15 @@ if [ -n "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] Phase-14 migration done."
 fi
 
+# Apply Phase-15 migration (idempotent: переименование тега этапа предсписка
+# «Предписок» → «Предсписок» вслед за GetCourse, исправившим свою опечатку в
+# августе 2026). Идёт ПОСЛЕ фазы 14: та материализует набор из шаблона, эта
+# правит сам шаблон и имя тега. Шаг самогасящийся — как только старого
+# написания в базе нет, фаза не находит работы, — но из цепочки не убираем.
+if [ -n "$FUNNELS_DB_PATH" ]; then
+  echo "[entrypoint] Running Phase-15 migration against $FUNNELS_DB_PATH"
+  node /app/migrate-phase15.cjs
+  echo "[entrypoint] Phase-15 migration done."
+fi
+
 exec node server.js

@@ -131,7 +131,7 @@ def test_class_11_ignores_tags_that_live_only_in_getcourse():
 def test_class_11_leaves_stages_to_classes_3_and_6():
     """Как и класс 2: этапом владеют классы 3 и 6, здесь он лишний."""
     vocabulary = frozenset({'АВ Продукт: ДБО'})
-    offers = [offer(1, 'АВ Продукт: ДБО|АВ Этап: Предписок')]
+    offers = [offer(1, 'АВ Продукт: ДБО|АВ Этап: Предсписок')]
     assert find_unknown_axes_in_registry(offers, vocabulary) == []
 
 

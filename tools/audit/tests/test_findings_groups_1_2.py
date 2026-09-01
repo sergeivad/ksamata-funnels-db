@@ -37,7 +37,7 @@ def obs(raw, day, deal_id='1'):
 def test_class_titles_are_stable_numbers_without_gaps_reused():
     """Номера классов — адрес в отчёте, их не переиспользуют.
 
-    3 и 6 сняты 2026-08-25 вместе с этапом «Предписок», ставшим сценарием
+    3 и 6 сняты 2026-08-25 вместе с этапом «Предсписок», ставшим сценарием
     базы (фаза 14). Дыра на их месте намеренная: по номерам ищут в отчётах
     прошлых прогонов, и «класс 6» не должен однажды начать значить другое.
     """
@@ -154,12 +154,12 @@ def test_class_2_still_reports_funnel_type_markers():
 
 
 def test_class_2_leaves_stages_to_classes_3_and_6():
-    """`АВ Этап: Предписок` уже занимает два листа отчёта — третий лишний.
+    """`АВ Этап: Предсписок` уже занимает два листа отчёта — третий лишний.
 
     Класс 3 даёт по нему сводку, класс 6 — список по связкам. На прогоне
     2026-07-27 те же девять связок висели в классе 2 под третьим заголовком.
     """
-    groups = group_observations([obs(AV + '|АВ Этап: Предписок', 2)])
+    groups = group_observations([obs(AV + '|АВ Этап: Предсписок', 2)])
     assert find_extra_axes(groups, VOCABULARY_2) == []
 
 
@@ -193,14 +193,14 @@ def test_class_2_registry_filter_is_off_when_the_registry_is_empty():
 
 
 def test_predpisok_stage_is_a_scenario_not_a_finding():
-    """Этап «Предписок» — пятый сценарий базы, а не находка.
+    """Этап «Предсписок» — пятый сценарий базы, а не находка.
 
     До 2026-08-25 те же группы разбирали классы 3 (сводка) и 6 (список по
     связкам): в модели базы этап выразить было нечем. Фаза 14 завела сценарий
     `predspisok`, и наблюдения теперь получают тип, как все остальные, —
     расхождения по ним разбирает класс 1.
     """
-    groups = group_observations([obs(AV + '|АВ Этап: Предписок', 2)])
+    groups = group_observations([obs(AV + '|АВ Этап: Предсписок', 2)])
     assert [g.tag_type for g in groups] == ['predspisok']
     assert [g.reason for g in groups] == [None]
 
@@ -234,7 +234,7 @@ def test_predpisok_group_is_no_longer_unresolved():
     Раньше она давала находку «типа в модели базы нет». Теперь у неё есть тип,
     воронка под связку в индексе есть — сообщать не о чем.
     """
-    groups = group_observations([obs(AV + '|АВ Этап: Предписок', 2)])
+    groups = group_observations([obs(AV + '|АВ Этап: Предсписок', 2)])
     assert find_unresolved(groups, INDEX) == []
 
 

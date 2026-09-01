@@ -7,6 +7,7 @@ import pytest
 from normalize import (
     AUTOFUNNEL_TAG,
     LEGACY_AUTOFUNNEL_TAG,
+    PREDPISOK_STAGE,
     av_key,
     av_value,
     classify,
@@ -209,19 +210,29 @@ def test_seventeen_alone_still_leaves_the_payment_stage_without_a_time():
 
 
 def test_predpisok_is_a_type_not_a_reason():
-    """С фазы 14 этап «Предписок» — пятый сценарий базы, а не отказ.
+    """С фазы 14 этап «Предсписок» — пятый сценарий базы, а не отказ.
 
     До 2026-08-25 classify возвращала здесь (None, 'predpisok'), и группу
     разбирали классы 3 и 6.
     """
-    assert classify(parse_tagset('АВ Этап: Предписок|АВ Продукт: ДБО')) == ('predspisok', None)
+    assert classify(parse_tagset('АВ Этап: Предсписок|АВ Продукт: ДБО')) == ('predspisok', None)
 
 
 def test_predpisok_spelling_is_exact_and_legacy_variant_is_distinct():
-    # Легаси 'предсписок' — ДРУГОЙ тег, автоматически не сводится (спек, «Нормализация»).
-    # Написание с «с» в GetCourse не значит ничего: этап там пишется «Предписок».
+    # Легаси 'предсписок' — ДРУГОЙ тег, автоматически не сводится (спек,
+    # «Нормализация»). С 01.09.2026, когда GetCourse исправил свою опечатку и
+    # этап стал писаться через «с», от тега этапа он отличается только
+    # префиксом и регистром — тем важнее, что сведения одного к другому нет.
     tag_type, reason = classify(parse_tagset('предсписок|АВ Продукт: ДБО'))
     assert reason == 'no_stage'
+
+    # Старое написание, без «с»: в реестре его больше нет ни на одном
+    # предложении (снимок 01.09, 7901 предложение), и этапом оно больше не
+    # считается. Тест держит границу с двух сторон — константа сменилась
+    # ровно один раз и обратно уехать молча не должна.
+    assert classify(parse_tagset('АВ Этап: Предписок|АВ Продукт: ДБО')) \
+        == (None, 'no_stage')
+    assert PREDPISOK_STAGE == 'АВ Этап: Предсписок'
 
 
 def test_autofunnel_constants_are_distinct():
