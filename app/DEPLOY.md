@@ -84,6 +84,7 @@ After the seed check, the entrypoint runs the idempotent migration chain on
 12. `migrate-phase12.cjs` — `funnel_types.has_time` + removes «АВ Время: …» tags from funnels of timeless types
 13. `migrate-phase13.cjs` — renames the block kind `meditation` to `upsell` in `funnel_blocks` and in the monitoring groups
 14. `migrate-phase14.cjs` — adds the fifth tag scenario `predspisok` («Предсписок»)
+15. `migrate-phase15.cjs` — renames the stage tag `АВ Этап: Предписок` → `АВ Этап: Предсписок` (GetCourse fixed its own typo in August 2026)
 
 All steps are marker-gated or `IF NOT EXISTS`, so re-running them is safe.
 
@@ -96,6 +97,15 @@ committing, but it is still the heaviest migration in the chain — **take a
 first brings it.** Subsequent starts skip the rebuild (the CHECK already lists
 the value) and only re-materialize the tag rows, which is cheap and
 self-healing.
+
+**Phase 15 is what carries an existing database across the tag rename.** Phase
+14 seeds the template row *once*, behind a marker, so changing the constant in
+code does not reach a database that has already been migrated: the template
+would keep the old spelling and phase 14 would go on materializing it into
+460+ `funnel_tags` rows on every start. Phase 15 rewrites the template, the
+overrides and the global `tags` row (the materialized rows point at `tag_id`,
+so they follow without being touched). It runs **after** phase 14 and stops
+finding work as soon as the old spelling is gone.
 
 Each step runs exactly once per start, and its runner is the only entry point.
 That is not automatic: esbuild bundles the runner together with the phase file,

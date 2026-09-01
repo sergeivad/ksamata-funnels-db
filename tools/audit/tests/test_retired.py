@@ -261,9 +261,9 @@ def test_predpisok_group_falls_out_of_find_unresolved_entirely():
     Группа предсписка теперь опознана (tag_type = 'predspisok') и до ветки
     отставки не доходит: молчит и на живой связке, и на отставленной.
     """
-    live = group_observations([obs(LIVE_AV + '|АВ Этап: Предписок', BEFORE)])
+    live = group_observations([obs(LIVE_AV + '|АВ Этап: Предсписок', BEFORE)])
     assert find_unresolved(live, {}, frozenset(), {LIVE_KEY: BEFORE}) == []
-    retired = group_observations([obs(RETIRED_AV + '|АВ Этап: Предписок', BEFORE)])
+    retired = group_observations([obs(RETIRED_AV + '|АВ Этап: Предсписок', BEFORE)])
     assert find_unresolved(retired, {}, frozenset(), {RETIRED_KEY: BEFORE}) == []
 
 

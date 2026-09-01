@@ -61,10 +61,12 @@ export const PHASE5_TEMPLATE_SEED: { scenario: string; name: string; position: n
 
   { scenario: 'messenger', name: 'АВ Этап: Мессенджер', position: 0 },
 
-  // Пятый сценарий, заведён фазой 14 (2026-08-25). Написание тега — «Предписок»,
-  // без «с»: так этап называется в живом реестре GetCourse. См.
-  // PHASE14_STAGE_TAG в migrate-phase14-data.ts.
-  { scenario: 'predspisok', name: 'АВ Этап: Предписок', position: 0 },
+  // Пятый сценарий, заведён фазой 14 (2026-08-25). Написание тега —
+  // «Предсписок», через «с»: так этап называется в живом реестре GetCourse
+  // с августа 2026 (до этого там стояла опечатка без «с», см.
+  // PHASE14_STAGE_TAG в migrate-phase14-data.ts). Сид срабатывает только на
+  // свежей базе; существующие переписывает фаза 15.
+  { scenario: 'predspisok', name: 'АВ Этап: Предсписок', position: 0 },
 ];
 
 /**
