@@ -254,6 +254,9 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   }
 
   async function save() {
+    // Признак до этого сохранения — нужен ниже, чтобы отличить включение
+    // предсписка от прочих правок идентификации.
+    const predspisokWasOff = !saved.hasPredspisok;
     // Snapshot the values being submitted (not re-read after the await) so a
     // save started mid-edit doesn't wrongly mark newer edits as "saved".
     const submitted: IdentitySnapshot = {
@@ -303,6 +306,26 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
       try {
         const detail = await (await fetch(`/api/funnels/${funnel.id}`)).json();
         if (detail?.tagSets) setTagSets(detail.tagSets);
+        // Включили предсписок — пересеиваем рабочую копию оверрайдов ЭТОГО
+        // сценария с сервера. Пока галка была снята, движок набора не строил,
+        // и слот сидировался пустым; сохранить теги с таким слотом значит
+        // затереть оверрайды, которые всё это время лежали в базе.
+        //
+        // Только при переходе «было снято → стало поднято» и только этот
+        // сценарий: пересев остальных выбросил бы несохранённые правки тегов,
+        // сделанные до нажатия «Сохранить идентификацию». Своих несохранённых
+        // правок у предсписка в этот момент быть не может — вкладка была
+        // скрыта.
+        if (predspisokWasOff && submitted.hasPredspisok && detail?.tagSets?.predspisok) {
+          const fresh: Ov = {
+            add: detail.tagSets.predspisok.tags
+              .filter((t: { source: string }) => t.source === 'custom')
+              .map((t: { name: string }) => t.name),
+            remove: [...detail.tagSets.predspisok.suppressed],
+          };
+          setOv((prev) => ({ ...prev, predspisok: fresh }));
+          setSavedOv((prev) => ({ ...prev, predspisok: fresh }));
+        }
       } catch {
         // теги обновятся при следующей загрузке страницы
       }
