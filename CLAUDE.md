@@ -553,6 +553,30 @@ runs. Before copying the DB to `app/seed/` or making a backup:
 
 `*.db-wal` / `*.db-shm` sidecars and `*.db.bak_*` backups are gitignored.
 
+**Сид держит те же данные, что и репозиторная база.** Не пожелание, а уклад: до
+02.09.2026 дампы обоих файлов совпадали посимвольно, а коммит 0ee4ee8 обновлял
+сид целиком. Правило легко нарушить и невозможно заметить: **правка данных в
+корневой базе в сид не попадает сама**, обе базы после любых миграций выглядят
+здоровыми, и разница видна только по счёту строк. Ровно так 02.09 воронка f97 и
+18 позиций «Предсписок» уехали в корневую базу и не уехали в сид.
+
+Стоит это ровно один раз и тоже молча: entrypoint копирует сид в `/data` при
+ПЕРВОМ старте контейнера. Прод не задет — там база уже лежит, — но образ на
+чистом томе (новая машина, пересозданный volume, локальный прод-стек) сядет на
+неполные данные, а миграции этого не ловят: расхождений у них нет, просто
+воронки нет.
+
+Держит правило [app/tests/seed-parity.test.ts](app/tests/seed-parity.test.ts) —
+сверяет воронки, позиции блоков и материализованные теги (не дамп целиком:
+`id` съезжают от любой перезаписи блока). Чинится пересборкой сида из корневой
+базы после чекпоинта:
+
+```sh
+sqlite3 ksamata_funnels.db 'PRAGMA wal_checkpoint(TRUNCATE);'
+rm -f app/seed/ksamata_funnels.db
+sqlite3 ksamata_funnels.db "VACUUM INTO 'app/seed/ksamata_funnels.db';"
+```
+
 **Monitoring gotcha:** the tracked DB's `monitor_*` tables are intentionally
 **empty**. Running the dev server starts the background scheduler, which syncs
 ~600 targets and writes check results straight into that same tracked file. So
