@@ -279,7 +279,8 @@ def test_class_16_reports_observation_and_file_counts_per_funnel():
         obs(base, 13, '2', 'deal_export_2026-05-13_00-00-00.csv'),
     ])
     funnels = [FunnelRow(funnel_id=11, num=11, front_code='f11',
-                         product_name='ДБО NR ВК', status='active')]
+                         product_name='ДБО NR ВК', status='active',
+                         has_predspisok=True)]
     found = find_coverage(funnels, groups, INDEX)
     assert [f.cls for f in found] == [16]
     assert found[0].funnel == 'f11'
@@ -292,14 +293,14 @@ def test_class_16_marks_thin_coverage_explicitly():
     base = AV + '|АВ Этап: Регистрация'
     groups = group_observations([obs(base, 2, '1')])
     funnels = [FunnelRow(funnel_id=11, num=11, front_code='f11',
-                         product_name='X', status='active')]
+                         product_name='X', status='active', has_predspisok=True)]
     found = find_coverage(funnels, groups, INDEX)
     assert 'мало данных' in found[0].subject
 
 
 def test_class_16_includes_funnels_with_zero_observations():
     funnels = [FunnelRow(funnel_id=99, num=99, front_code='f99',
-                         product_name='X', status='active')]
+                         product_name='X', status='active', has_predspisok=True)]
     found = find_coverage(funnels, [], {})
     assert found[0].deals == 0
     assert 'нет данных' in found[0].subject

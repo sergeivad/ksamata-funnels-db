@@ -2,7 +2,8 @@
 """Карта расхождений тегов воронок.
 
 Сводит три источника — реестр предложений GetCourse, историю выгрузок
-deal_export и ksamata_funnels.db — в один XLSX с 16 классами находок.
+deal_export и ksamata_funnels.db — в один XLSX с 15 классами находок
+(номера классов идут до 17: 3 и 6 сняты, номера не переиспользуются).
 
 Эталона нет: скрипт ничего не чинит, только показывает расхождения.
 
@@ -10,7 +11,7 @@ deal_export и ksamata_funnels.db — в один XLSX с 16 классами н
 
     GC_DEV_KEY=... GC_API_KEY=... GC_DOMAIN=... python3 tools/audit/run_audit.py
 
-Без сети (только база и выгрузки, классы 9-12 и 14 будут пусты):
+Без сети (только база и выгрузки, классы 9-12, 14 и 17 будут пусты):
 
     python3 tools/audit/run_audit.py --no-api
 """
@@ -32,11 +33,11 @@ import report
 
 def collect_findings(expectations, funnels, vocabulary, index, collisions,
                      groups, observations, offers):
-    """Прогоняет все 16 классов. Порядок листов в отчёте задаёт report.
+    """Прогоняет все 15 классов. Порядок листов в отчёте задаёт report.
 
-    Тринадцать из четырнадцати классов, зависящих от выгрузок, читают
-    свёрнутые Group (по группе на тройку АВ-ключ × tag_type × набор
-    тегов) — свёртка достаточна и удобнее для сравнения с базой.
+    Все классы, зависящие от выгрузок, кроме одного, читают свёрнутые
+    Group (по группе на тройку АВ-ключ × tag_type × набор тегов) —
+    свёртка достаточна и удобнее для сравнения с базой.
 
     Класс 15 (find_drift) — исключение: его сигнатура принимает плоский
     список Observation, а не groups. Причина в самой природе дрейфа —
@@ -50,7 +51,8 @@ def collect_findings(expectations, funnels, vocabulary, index, collisions,
     остального и observations отдельно для find_drift.
     """
     result = []
-    # Считаем один раз: нужны и классу 7, и классу 9.
+    # Считаем один раз: даты последних заказов по связке нужны фильтру
+    # отставки, а он стоит в классах 2, 7, 9, 11, 15 и 17.
     order_dates = F.last_order_dates(observations)
     registry_keys = F.registry_keys_of(offers)
     registry_tags = F.registry_av_tags(offers)
@@ -68,6 +70,7 @@ def collect_findings(expectations, funnels, vocabulary, index, collisions,
     result += F.find_unused_offers(offers, groups)
     result += F.find_drift(observations, index, expectations, order_dates)
     result += F.find_coverage(funnels, groups, index)
+    result += F.find_predspisok_without_flag(offers, index, funnels, order_dates)
     return result
 
 
@@ -75,7 +78,7 @@ def main(argv=None, env=None):
     env = os.environ if env is None else env
     parser = argparse.ArgumentParser(description='Карта расхождений тегов воронок')
     parser.add_argument('--no-api', action='store_true',
-                        help='не ходить в GetCourse; классы 9-12 и 14 останутся пустыми')
+                        help='не ходить в GetCourse; классы 9-12, 14 и 17 останутся пустыми')
     parser.add_argument('--downloads', default=paths.DOWNLOADS_DIR,
                         help='каталог с выгрузками deal_export')
     parser.add_argument('--since', default=paths.SINCE_DATE.isoformat(),
@@ -135,7 +138,7 @@ def main(argv=None, env=None):
 
     offers = []
     if args.no_api:
-        print('API пропущен (--no-api): классы 9-12 и 14 будут пусты.')
+        print('API пропущен (--no-api): классы 9-12, 14 и 17 будут пусты.')
         sources.append({'kind': 'API', 'name': '—', 'detail': 'пропущен (--no-api)'})
     else:
         print('Читаю реестр предложений GetCourse…')

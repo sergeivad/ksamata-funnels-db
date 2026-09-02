@@ -207,16 +207,27 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 предложение.
 
 **Обратное расхождение — «предложение в GetCourse завели, галку не подняли» —
-сегодня не ловит НИКТО, и аудит в том числе.** Проверено 02.09.2026 на живых
-данных, с контролем: класс 1 сверяет наблюдение со слотом `(АВ-ключ, tag_type)`
-и при отсутствии слота делает `continue` (`find_missing_in_getcourse`), а у
-воронки со снятой галкой слота `predspisok` нет вовсе; класс 2 молчит, потому
-что тег этапа словарю базы известен (он в ходу у 34 воронок), да и этапы
-классы 2 и 11 не показывают по построению. Контроль: тот же класс 1 на воронке
-С набором находку даёт. Симптом ровно тот, на котором уже обожглись с
-написанием тега (Phase 15): сверка не падает, а тихо отдаёт ноль — и читается
-как «расхождений нет». Пока класса нет, единственная проверка — пересчитать
-связку по свежему снимку реестра вручную.
+разбирает класс 17 аудита** (`find_predspisok_without_flag`, заведён
+02.09.2026). До него это не ловил НИКТО, и молчали все тихо: класс 1 сверяет
+наблюдение со слотом `(АВ-ключ, tag_type)` и при отсутствии слота делает
+`continue` (`find_missing_in_getcourse`), а у воронки со снятой галкой слота
+`predspisok` нет вовсе; класс 2 молчит, потому что тег этапа словарю базы
+известен (он в ходу у 34 воронок), да и этапы классы 2 и 11 не показывают по
+построению. Контроль того замера: тот же класс 1 на воронке С набором находку
+даёт. Симптом ровно тот, на котором уже обожглись с написанием тега (Phase 15):
+сверка не падает, а тихо отдаёт ноль — и читается как «расхождений нет».
+
+Класс сопоставляет реестр с базой по той же АВ-пятёрке (`normalize.av_key`) и
+той же `classify`, что и всё остальное в аудите: предложение со сценарием
+`predspisok`, ключ которого ведёт на воронку с `has_predspisok = 0`, — находка.
+Прогон 02.09.2026 по реестру из 7905 предложений дал ноль находок (все 34
+предложения этапа легли на воронки с поднятой галкой — по этому же снимку
+сделан бэкфилл фазы 16); контроль со снятой галкой у одной воронки даёт ровно
+одну находку с её именем. **Класс читается из реестра, поэтому с `--no-api` он
+пуст** — пустой лист там значит «реестр не читали», а не «расхождений нет».
+Обратное-обратному — «галка поднята, предложения нет» — по-прежнему не ловит
+никто, и намеренно: галка законно идёт впереди предложения.
+Подробности — [tools/audit/README.md](tools/audit/README.md).
 
 **Тег пишется `АВ Этап: Предсписок`, через «с»** (с 01.09.2026, Phase 15).
 Правило прежнее и единственное: написание диктует реестр предложений GetCourse,
@@ -944,13 +955,17 @@ invisible until the next container start.
   Tests: `python3 -m pytest tools/data-export/tests`.
 - **Audit** (`tools/audit/`): `run_audit.py` builds a tag drift map across
   three sources — the GetCourse offer registry, `deal_export` history, and
-  the DB — into an XLSX report with 14 finding classes (3 and 6 retired by
-  Phase 14 — the stage they reported is a scenario now, and class numbers
-  are never reused); it fixes nothing, in
+  the DB — into an XLSX report with 15 finding classes numbered up to 17
+  (3 and 6 retired by Phase 14 — the stage they reported is a scenario now,
+  and class numbers are never reused); it fixes nothing, in
   the DB or in GetCourse. The DB is opened read-only; GetCourse credentials
   are read from the environment (`GC_DEV_KEY`, `GC_API_KEY`, `GC_DOMAIN`) and
-  never committed. `--no-api` skips GetCourse (classes 9-12 and 14 stay
-  empty). Tests: `python3 -m pytest tools/audit/tests`.
+  never committed. `--no-api` skips GetCourse (classes 9-12, 14 and 17 stay
+  empty). **Class 17 reads `funnels.has_predspisok`, so the audit now requires
+  a Phase-16 database** — on an older one `load_funnels` fails loudly with
+  `no such column`, which is the intended outcome: a silent default would mean
+  "flag raised everywhere", i.e. a permanent zero indistinguishable from an
+  honest one. Tests: `python3 -m pytest tools/audit/tests`.
 
 ## LeakEngine — приёмник F-кодов, и он пишется
 

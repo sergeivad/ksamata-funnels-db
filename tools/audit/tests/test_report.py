@@ -20,8 +20,10 @@ def finding(cls, funnel='f11', subject='S'):
 
 
 FUNNELS = [
-    FunnelRow(funnel_id=11, num=11, front_code='f11', product_name='ДБО NR ВК', status='active'),
-    FunnelRow(funnel_id=12, num=12, front_code='f12', product_name='ЖКТ NR ВК', status='active'),
+    FunnelRow(funnel_id=11, num=11, front_code='f11', product_name='ДБО NR ВК',
+              status='active', has_predspisok=True),
+    FunnelRow(funnel_id=12, num=12, front_code='f12', product_name='ЖКТ NR ВК',
+              status='active', has_predspisok=True),
 ]
 
 
@@ -86,7 +88,7 @@ def _class_cols(header):
 
 def test_summary_never_drops_findings_without_a_single_funnel():
     """Инвариант полноты: сумма классов по всем строкам (кроме «Всего»)
-    равна общему числу находок. 11 из 16 классов структурно ставят
+    равна общему числу находок. 9 из 15 классов структурно ставят
     funnel='—' (уровень предложения/оси/ключа) — без агрегирующей строки
     они бесследно пропадали бы из сводки.
     """

@@ -41,7 +41,7 @@ def test_class_titles_are_stable_numbers_without_gaps_reused():
     базы (фаза 14). Дыра на их месте намеренная: по номерам ищут в отчётах
     прошлых прогонов, и «класс 6» не должен однажды начать значить другое.
     """
-    assert sorted(CLASS_TITLES) == [1, 2, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    assert sorted(CLASS_TITLES) == [1, 2, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
 
 
 def test_group_observations_aggregates_by_key_type_and_tagset():
