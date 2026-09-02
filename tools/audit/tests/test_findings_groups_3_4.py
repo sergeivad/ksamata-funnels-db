@@ -45,9 +45,10 @@ def obs(raw, day=2, deal_id='1'):
                        deal_created='2026-05-01 00:00:00')
 
 
-def funnel(fid, num, code, status='active'):
+def funnel(fid, num, code, status='active', has_predspisok=True):
     return FunnelRow(funnel_id=fid, num=num, front_code=code,
-                     product_name='X', status=status)
+                     product_name='X', status=status,
+                     has_predspisok=has_predspisok)
 
 
 def test_class_8_reports_collision_with_both_funnels():

@@ -238,3 +238,51 @@ describe('время у типа без эфиров', () => {
     expect(out.time_19.tags.map((t) => t.name)).toContain('АВ Время: 19');
   });
 });
+
+describe('предсписок как свойство воронки', () => {
+  const empty: OverrideMap = { reg: { add: [], remove: [] }, time_15: { add: [], remove: [] },
+    time_19: { add: [], remove: [] }, messenger: { add: [], remove: [] },
+    predspisok: { add: [], remove: [] } };
+  const known = ['АВ Автоворонка', 'АВ Прямые', 'АВ Квиз', 'АВ Квиз-Лайт'];
+  const type = { name: 'АВ Автоворонка', known };
+
+  it('при hasPredspisok = false набор пуст целиком — вместе с осями и маркером', () => {
+    const out = computeTagSet(template, axes, empty, type, false);
+    expect(out.predspisok.tags).toEqual([]);
+    // Именно это и отличает признак от оверрайда: оси и маркер неудаляемы,
+    // поэтому «снять тег этапа» оставило бы пять тегов идентичности.
+    expect(out.predspisok.suppressed).toEqual([]);
+  });
+
+  it('остальные четыре сценария при этом не трогаются', () => {
+    const out = computeTagSet(template, axes, empty, type, false);
+    expect(out.reg.tags.map((t) => t.name)).toContain('АВ Этап: Регистрация');
+    expect(out.time_15.tags.map((t) => t.name)).toContain('АВ Этап: Оплата');
+    expect(out.time_19.tags.map((t) => t.name)).toContain('АВ Этап: Оплата');
+    expect(out.messenger.tags.map((t) => t.name)).toContain('АВ Этап: Мессенджер');
+  });
+
+  it('при hasPredspisok = true набор такой же, как без признака вовсе', () => {
+    const withFlag = computeTagSet(template, axes, empty, type, true);
+    const without = computeTagSet(template, axes, empty, type);
+    expect(withFlag.predspisok.tags.map((t) => t.name))
+      .toEqual(without.predspisok.tags.map((t) => t.name));
+    expect(withFlag.predspisok.tags.map((t) => t.name)).toContain('АВ Этап: Предсписок');
+  });
+
+  it('умолчание — «предсписок есть»: отсутствие контекста не снимает набор', () => {
+    const out = computeTagSet(template, axes, empty, type);
+    expect(out.predspisok.tags.length).toBeGreaterThan(0);
+  });
+
+  it('add-оверрайд не воскрешает снятый набор', () => {
+    const ov = { ...empty, predspisok: { add: ['своё'], remove: [] } };
+    const out = computeTagSet(template, axes, ov, type, false);
+    expect(out.predspisok.tags).toEqual([]);
+  });
+
+  // Тест «снятый признак не стирает оверрайды» здесь был вакуозным: функция
+  // чиста, вызвать её с false и потом с true не может ничего изменить — он
+  // проходил бы при любой реализации. Настоящее покрытие живёт там, где есть
+  // запись: «оверрайды сценария переживают снятие признака» в api-funnels.test.ts.
+});

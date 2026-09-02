@@ -4,7 +4,7 @@ from api_source import Offer
 from db_source import Expectation, FunnelRow
 from export_source import Observation
 from findings import CLASS_TITLES, group_observations
-from normalize import AUTOFUNNEL_TAG, parse_tagset
+from normalize import AUTOFUNNEL_TAG, PREDPISOK_STAGE, parse_tagset
 from run_audit import collect_findings
 
 # Без маркера: этот сценарий нарочно воспроизводит предложение без типа
@@ -22,9 +22,9 @@ def test_collect_findings_runs_every_class_and_tags_them_correctly():
     ]
     funnels = [
         FunnelRow(funnel_id=11, num=11, front_code='f11', product_name='ДБО NR ВК',
-                  status='active'),
+                  status='active', has_predspisok=True),
         FunnelRow(funnel_id=99, num=99, front_code='f99', product_name='Тихая',
-                  status='active'),
+                  status='active', has_predspisok=True),
     ]
     vocabulary = parse_tagset(AV + '|АВ Этап: Регистрация|автоворонки')
     index = {KEY: {11}}
@@ -55,7 +55,7 @@ def test_collect_findings_returns_empty_classes_when_everything_matches():
                     status='active', tag_type='reg', tags=parse_tagset(tags))
     ]
     funnels = [FunnelRow(funnel_id=11, num=11, front_code='f11',
-                         product_name='X', status='active')]
+                         product_name='X', status='active', has_predspisok=True)]
     # Здесь, в отличие от предыдущего теста, маркер ЕСТЬ everywhere (db,
     # выгрузка, реестр) — значит и индекс должен быть по ПОЛНОМУ ключу,
     # иначе class 7/9/13/16 не увидят совпадения и вернут лишние находки.
@@ -73,3 +73,38 @@ def test_collect_findings_returns_empty_classes_when_everything_matches():
                              index, {}, groups, observations, offers)
     # Остаётся только класс 16 — он описывает покрытие, а не дефект.
     assert {f.cls for f in found} == {16}
+
+
+def test_collect_findings_wires_the_predspisok_flag_class():
+    """Класс 17 включён в прогон.
+
+    Тест на проводку, а не на логику класса (она в
+    test_findings_predspisok_flag.py): забытая строка `result += ...` в
+    collect_findings не роняет ничего и не меняет ни одного другого класса —
+    отчёт просто получает вечно пустой лист, неотличимый от «расхождений нет».
+    """
+    tags = AV + '|АВ Этап: Регистрация|' + AUTOFUNNEL_TAG
+    key_typed = KEY[:4] + (AUTOFUNNEL_TAG,)
+    expectations = [
+        Expectation(funnel_id=11, num=11, front_code='f11', product_name='X',
+                    status='active', tag_type='reg', tags=parse_tagset(tags))
+    ]
+    funnels = [FunnelRow(funnel_id=11, num=11, front_code='f11',
+                         product_name='X', status='active', has_predspisok=False)]
+    observations = [
+        Observation(deal_id='1', tags=parse_tagset(tags),
+                    file_name='deal_export_2026-05-02_00-00-00.csv',
+                    file_date=datetime.date(2026, 5, 2), deal_created='2026-05-01'),
+    ]
+    groups = group_observations(observations)
+    offers = [
+        Offer(offer_id=1, title='Курс', status='draft', tags=parse_tagset(tags)),
+        Offer(offer_id=2, title='Предсписок', status='draft',
+              tags=parse_tagset(AV + '|' + PREDPISOK_STAGE + '|' + AUTOFUNNEL_TAG)),
+    ]
+
+    found = collect_findings(expectations, funnels, parse_tagset(tags),
+                             {key_typed: {11}}, {}, groups, observations, offers)
+    # 16 — покрытие, оно считается всегда; 17 — сама находка.
+    assert {f.cls for f in found} == {16, 17}
+    assert [f.funnel for f in found if f.cls == 17] == ['f11']

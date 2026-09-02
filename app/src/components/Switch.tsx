@@ -14,6 +14,10 @@ export default function Switch({ checked, onChange, label, disabled = false }: P
         type="button"
         role="switch"
         aria-checked={checked}
+        // Видимая подпись — соседний span, а не <label for>, поэтому скринридер
+        // сам её к кнопке не привяжет: без этого все переключатели сервиса
+        // читаются как безымянные «переключатель, включено».
+        aria-label={label}
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className="relative inline-block h-[17px] w-[30px] rounded-full transition disabled:cursor-default disabled:opacity-60"

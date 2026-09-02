@@ -19,7 +19,8 @@ CREATE TABLE funnels (
     id INTEGER PRIMARY KEY, num INTEGER, source_id INTEGER,
     product_id INTEGER, contractor_id INTEGER,
     product_name TEXT DEFAULT '', front_code TEXT DEFAULT '',
-    status TEXT DEFAULT 'active'
+    status TEXT DEFAULT 'active',
+    has_predspisok INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE tags (id INTEGER PRIMARY KEY, name TEXT);
 CREATE TABLE funnel_tags (
@@ -30,16 +31,23 @@ CREATE TABLE funnel_tags (
 
 
 def make_db(tmp_path, funnels, tag_links):
-    """funnels: [(id, num, front_code, product_name, status)]
-    tag_links: [(funnel_id, tag_type, [имена тегов])]"""
+    """funnels: [(id, num, front_code, product_name, status[, has_predspisok])]
+    tag_links: [(funnel_id, tag_type, [имена тегов])]
+
+    Шестой элемент необязателен и по умолчанию равен 1 — как умолчание самой
+    колонки (фаза 16): тестам не про предсписок про него знать не нужно.
+    """
     path = tmp_path / 'test.db'
     con = sqlite3.connect(path)
     con.executescript(SCHEMA)
-    for fid, num, code, pname, status in funnels:
+    for row in funnels:
+        fid, num, code, pname, status = row[:5]
+        has_predspisok = row[5] if len(row) > 5 else 1
         con.execute(
             'INSERT INTO funnels (id,num,source_id,product_id,contractor_id,'
-            'product_name,front_code,status) VALUES (?,?,1,1,1,?,?,?)',
-            (fid, num, pname, code, status),
+            'product_name,front_code,status,has_predspisok) '
+            'VALUES (?,?,1,1,1,?,?,?,?)',
+            (fid, num, pname, code, status, has_predspisok),
         )
     tag_ids = {}
     for _, _, names in tag_links:
@@ -213,3 +221,43 @@ def test_label_of_falls_back_to_num_when_front_code_empty(tmp_path):
     db = make_db(tmp_path, [(2, 27, '', 'БОО Перелив СПБ', 'active')], [])
     row = load_funnels(db)[0]
     assert label_of(row) == '#27'
+
+
+# ─── Признак предсписка (фаза 16) ───────────────────────────────────────────
+
+SCHEMA_BEFORE_PHASE16 = SCHEMA.replace(
+    ",\n    has_predspisok INTEGER NOT NULL DEFAULT 1", ""
+)
+
+
+def test_load_funnels_reads_predspisok_flag_as_bool(tmp_path):
+    db = make_db(
+        tmp_path,
+        [(1, 1, 'f1', 'С предсписком', 'active', 1),
+         (2, 2, 'f2', 'Без предсписка', 'active', 0)],
+        [],
+    )
+    flags = {r.front_code: r.has_predspisok for r in load_funnels(db)}
+    assert flags == {'f1': True, 'f2': False}
+
+
+def test_load_funnels_fails_loudly_on_a_base_without_the_column(tmp_path):
+    """База без фазы 16 роняет чтение — и это правильный исход.
+
+    Молчаливое умолчание тут значило бы «признак поднят у всех», то есть
+    вечный ноль находок класса 17 на любой непромигрированной базе — ровно
+    тот неотличимый от честного ноль, ради которого класс и заведён.
+    Ошибка sqlite называет колонку, так что она же и указывает на фазу.
+    """
+    path = tmp_path / 'before-phase16.db'
+    con = sqlite3.connect(path)
+    con.executescript(SCHEMA_BEFORE_PHASE16)
+    con.execute(
+        'INSERT INTO funnels (id,num,source_id,product_id,contractor_id,'
+        "product_name,front_code,status) VALUES (1,1,1,1,1,'A','f1','active')"
+    )
+    con.commit()
+    con.close()
+
+    with pytest.raises(sqlite3.OperationalError, match='has_predspisok'):
+        load_funnels(str(path))

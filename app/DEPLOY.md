@@ -85,6 +85,7 @@ After the seed check, the entrypoint runs the idempotent migration chain on
 13. `migrate-phase13.cjs` — renames the block kind `meditation` to `upsell` in `funnel_blocks` and in the monitoring groups
 14. `migrate-phase14.cjs` — adds the fifth tag scenario `predspisok` («Предсписок»)
 15. `migrate-phase15.cjs` — renames the stage tag `АВ Этап: Предписок` → `АВ Этап: Предсписок` (GetCourse fixed its own typo in August 2026)
+16. `migrate-phase16.cjs` — makes предсписок a per-funnel property: adds `funnels.has_predspisok` (`NOT NULL DEFAULT 1`), clears it once for the 44 funnels with no предсписок offer in the GetCourse registry as of 2026-09-02, and on every run drops `predspisok` rows of `funnel_tags` for funnels whose flag is 0 (backfill only in the pass that creates the column, so a flag set by hand survives restarts)
 
 All steps are marker-gated or `IF NOT EXISTS`, so re-running them is safe.
 

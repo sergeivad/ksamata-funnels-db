@@ -20,6 +20,12 @@ class FunnelRow:
     front_code: str
     product_name: str
     status: str
+    # Признак «у воронки есть шаг предсписка» (фаза 16). Поле БЕЗ умолчания
+    # намеренно: умолчание пришлось бы взять равным умолчанию колонки
+    # (NOT NULL DEFAULT 1), то есть «предсписок есть», и любой забывший его
+    # вызывающий молча получал бы ноль находок класса 17 — ровно тот тихий
+    # ноль, ради которого класс и заводился.
+    has_predspisok: bool
 
 
 @dataclass(frozen=True)
@@ -44,10 +50,20 @@ def label_of(row):
 
 
 def load_funnels(db_path):
+    """Строки воронок. Требует базы, промигрированной по фазу 16 включительно.
+
+    `has_predspisok` читается наравне с остальными колонками, без проверки
+    PRAGMA и без подстановки умолчания: на базе без этой колонки sqlite падает
+    громко и с именем колонки в тексте ошибки, и это правильный исход. Тихое
+    умолчание вернуло бы «признак поднят у всех» — то есть ноль находок
+    класса 17 на любой базе, а неотличимый от честного ноль здесь дороже
+    падения. Так же не защищены `front_code` (фаза 7) и `status`.
+    """
     con = _connect(db_path)
     try:
         rows = con.execute(
-            'SELECT id, num, front_code, product_name, status FROM funnels ORDER BY num'
+            'SELECT id, num, front_code, product_name, status, has_predspisok '
+            'FROM funnels ORDER BY num'
         ).fetchall()
     finally:
         con.close()
@@ -58,6 +74,7 @@ def load_funnels(db_path):
             front_code=normalize_tag(r[2] or ''),
             product_name=normalize_tag(r[3] or ''),
             status=r[4] or '',
+            has_predspisok=bool(r[5]),
         )
         for r in rows
     ]

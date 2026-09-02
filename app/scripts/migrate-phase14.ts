@@ -193,14 +193,22 @@ function materialize(sqlite: Sqlite): { tagRows: number; funnelsSkipped: number 
       .all(PHASE14_SCENARIO) as { name: string }[]
   ).map((r) => r.name);
 
+  // Признак предсписка появляется только с фазой 16, а она идёт ПОСЛЕ этой:
+  // на свежей базе колонки здесь ещё нет, и спрашивать её нельзя. Нет колонки
+  // — набор получают все, ровно как до фазы 16; тогда его снимет сама 16.
+  const hasFlagColumn = (
+    sqlite.prepare(`PRAGMA table_info(funnels)`).all() as { name: string }[]
+  ).some((r) => r.name === 'has_predspisok');
+
   const funnels = sqlite
     .prepare(
-      `SELECT f.id AS id, t.name AS marker, COALESCE(t.has_time, 1) AS hasTime
+      `SELECT f.id AS id, t.name AS marker, COALESCE(t.has_time, 1) AS hasTime,
+              ${hasFlagColumn ? 'COALESCE(f.has_predspisok, 1)' : '1'} AS hasPredspisok
          FROM funnels f
          LEFT JOIN funnel_types t ON t.id = f.funnel_type_id
         ORDER BY f.id`
     )
-    .all() as { id: number; marker: string | null; hasTime: number }[];
+    .all() as { id: number; marker: string | null; hasTime: number; hasPredspisok: number }[];
 
   const axisRows = sqlite.prepare(
     `SELECT g.name AS name
@@ -237,6 +245,16 @@ function materialize(sqlite: Sqlite): { tagRows: number; funnelsSkipped: number 
       // кто-то шаблон между его заведением и первым сохранением.
       if (axes.length === 0) {
         funnelsSkipped += 1;
+        continue;
+      }
+
+      // У воронки нет шага предсписка (фаза 16) — набора нет вовсе. Строки при
+      // этом СНОСЯТСЯ, а не просто не пишутся: третий шаг обязан оставаться
+      // самовосстанавливающимся, иначе набор, приехавший мимо приложения,
+      // пережил бы фазу. Обещание шага — «те и только те строки, которые
+      // построит движок», а движок снятой воронке не строит ни одной.
+      if (f.hasPredspisok === 0) {
+        wipe.run(f.id, PHASE14_SCENARIO);
         continue;
       }
 

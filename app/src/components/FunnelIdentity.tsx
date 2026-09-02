@@ -7,6 +7,8 @@ import { copyText } from '@/lib/clipboard';
 import { isAxisTag } from '@/lib/ab-tags';
 import { funnelHref } from '@/lib/front-code';
 import Segmented from './Segmented';
+import Switch from './Switch';
+import { tagPatchBody } from '@/lib/tag-scenarios';
 import RefSelect from './RefSelect';
 import { useCanEdit } from './AuthProvider';
 import { STATUS_META } from '@/lib/status';
@@ -32,6 +34,7 @@ type IdentitySnapshot = {
   ta: string;
   tb: string;
   funnelType: string;
+  hasPredspisok: boolean;
 };
 
 interface Props { funnel: FunnelDetail; onDirtyChange?: (dirty: boolean) => void }
@@ -56,6 +59,24 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Шаг предсписка есть не у всякой воронки: в реестре предложений GetCourse
+  // этап заведён у меньшинства (Phase 16). Снятая галка убирает набор целиком,
+  // а не только тег этапа, — оси и маркер типа оверрайдом не снимаются.
+  const [hasPredspisok, setHasPredspisok] = useState(funnel.hasPredspisok);
+
+  /**
+   * Отражает ли рабочая копия оверрайдов предсписка то, что лежит на сервере.
+   *
+   * Отдельно от самого признака, потому что «галка поднята» и «слот можно
+   * отправлять» — разные факты. Пока галка снята, движок сценария не строит,
+   * seedOverrides сидирует слот пустым, и отправлять его нельзя: роут частичный
+   * и очистит сохранённые оверрайды. После включения слот пересеивается с
+   * сервера (см. save) — и только тогда становится отправляемым; если
+   * дочитывание детали упало, он так и остаётся неотправляемым до перезагрузки
+   * страницы, а не превращается в тихую потерю.
+   */
+  const [predspisokSeeded, setPredspisokSeeded] = useState(funnel.hasPredspisok);
+
   // Snapshot of the last successfully persisted state, used to derive the
   // "unsaved changes" indicator by comparing it against the live form state.
   const [saved, setSaved] = useState<IdentitySnapshot>({
@@ -69,6 +90,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
     ta: funnel.timeLabelA,
     tb: funnel.timeLabelB,
     funnelType: funnel.funnelType ?? '',
+    hasPredspisok: funnel.hasPredspisok,
   });
 
   const dirty =
@@ -81,7 +103,8 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
     comment !== saved.comment ||
     ta !== saved.ta ||
     tb !== saved.tb ||
-    funnelType !== (saved.funnelType ?? '');
+    funnelType !== (saved.funnelType ?? '') ||
+    hasPredspisok !== saved.hasPredspisok;
 
   const onDirtyChangeRef = useRef(onDirtyChange);
   onDirtyChangeRef.current = onDirtyChange;
@@ -97,11 +120,24 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   // времени погашен движком), и две вкладки предлагали бы выбор, которого нет.
   const timeless = !funnel.typeHasTime;
 
+  // Вкладка предсписка живёт по СОХРАНЁННОМУ признаку, а не по положению
+  // галки. Разница существенная: пока правка не сохранена, у сервера набора
+  // нет, и рабочая копия оверрайдов сценария сидирована пустой. Показать
+  // вкладку сразу по клику значило бы дать редактировать набор, которого на
+  // сервере нет, — и первое же «Сохранить теги» отправило бы пустой слот,
+  // затерев сохранённые оверрайды вместе со свежей правкой.
+  //
+  // Что галка нажата, видно по ней самой; что набор появится после сохранения,
+  // говорит подсказка «Набор дефолтных тегов обновится после “Сохранить
+  // идентификацию”» ниже. В обратную сторону так же: снятая, но не сохранённая
+  // галка вкладку не прячет — на сервере набор ещё есть, и слать его правильно.
+  const tab: TabKey = scenario === 'predspisok' && !saved.hasPredspisok ? 'reg' : scenario;
+
   // Map the visible tab (+ pay timeSlot) to the canonical Scenario key.
   const activeScenario: Scenario =
-    scenario === 'reg' ? 'reg'
-      : scenario === 'messenger' ? 'messenger'
-        : scenario === 'predspisok' ? 'predspisok'
+    tab === 'reg' ? 'reg'
+      : tab === 'messenger' ? 'messenger'
+        : tab === 'predspisok' ? 'predspisok'
           : timeless ? 'time_19'
             : timeSlot === '15' ? 'time_15' : 'time_19';
 
@@ -140,7 +176,11 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   // Server-provided effective set already encodes template + axes. To reflect
   // live edits without a round-trip, re-derive: start from server tags of this
   // scenario, drop those in ov.remove, and append ov.add customs not already shown.
-  const serverSet = tagSets[activeScenario];
+  // До сохранения сервер ещё отдаёт прежний набор — гасим его на экране сразу,
+  // чтобы галка и содержимое вкладки не расходились.
+  const serverSet = activeScenario === 'predspisok' && !saved.hasPredspisok
+    ? { tags: [], suppressed: [] }
+    : tagSets[activeScenario];
   const removeSet = new Set(ov[activeScenario].remove);
   const shown = serverSet.tags
     .filter((t) => !(t.source !== 'axis' && removeSet.has(t.name)))
@@ -207,7 +247,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
       const res = await fetch(`/api/funnels/${funnel.id}/tags`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ov),
+        body: JSON.stringify(tagPatchBody(ov, predspisokSeeded)),
       });
       const b = await res.json().catch(() => null);
       if (!res.ok) {
@@ -235,12 +275,15 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   }
 
   async function save() {
+    // Признак до этого сохранения — нужен ниже, чтобы отличить включение
+    // предсписка от прочих правок идентификации.
+    const predspisokWasOff = !saved.hasPredspisok;
     // Snapshot the values being submitted (not re-read after the await) so a
     // save started mid-edit doesn't wrongly mark newer edits as "saved".
     const submitted: IdentitySnapshot = {
       frontCode, status,
       product: axes.product, contractor: axes.contractor, channel: axes.channel, direction: axes.direction,
-      comment, ta, tb, funnelType,
+      comment, ta, tb, funnelType, hasPredspisok,
     };
     setSaving(true);
     setError(null);
@@ -253,6 +296,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
           product: submitted.product, contractor: submitted.contractor, channel: submitted.channel, direction: submitted.direction,
           comment: submitted.comment, timeLabelA: submitted.ta, timeLabelB: submitted.tb,
           funnelType: submitted.funnelType,
+          hasPredspisok: submitted.hasPredspisok,
         }),
       });
       const body = await res.json().catch(() => null);
@@ -283,8 +327,35 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
       try {
         const detail = await (await fetch(`/api/funnels/${funnel.id}`)).json();
         if (detail?.tagSets) setTagSets(detail.tagSets);
+        // Включили предсписок — пересеиваем рабочую копию оверрайдов ЭТОГО
+        // сценария с сервера. Пока галка была снята, движок набора не строил,
+        // и слот сидировался пустым; сохранить теги с таким слотом значит
+        // затереть оверрайды, которые всё это время лежали в базе.
+        //
+        // Только при переходе «было снято → стало поднято» и только этот
+        // сценарий: пересев остальных выбросил бы несохранённые правки тегов,
+        // сделанные до нажатия «Сохранить идентификацию». Своих несохранённых
+        // правок у предсписка в этот момент быть не может — вкладка была
+        // скрыта.
+        if (predspisokWasOff && submitted.hasPredspisok) {
+          setPredspisokSeeded(Boolean(detail?.tagSets?.predspisok));
+        }
+        if (predspisokWasOff && submitted.hasPredspisok && detail?.tagSets?.predspisok) {
+          const fresh: Ov = {
+            add: detail.tagSets.predspisok.tags
+              .filter((t: { source: string }) => t.source === 'custom')
+              .map((t: { name: string }) => t.name),
+            remove: [...detail.tagSets.predspisok.suppressed],
+          };
+          setOv((prev) => ({ ...prev, predspisok: fresh }));
+          setSavedOv((prev) => ({ ...prev, predspisok: fresh }));
+        }
       } catch {
-        // теги обновятся при следующей загрузке страницы
+        // Теги обновятся при следующей загрузке страницы. Но если этим
+        // сохранением предсписок включили, слот оверрайдов остался пустым и
+        // отправлять его нельзя — иначе следующее «Сохранить теги» затрёт
+        // сохранённые оверрайды.
+        if (predspisokWasOff && submitted.hasPredspisok) setPredspisokSeeded(false);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось сохранить');
@@ -357,18 +428,34 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
 
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <Segmented
-            options={[{ value: 'reg', label: 'Регистрация' }, { value: 'pay', label: 'Оплата' }, { value: 'messenger', label: 'Мессенджер' }, { value: 'predspisok', label: 'Предсписок' }]}
-            value={scenario} onChange={(v) => setScenario(v as TabKey)} />
-          {scenario === 'pay' && !timeless && (
+            options={[
+              { value: 'reg', label: 'Регистрация' },
+              { value: 'pay', label: 'Оплата' },
+              { value: 'messenger', label: 'Мессенджер' },
+              ...(saved.hasPredspisok ? [{ value: 'predspisok', label: 'Предсписок' }] : []),
+            ]}
+            value={tab} onChange={(v) => setScenario(v as TabKey)} />
+          {tab === 'pay' && !timeless && (
             <Segmented
               options={[{ value: '15', label: ta || '15:00' }, { value: '19', label: tb || '19:00' }]}
               value={timeSlot} onChange={(v) => setTimeSlot(v as TimeSlot)} />
           )}
-          {scenario === 'pay' && timeless && (
+          {tab === 'pay' && timeless && (
             <span className="text-[10px] text-[var(--faint)]">
               у этого типа воронки нет эфиров по времени — набор оплаты один
             </span>
           )}
+          {/*
+            Признак шага, а не фильтр показа: снятая галка убирает набор
+            предсписка и из карточки, и из funnel_tags. Стоит рядом со
+            вкладками, потому что именно вкладку она и убирает — решение видно
+            там же, где действует. Применяется по «Сохранить идентификацию»,
+            как и оси: набор пересобирает сервер.
+          */}
+          <span className="ml-auto flex items-center gap-2">
+            <Switch checked={hasPredspisok} onChange={setHasPredspisok}
+              label="предсписок" disabled={!canEdit} />
+          </span>
         </div>
 
         {dirty && (

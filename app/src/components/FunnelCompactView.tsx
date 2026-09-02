@@ -121,7 +121,7 @@ export default function FunnelCompactView({ funnel, initialDays, landings, rest,
  * которых у анонима нет.
  */
 function TagSets({ funnel }: { funnel: FunnelDetail }) {
-  const views = scenarioViews(funnel.typeHasTime, funnel.timeLabelA, funnel.timeLabelB)
+  const views = scenarioViews(funnel.typeHasTime, funnel.timeLabelA, funnel.timeLabelB, funnel.hasPredspisok)
     .filter((v) => funnel.tagSets[v.scenario].tags.length > 0);
   if (views.length === 0) return null;
 
