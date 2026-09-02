@@ -76,7 +76,10 @@ Drizzle SQLite. Core + lookup + content + tags tables:
 - **Lookups:** `sources`, `products`, `contractors`, `funnel_types` (funnel-type
   marker, `{id, name}` — `name` holds the GetCourse marker text verbatim, e.g.
   `АВ Автоворонка`/`АВ Прямые`/`АВ Квиз`/`АВ Квиз-Лайт`), `tags` (global tag names).
-- **`funnels`** — one row per funnel: identity FKs (source/product/contractor),
+- **`funnels`** — one row per funnel: identity FKs (source/product/contractor —
+  **`product_id` и `contractor_id` тут кэш осей, а не сами оси**: истину
+  держит `funnel_tags`, колонку выравнивает Phase 17, а `source_id` кэшем НЕ
+  является и живёт своей жизнью, см. фазу),
   nullable `funnelTypeId` FK into `funnel_types` (`NULL` = type not chosen, no
   marker emitted at all — same rule as an empty axis), `variant`, `productName`,
   dashboard URLs, raw tag strings (`tag19Raw`/`tag15Raw`/`regTagsRaw`),
@@ -748,9 +751,47 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
   может ещё не быть (на свежей базе 16 идёт позже), поэтому она спрашивает
   `PRAGMA table_info` и без колонки ведёт себя как раньше.
 
+- **Phase 17** — осевые FK-колонки `funnels.contractor_id` и
+  `funnels.product_id` приводятся к тому, что говорят теги. Они **кэш осей, а
+  не сами оси**: источник истины — `funnel_tags`, и карточка читает оси именно
+  оттуда (`getAxesForFunnel`), а колонки писались отдельно и ни разу не
+  сверялись. Замер 02.09.2026 (77 воронок): продукт сходится везде, подрядчик
+  разошёлся на семи — `f36`/`f37`/`f38`/`f81` («Органика» против «Внутренний»),
+  `f82`/`f83` («Перелив» против «Внутренний»), `f89` («FAQ» против «NR»). Это
+  не дрейф, а разовая ошибка импорта: у `add_av_tags.py` кортеж идёт
+  `(продукт, канал, направление, подрядчик)`, а `ksamata_funnels_db.py` читает
+  свой как `(продукт, подрядчик, вариант)` — в колонку подрядчика уехало
+  **направление**, а у `f82`/`f83` тем же способом **канал**.
+  Мешало это трояко: `/refs` считает использование справочника и по колонке
+  тоже (`getRefUsage`), поэтому «Органика» (4) и «Перелив» (2) числились
+  занятыми и **не удалялись**, хотя подрядчиком их не несёт ни одна воронка;
+  `tools/data-export` печатал в XLSX неверного подрядчика; `tools/reconcile`
+  держит колонку в `Funnel.contractor`. Замер после фазы: обе показывают ноль
+  (как «ВК БАИНГ», у которого ноль и без всякой фазы), а колонка и тег сходятся
+  у всех одиннадцати подрядчиков.
+  Фазой, а не разовым скриптом, ровно по доводу фаз 10 и 11: колонку
+  продолжает писать Python-импорт, и неверные литералы в нём никуда не делись
+  (`add_pereliv_funnels.py` и сейчас содержит `'contractor': 'Перелив'`).
+  Расхождение к тому же **самоустраняется по одной воронке за раз** —
+  `updateFunnel` разрешает присланное имя оси обратно в FK через `createRef`,
+  так что первое же «Сохранить идентификацию» тихо чинит колонку; это не повод
+  отложить, а повод закрыть разом, пока запрос по `contractor_id` не даёт
+  разный ответ в разные дни.
+  **`source_id` фаза не трогает и тронуть не может.** Зеркального тега у
+  `sources` нет, и вывести источник из осей нельзя: склейку «`<канал>
+  <подрядчик>`» `updateFunnel` собирает только при смене оси, и это правило
+  рождения нового значения, а не определение истины. Замер: у 49 воронок из 77
+  имя источника этой склейке не равно, и различия содержательные — `f21`–`f23`
+  «Яндекс Директ  (холод)» против `f24`–`f26` «Яндекс Директ  (ретаргет)» при
+  полностью одинаковых осях. Холод и ретаргет различает **только** `source_id`.
+  Границы: воронка без осевого тега пропускается (колонки NOT NULL, а пустой
+  черновик — законное состояние, `resyncAllFunnels` их тоже обходит); тег со
+  значением, которого нет в справочнике, тоже пропускается и попадает в лог —
+  заводить строку `/refs` из опечатки в теге фаза не вправе.
+
 **Docker runs, in order** (`app/docker-entrypoint.sh`): Phase 2 → 3 (+data) →
 4 → 5 → legacy-tag-override backfill → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14
-→ 15 → 16.
+→ 15 → 16 → 17.
 
 **A migration script must never run itself.** esbuild bundles the runner and the
 migration into one file, and inside that bundle `require.main === module` is
@@ -936,6 +977,19 @@ location), so they run from any working directory.
 run both phases by hand (`npx tsx scripts/migrate-phase10-runner.ts` and
 `npx tsx scripts/migrate-phase11-runner.ts` from `app/`) or the addresses stay
 invisible until the next container start.
+
+**И они же пишут осевые FK — с неверными литералами** (Phase 17).
+`contractor_id`/`product_id` — кэш осей, источник истины `funnel_tags`, но
+импорт заполняет их из своих кортежей, а те у разных скриптов разложены
+по-разному: `add_av_tags.py` идёт `(продукт, канал, направление, подрядчик)`,
+`ksamata_funnels_db.py` — `(продукт, подрядчик, вариант)`, из-за чего в
+колонку подрядчика уехало направление («Органика»), а `add_pereliv_funnels.py`
+и сейчас жёстко зашивает `'contractor': 'Перелив'` — это канал. Литералы в
+скриптах не правились сознательно: они писались под модель своего дня, а
+Phase 17 чинит результат ЛЮБОГО писателя. После импорта в локальную базу
+прогоняйте и её (`npx tsx scripts/migrate-phase17-runner.ts` из `app/`), иначе
+`/refs` будет считать занятыми справочные значения, которых не несёт ни одна
+воронка. `source_id` при этом **не** кэш осей и не сверяется — см. Phase 17.
 
 - **Import** (`tools/data-import/`): `add_av_tags.py`, `add_durations.py`,
   `add_dih_funnel.py`, `add_pereliv_funnels.py`, `add_quiz_funnels.py` — all
