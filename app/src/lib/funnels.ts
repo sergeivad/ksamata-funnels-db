@@ -157,7 +157,7 @@ function resolveFunnelTypeId(tx: AnyDB, name: string): number {
  * схеме (drizzle не знает про NOT NULL, заведённый миграцией), а «нет данных»
  * не должно молча снимать набор — тот же довод, что у hasTime.
  */
-export function getHasPredspisok(db: AnyDB, funnelId: number): boolean {
+function getHasPredspisok(db: AnyDB, funnelId: number): boolean {
   const row = db
     .select({ v: funnels.hasPredspisok })
     .from(funnels)

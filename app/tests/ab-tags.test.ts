@@ -281,12 +281,8 @@ describe('предсписок как свойство воронки', () => {
     expect(out.predspisok.tags).toEqual([]);
   });
 
-  it('снятый признак не стирает оверрайды — вернув его, получаем прежний набор', () => {
-    const ov = { ...empty, predspisok: { add: ['своё'], remove: ['АВ Этап: Предсписок'] } };
-    const before = computeTagSet(template, axes, ov, type, true);
-    computeTagSet(template, axes, ov, type, false);
-    const after = computeTagSet(template, axes, ov, type, true);
-    expect(after.predspisok.tags.map((t) => t.name)).toEqual(before.predspisok.tags.map((t) => t.name));
-    expect(after.predspisok.suppressed).toEqual(before.predspisok.suppressed);
-  });
+  // Тест «снятый признак не стирает оверрайды» здесь был вакуозным: функция
+  // чиста, вызвать её с false и потом с true не может ничего изменить — он
+  // проходил бы при любой реализации. Настоящее покрытие живёт там, где есть
+  // запись: «оверрайды сценария переживают снятие признака» в api-funnels.test.ts.
 });

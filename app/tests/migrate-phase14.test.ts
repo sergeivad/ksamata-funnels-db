@@ -357,9 +357,15 @@ describe('фаза 14 и признак предсписка', () => {
         .prepare(`SELECT COUNT(DISTINCT funnel_id) AS c FROM funnel_tags WHERE tag_type = 'predspisok'`)
         .get() as { c: number }
     ).c;
-    const funnelsTotal = (
-      sqlite.prepare(`SELECT COUNT(*) AS c FROM funnels`).get() as { c: number }
+    // Сравниваем с воронками, У КОТОРЫХ ЕСТЬ ОСИ, а не со всеми: фаза 14 пустые
+    // черновики пропускает намеренно (funnelsSkipped). Против COUNT(*) тест
+    // развалился бы в день, когда в репозиторную базу попадёт пустой черновик,
+    // и указал бы не на ту причину.
+    const funnelsWithAxes = (
+      sqlite
+        .prepare(`SELECT COUNT(DISTINCT funnel_id) AS c FROM funnel_tags WHERE tag_type = 'reg'`)
+        .get() as { c: number }
     ).c;
-    expect(funnelsWithSet).toBe(funnelsTotal);
+    expect(funnelsWithSet).toBe(funnelsWithAxes);
   });
 });

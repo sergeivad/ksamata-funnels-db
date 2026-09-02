@@ -59,12 +59,25 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Snapshot of the last successfully persisted state, used to derive the
   // Шаг предсписка есть не у всякой воронки: в реестре предложений GetCourse
   // этап заведён у меньшинства (Phase 16). Снятая галка убирает набор целиком,
   // а не только тег этапа, — оси и маркер типа оверрайдом не снимаются.
   const [hasPredspisok, setHasPredspisok] = useState(funnel.hasPredspisok);
 
+  /**
+   * Отражает ли рабочая копия оверрайдов предсписка то, что лежит на сервере.
+   *
+   * Отдельно от самого признака, потому что «галка поднята» и «слот можно
+   * отправлять» — разные факты. Пока галка снята, движок сценария не строит,
+   * seedOverrides сидирует слот пустым, и отправлять его нельзя: роут частичный
+   * и очистит сохранённые оверрайды. После включения слот пересеивается с
+   * сервера (см. save) — и только тогда становится отправляемым; если
+   * дочитывание детали упало, он так и остаётся неотправляемым до перезагрузки
+   * страницы, а не превращается в тихую потерю.
+   */
+  const [predspisokSeeded, setPredspisokSeeded] = useState(funnel.hasPredspisok);
+
+  // Snapshot of the last successfully persisted state, used to derive the
   // "unsaved changes" indicator by comparing it against the live form state.
   const [saved, setSaved] = useState<IdentitySnapshot>({
     frontCode: funnel.frontCode,
@@ -107,10 +120,18 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   // времени погашен движком), и две вкладки предлагали бы выбор, которого нет.
   const timeless = !funnel.typeHasTime;
 
-  // Вкладка предсписка исчезает вместе с признаком, поэтому выбранной она
-  // остаться не может: иначе снятие галки оставило бы на экране пустой набор
-  // несуществующего шага.
-  const tab: TabKey = scenario === 'predspisok' && !hasPredspisok ? 'reg' : scenario;
+  // Вкладка предсписка живёт по СОХРАНЁННОМУ признаку, а не по положению
+  // галки. Разница существенная: пока правка не сохранена, у сервера набора
+  // нет, и рабочая копия оверрайдов сценария сидирована пустой. Показать
+  // вкладку сразу по клику значило бы дать редактировать набор, которого на
+  // сервере нет, — и первое же «Сохранить теги» отправило бы пустой слот,
+  // затерев сохранённые оверрайды вместе со свежей правкой.
+  //
+  // Что галка нажата, видно по ней самой; что набор появится после сохранения,
+  // говорит подсказка «Набор дефолтных тегов обновится после “Сохранить
+  // идентификацию”» ниже. В обратную сторону так же: снятая, но не сохранённая
+  // галка вкладку не прячет — на сервере набор ещё есть, и слать его правильно.
+  const tab: TabKey = scenario === 'predspisok' && !saved.hasPredspisok ? 'reg' : scenario;
 
   // Map the visible tab (+ pay timeSlot) to the canonical Scenario key.
   const activeScenario: Scenario =
@@ -157,7 +178,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   // scenario, drop those in ov.remove, and append ov.add customs not already shown.
   // До сохранения сервер ещё отдаёт прежний набор — гасим его на экране сразу,
   // чтобы галка и содержимое вкладки не расходились.
-  const serverSet = activeScenario === 'predspisok' && !hasPredspisok
+  const serverSet = activeScenario === 'predspisok' && !saved.hasPredspisok
     ? { tags: [], suppressed: [] }
     : tagSets[activeScenario];
   const removeSet = new Set(ov[activeScenario].remove);
@@ -226,7 +247,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
       const res = await fetch(`/api/funnels/${funnel.id}/tags`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(tagPatchBody(ov, hasPredspisok)),
+        body: JSON.stringify(tagPatchBody(ov, predspisokSeeded)),
       });
       const b = await res.json().catch(() => null);
       if (!res.ok) {
@@ -316,6 +337,9 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
         // сделанные до нажатия «Сохранить идентификацию». Своих несохранённых
         // правок у предсписка в этот момент быть не может — вкладка была
         // скрыта.
+        if (predspisokWasOff && submitted.hasPredspisok) {
+          setPredspisokSeeded(Boolean(detail?.tagSets?.predspisok));
+        }
         if (predspisokWasOff && submitted.hasPredspisok && detail?.tagSets?.predspisok) {
           const fresh: Ov = {
             add: detail.tagSets.predspisok.tags
@@ -327,7 +351,11 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
           setSavedOv((prev) => ({ ...prev, predspisok: fresh }));
         }
       } catch {
-        // теги обновятся при следующей загрузке страницы
+        // Теги обновятся при следующей загрузке страницы. Но если этим
+        // сохранением предсписок включили, слот оверрайдов остался пустым и
+        // отправлять его нельзя — иначе следующее «Сохранить теги» затрёт
+        // сохранённые оверрайды.
+        if (predspisokWasOff && submitted.hasPredspisok) setPredspisokSeeded(false);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось сохранить');
@@ -404,7 +432,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
               { value: 'reg', label: 'Регистрация' },
               { value: 'pay', label: 'Оплата' },
               { value: 'messenger', label: 'Мессенджер' },
-              ...(hasPredspisok ? [{ value: 'predspisok', label: 'Предсписок' }] : []),
+              ...(saved.hasPredspisok ? [{ value: 'predspisok', label: 'Предсписок' }] : []),
             ]}
             value={tab} onChange={(v) => setScenario(v as TabKey)} />
           {tab === 'pay' && !timeless && (
@@ -425,8 +453,8 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
             как и оси: набор пересобирает сервер.
           */}
           <span className="ml-auto flex items-center gap-2">
-            <span className="text-[10px] text-[var(--faint)]">предсписок</span>
-            <Switch checked={hasPredspisok} onChange={setHasPredspisok} disabled={!canEdit} />
+            <Switch checked={hasPredspisok} onChange={setHasPredspisok}
+              label="предсписок" disabled={!canEdit} />
           </span>
         </div>
 

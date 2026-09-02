@@ -110,9 +110,19 @@ describe('фаза 16', () => {
       const value = flagOf(code);
       if (value !== undefined) expect(value, code).toBe(0);
     }
-    expect(result.funnelsCleared).toBeGreaterThan(0);
-    // f36 «Предсписок ДБО Ютуб органика» — предложение 8670757, признак остаётся.
-    expect(flagOf('f36')).toBe(1);
+    expect(result.funnelsCleared).toBe(PHASE16_FUNNELS_WITHOUT_PREDSPISOK.length);
+
+    // Хотя бы одна воронка ВНЕ списка сохраняет признак. Берём её из базы, а не
+    // называем кодом: конкретный код — сегодняшнее значение живых данных,
+    // владелец волен переименовать и удалить воронку, и тест сломался бы не по
+    // делу (правило репозитория «не закреплять тестом изменяемое»). Двумя
+    // строками выше тот же тест уже защищается от отсутствующего кода — писать
+    // рядом жёсткий 'f36' было бы противоречием самому себе.
+    const codes = new Set(PHASE16_FUNNELS_WITHOUT_PREDSPISOK as readonly string[]);
+    const kept = (sqlite.prepare(`SELECT front_code AS c FROM funnels`).all() as { c: string }[])
+      .map((r) => r.c).filter((c) => !codes.has(c));
+    expect(kept.length).toBeGreaterThan(0);
+    for (const code of kept) expect(flagOf(code), code).toBe(1);
   });
 
   it('умолчание для воронки вне списка — «предсписок есть»', () => {
@@ -208,6 +218,32 @@ describe('фаза 16', () => {
     expect(predspisokRowsOnFunnelsWithout()).toBe(0);
   });
 
+  /**
+   * Колонка и бэкфилл должны быть атомарны. Если ALTER коммитится отдельно, а
+   * прогон умирает до UPDATE (OOM при старте контейнера, убитый деплой), то
+   * следующий старт видит колонку, СЧИТАЕТ БЭКФИЛЛ СДЕЛАННЫМ и пропускает его
+   * навсегда: все воронки остаются с единицей, третьему шагу нечего сносить,
+   * и приложение выглядит ровно как до фазы. Никто ничего не замечает, а
+   * лечится только сносом колонки вручную — о чём никто не догадается.
+   *
+   * Падение имитируется триггером на UPDATE funnels: это ровно та операция,
+   * которой бэкфилл и снимает признак.
+   */
+  it('падение на бэкфилле откатывает и колонку — атомарно', () => {
+    sqlite.exec(
+      `CREATE TRIGGER phase16_boom BEFORE UPDATE ON funnels
+         BEGIN SELECT RAISE(ABORT, 'boom'); END`,
+    );
+    expect(() => runMigratePhase16(sqlite)).toThrow();
+    expect(columns()).not.toContain(PHASE16_COLUMN.name);
+
+    // Снимаем триггер — и следующий прогон отрабатывает бэкфилл полностью,
+    // а не считает его сделанным.
+    sqlite.exec('DROP TRIGGER phase16_boom');
+    const result = runMigratePhase16(sqlite);
+    expect(result.funnelsCleared).toBe(PHASE16_FUNNELS_WITHOUT_PREDSPISOK.length);
+  });
+
   it('материализация после фазы даёт ровно тот же набор тегов', () => {
     runMigratePhase16(sqlite);
     const snapshot = tagSnapshot();
@@ -221,5 +257,41 @@ describe('фаза 16', () => {
     for (const id of ids) resyncFunnelAvTags(db, id);
 
     expect(tagSnapshot()).toEqual(snapshot);
+  });
+});
+
+/**
+ * Сам список — всё содержательное, что есть в фазе, и до этих проверок он был
+ * НЕ ПРИКРЫТ: два теста, которые выглядят как его покрытие, вместе утверждают
+ * лишь «галка снята ровно у тех, кто в списке» — тавтологию для любого списка.
+ * Замер ревью: обрезание списка с 44 записей до 10 не роняло ни одного теста.
+ *
+ * Здесь — только свойства САМОЙ КОНСТАНТЫ, без обращения к базе: список
+ * заморожен (это снимок реестра на 02.09.2026), поэтому его длина и форма —
+ * величины постоянные, а не «текущее значение живых данных», которое по
+ * правилу репозитория тестом закреплять нельзя.
+ *
+ * Чего эти проверки НЕ ловят: подмену кода на другой существующий (f81 ↔ f18) —
+ * длина, форма и уникальность при ней сохраняются. Единственный настоящий
+ * замок — пересчитать список из снимка реестра, но снимок лежит в
+ * data/generated/, а он gitignored, и тест на него развалился бы на свежем
+ * клоне. Поэтому список проверен трижды вручную и независимо (дважды автором,
+ * один раз ревью) и после первого прогона фазы больше ни на что не влияет.
+ */
+describe('список воронок без предсписка', () => {
+  it('в нём ровно 44 кода — столько дал замер реестра 02.09.2026', () => {
+    expect(PHASE16_FUNNELS_WITHOUT_PREDSPISOK.length).toBe(44);
+  });
+
+  it('без дублей', () => {
+    const seen = new Set(PHASE16_FUNNELS_WITHOUT_PREDSPISOK);
+    expect(seen.size).toBe(PHASE16_FUNNELS_WITHOUT_PREDSPISOK.length);
+  });
+
+  it('все коды в каноническом виде — иначе фаза их молча не найдёт', () => {
+    // lower(front_code) = ? не совпадёт с «F81», «f 81» или опечаткой «f8l»,
+    // и такая строка тихо не сделает ничего: changes = 0, ошибки нет.
+    const bad = PHASE16_FUNNELS_WITHOUT_PREDSPISOK.filter((c) => !/^f\d+$/.test(c));
+    expect(bad).toEqual([]);
   });
 });

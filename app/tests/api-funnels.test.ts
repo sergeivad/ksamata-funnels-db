@@ -31,6 +31,7 @@ import { runMigratePhase7 } from '../scripts/migrate-phase7';
 import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import { runMigratePhase12 } from '../scripts/migrate-phase12';
 import { runMigratePhase14 } from '../scripts/migrate-phase14';
+import { runMigratePhase16 } from '../scripts/migrate-phase16';
 import { replaceDays, listDays } from '../src/lib/funnel-days';
 import { ConflictError } from '../src/lib/errors';
 import { replaceBlock, getBlock } from '../src/lib/funnel-blocks';
@@ -56,6 +57,10 @@ runMigratePhase7(sqlite);
 runMigratePhase8(sqlite);
 runMigratePhase12(sqlite);
 runMigratePhase14(sqlite);
+// Фаза 16 — как и остальные выше: харнесс поднимает схему сам, чтобы тесты не
+// зависели от того, прогнали ли миграцию на закоммиченном бинарнике базы
+// (а его, по предупреждению CLAUDE.md, rebase подменяет молча).
+runMigratePhase16(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => {
