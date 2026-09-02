@@ -8,6 +8,7 @@ import { isAxisTag } from '@/lib/ab-tags';
 import { funnelHref } from '@/lib/front-code';
 import Segmented from './Segmented';
 import Switch from './Switch';
+import { tagPatchBody } from '@/lib/tag-scenarios';
 import RefSelect from './RefSelect';
 import { useCanEdit } from './AuthProvider';
 import { STATUS_META } from '@/lib/status';
@@ -225,7 +226,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
       const res = await fetch(`/api/funnels/${funnel.id}/tags`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ov),
+        body: JSON.stringify(tagPatchBody(ov, hasPredspisok)),
       });
       const b = await res.json().catch(() => null);
       if (!res.ok) {
