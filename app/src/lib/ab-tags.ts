@@ -103,6 +103,7 @@ export function computeTagSet(
   axes: AbAxes,
   overrides: OverrideMap,
   type: FunnelTypeContext = { name: null, known: [] },
+  hasPredspisok: boolean = true,
 ): TagSets {
   const axisTags = axisTagNames(axes);
   const markerNames = new Set(type.known);
@@ -112,6 +113,19 @@ export function computeTagSet(
   const out = {} as TagSets;
 
   for (const scenario of SCENARIOS) {
+    // Предсписка у воронки может не быть вовсе — тогда сценария нет, а не есть
+    // пустой. Разница не косметическая: оси и маркер типа неудаляемы
+    // (см. isIdentity), поэтому «снять тег этапа» оверрайдом оставило бы пять
+    // тегов идентичности — строку в интерфейсе и пять строк в funnel_tags.
+    // Пустой набор здесь — единственный способ сказать «шага нет».
+    //
+    // В suppressed теги при этом не попадают, по доводу тега времени: скрытый
+    // дефолт — решение, отменяемое кликом по строке, а здесь набора нет по
+    // свойству воронки, и возвращает его только галка на карточке.
+    if (scenario === 'predspisok' && !hasPredspisok) {
+      out[scenario] = { tags: [], suppressed: [] };
+      continue;
+    }
     const staticTags = (template[scenario] ?? []).filter((n) => !(dropTime && isTimeTag(n)));
     const ov = overrides[scenario] ?? { add: [], remove: [] };
     // Только неидентичные remove считаются — оси и маркер типа неудаляемы.

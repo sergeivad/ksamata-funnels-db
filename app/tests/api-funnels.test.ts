@@ -715,6 +715,83 @@ describe('roomsEnabled flag', () => {
   });
 });
 
+/**
+ * Номера воронок здесь намеренно РАЗНЕСЕНЫ, а не идут подряд: duplicateFunnel
+ * выделяет номер как MAX(num)+1, и на сплошном ряде дубль занимает тот номер,
+ * который следующий тест собирается завести явно. Ряд 9971…9977 ровно так и
+ * падал — ConflictError на num=9977, занятом дублем предыдущего теста.
+ */
+describe('признак предсписка (Phase 16)', () => {
+  const namesOf = (id: number, scenario: 'predspisok' | 'messenger') =>
+    getFunnel(testDb, id)!.tagSets[scenario].tags.map((t) => t.name);
+
+  const rowsOf = (id: number, scenario: string) =>
+    (
+      testDb.$client
+        .prepare(`SELECT COUNT(*) AS c FROM funnel_tags WHERE funnel_id = ? AND tag_type = ?`)
+        .get(id, scenario) as { c: number }
+    ).c;
+
+  it('новая воронка заводится с предпиской', () => {
+    const created = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9971 });
+    expect(getFunnel(testDb, created.id)!.hasPredspisok).toBe(true);
+    expect(namesOf(created.id, 'predspisok').length).toBeGreaterThan(0);
+  });
+
+  it('снятие признака убирает набор и из ответа, и из funnel_tags', () => {
+    const created = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9982 });
+    expect(rowsOf(created.id, 'predspisok')).toBeGreaterThan(0);
+
+    updateFunnel(testDb, created.id, { hasPredspisok: false });
+
+    expect(getFunnel(testDb, created.id)!.hasPredspisok).toBe(false);
+    expect(namesOf(created.id, 'predspisok')).toEqual([]);
+    // Материализация — не только вид: строки обязаны исчезнуть из базы.
+    expect(rowsOf(created.id, 'predspisok')).toBe(0);
+  });
+
+  it('остальные сценарии при снятии признака не страдают', () => {
+    const created = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 9993 });
+    const before = namesOf(created.id, 'messenger');
+    updateFunnel(testDb, created.id, { hasPredspisok: false });
+    expect(namesOf(created.id, 'messenger')).toEqual(before);
+  });
+
+  it('возврат признака восстанавливает набор', () => {
+    const created = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 10004 });
+    const before = namesOf(created.id, 'predspisok');
+    updateFunnel(testDb, created.id, { hasPredspisok: false });
+    updateFunnel(testDb, created.id, { hasPredspisok: true });
+    expect(namesOf(created.id, 'predspisok')).toEqual(before);
+    expect(rowsOf(created.id, 'predspisok')).toBe(before.length);
+  });
+
+  it('оверрайды сценария переживают снятие признака', () => {
+    const created = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 10015 });
+    replaceOverrides(testDb, created.id, {
+      predspisok: { add: ['своё-предсписок'], remove: [] },
+    } as never);
+    updateFunnel(testDb, created.id, { hasPredspisok: false });
+    updateFunnel(testDb, created.id, { hasPredspisok: true });
+    expect(namesOf(created.id, 'predspisok')).toContain('своё-предсписок');
+  });
+
+  it('duplicateFunnel переносит признак с источника', () => {
+    const src = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 10026 });
+    updateFunnel(testDb, src.id, { hasPredspisok: false });
+    const dup = duplicateFunnel(testDb, src.id)!;
+    expect(getFunnel(testDb, dup.id)!.hasPredspisok).toBe(false);
+    expect(rowsOf(dup.id, 'predspisok')).toBe(0);
+  });
+
+  it('resyncAllFunnels не воскрешает набор снятой воронке', () => {
+    const created = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 10047 });
+    updateFunnel(testDb, created.id, { hasPredspisok: false });
+    resyncAllFunnels(testDb);
+    expect(rowsOf(created.id, 'predspisok')).toBe(0);
+  });
+});
+
 describe('гонка по num между процессами', () => {
   /**
    * Проверка уникальности num идёт до транзакции. Между ней и вставкой другой

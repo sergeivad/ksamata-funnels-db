@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import { copyDbForTest } from './helpers/db';
 import * as schema from '../src/db/schema';
 import { runMigratePhase14 } from '../scripts/migrate-phase14';
+import { runMigratePhase16 } from '../scripts/migrate-phase16';
 import {
   PHASE14_SCENARIO,
   PHASE14_SEED_MARKER,
@@ -233,18 +234,26 @@ describe('фаза 14', () => {
           .all(funnelId, tagType) as { name: string }[]
       ).map((r) => r.name);
 
-    const ids = (sqlite.prepare(`SELECT id FROM funnels ORDER BY id`).all() as { id: number }[])
-      .map((r) => r.id);
+    // Только воронки, у которых шаг предсписка есть (фаза 16): у остальных
+    // набора нет вовсе, и сравнивать его с мессенджером нечему. Равенство
+    // наборов — утверждение про содержимое, а не про существование.
+    const ids = (
+      sqlite
+        .prepare(`SELECT id FROM funnels WHERE COALESCE(has_predspisok, 1) = 1 ORDER BY id`)
+        .all() as { id: number }[]
+    ).map((r) => r.id);
     expect(ids.length).toBeGreaterThan(0);
 
+    let messengerRows = 0;
     for (const id of ids) {
       const messenger = setOf(id, 'messenger');
       if (messenger.length === 0) continue; // воронка без осей — её пропускают обе стороны
+      messengerRows += messenger.length;
       const predspisok = setOf(id, PHASE14_SCENARIO);
       expect(predspisok[0], `воронка ${id}`).toBe(PHASE14_STAGE_TAG);
       expect(predspisok.slice(1), `воронка ${id}`).toEqual(messenger.slice(1));
     }
-    expect(rowsOf(PHASE14_SCENARIO)).toBe(rowsOf('messenger'));
+    expect(rowsOf(PHASE14_SCENARIO)).toBe(messengerRows);
   });
 
   it('повторный прогон не добавляет ни строки', () => {
@@ -272,7 +281,13 @@ describe('фаза 14', () => {
 
   it('add-оверрайд предсписка попадает в материализацию', () => {
     runMigratePhase14(sqlite);
-    const id = (sqlite.prepare(`SELECT id FROM funnels ORDER BY id LIMIT 1`).get() as { id: number }).id;
+    // Воронка с шагом предсписка: у снятой оверрайд хранится, но не
+    // материализуется — это отдельное поведение, и проверяет его фаза 16.
+    const id = (
+      sqlite
+        .prepare(`SELECT id FROM funnels WHERE COALESCE(has_predspisok, 1) = 1 ORDER BY id LIMIT 1`)
+        .get() as { id: number }
+    ).id;
     sqlite
       .prepare(
         `INSERT INTO funnel_tag_overrides (funnel_id, tag_type, name, op, position)
@@ -291,5 +306,60 @@ describe('фаза 14', () => {
         .all(id, PHASE14_SCENARIO) as { name: string }[]
     ).map((r) => r.name);
     expect(names).toContain('промо-предсписок');
+  });
+});
+
+/**
+ * Фаза 16 сделала предсписок свойством воронки, и третий шаг фазы 14 обязан
+ * это учитывать: он объявляет, что пишет «те и только те строки, которые
+ * построит движок», а движок с Phase 16 набора снятой воронке не строит.
+ * Без этого фаза 14 возвращала бы наборы 44 воронкам при каждом старте
+ * контейнера, а фаза 16 тут же их сносила.
+ */
+describe('фаза 14 и признак предсписка', () => {
+  it('не материализует набор воронке со снятым признаком', () => {
+    runMigratePhase16(sqlite);
+    const victim = sqlite
+      .prepare(`SELECT id FROM funnels WHERE has_predspisok = 0 LIMIT 1`)
+      .get() as { id: number } | undefined;
+    expect(victim, 'фикстура: нет воронки со снятым признаком').toBeDefined();
+
+    runMigratePhase14(sqlite);
+
+    const rows = (
+      sqlite
+        .prepare(`SELECT COUNT(*) AS c FROM funnel_tags WHERE funnel_id = ? AND tag_type = 'predspisok'`)
+        .get(victim!.id) as { c: number }
+    ).c;
+    expect(rows).toBe(0);
+  });
+
+  it('воронке с признаком набор материализует как прежде', () => {
+    runMigratePhase16(sqlite);
+    const keeper = sqlite
+      .prepare(`SELECT id FROM funnels WHERE has_predspisok = 1 LIMIT 1`)
+      .get() as { id: number };
+    runMigratePhase14(sqlite);
+    const rows = (
+      sqlite
+        .prepare(`SELECT COUNT(*) AS c FROM funnel_tags WHERE funnel_id = ? AND tag_type = 'predspisok'`)
+        .get(keeper.id) as { c: number }
+    ).c;
+    expect(rows).toBeGreaterThan(0);
+  });
+
+  it('без колонки has_predspisok материализует всем — фаза 16 могла ещё не пройти', () => {
+    sqlite.exec('ALTER TABLE funnels DROP COLUMN has_predspisok');
+    const { tagRows } = runMigratePhase14(sqlite);
+    expect(tagRows).toBeGreaterThan(0);
+    const funnelsWithSet = (
+      sqlite
+        .prepare(`SELECT COUNT(DISTINCT funnel_id) AS c FROM funnel_tags WHERE tag_type = 'predspisok'`)
+        .get() as { c: number }
+    ).c;
+    const funnelsTotal = (
+      sqlite.prepare(`SELECT COUNT(*) AS c FROM funnels`).get() as { c: number }
+    ).c;
+    expect(funnelsWithSet).toBe(funnelsTotal);
   });
 });

@@ -35,21 +35,23 @@ export function scenarioViews(
   hasTime: boolean,
   timeLabelA: string,
   timeLabelB: string,
+  hasPredspisok: boolean = true,
 ): ScenarioView[] {
-  if (!hasTime) {
-    return [
-      { scenario: 'reg', label: 'Регистрация' },
-      { scenario: 'time_19', label: 'Оплата' },
-      { scenario: 'messenger', label: 'Мессенджер' },
-      { scenario: 'predspisok', label: 'Предсписок' },
-    ];
-  }
+  const payment: ScenarioView[] = hasTime
+    ? [
+        { scenario: 'time_15', label: `Оплата ${timeLabelA || '15:00'}` },
+        { scenario: 'time_19', label: `Оплата ${timeLabelB || '19:00'}` },
+      ]
+    : [{ scenario: 'time_19', label: 'Оплата' }];
+
+  // Два признака независимы: эфиры решают, одна строка оплаты или две, а
+  // предсписок — есть ли у воронки пятая строка вовсе (Phase 16). Умолчание
+  // `true` повторяет довод hasTime: отсутствие контекста не снимает строку.
   return [
     { scenario: 'reg', label: 'Регистрация' },
-    { scenario: 'time_15', label: `Оплата ${timeLabelA || '15:00'}` },
-    { scenario: 'time_19', label: `Оплата ${timeLabelB || '19:00'}` },
+    ...payment,
     { scenario: 'messenger', label: 'Мессенджер' },
-    { scenario: 'predspisok', label: 'Предсписок' },
+    ...(hasPredspisok ? [{ scenario: 'predspisok' as const, label: 'Предсписок' }] : []),
   ];
 }
 

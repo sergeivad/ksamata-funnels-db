@@ -83,6 +83,13 @@ export type FunnelDetail = FunnelListItem & {
    * выбор, которого нет. Тип не выбран — true, см. getFunnelTypeContext.
    */
   typeHasTime: boolean;
+  /**
+   * Есть ли у воронки шаг предсписка (funnels.has_predspisok, Phase 16).
+   * По нему карточка решает, показывать ли вкладку «Предсписок», а просмотр —
+   * строку набора. Признак воронки, а не типа: все воронки с предпиской имеют
+   * тип «АВ Автоворонка», но 31 автоворонка предсписка не имеет.
+   */
+  hasPredspisok: boolean;
   tagSets: TagSets;
 };
 
@@ -145,10 +152,30 @@ function resolveFunnelTypeId(tx: AnyDB, name: string): number {
  * (channel/direction live only in these tags).
  * Must be called INSIDE a transaction.
  */
+/**
+ * Признак предсписка воронки. Умолчание `true` и здесь: колонка nullable в
+ * схеме (drizzle не знает про NOT NULL, заведённый миграцией), а «нет данных»
+ * не должно молча снимать набор — тот же довод, что у hasTime.
+ */
+export function getHasPredspisok(db: AnyDB, funnelId: number): boolean {
+  const row = db
+    .select({ v: funnels.hasPredspisok })
+    .from(funnels)
+    .where(eq(funnels.id, funnelId))
+    .get() as { v: number | null } | undefined;
+  return row?.v !== 0;
+}
+
 function materializeFunnelTags(db: AnyDB, funnelId: number, axes: AbAxes): void {
   const template = listTemplate(db);
   const overrides = listOverrides(db, funnelId);
-  const sets: TagSets = computeTagSet(template, axes, overrides, getFunnelTypeContext(db, funnelId));
+  const sets: TagSets = computeTagSet(
+    template,
+    axes,
+    overrides,
+    getFunnelTypeContext(db, funnelId),
+    getHasPredspisok(db, funnelId),
+  );
 
   db.delete(funnelTags).where(eq(funnelTags.funnelId, funnelId)).run();
 
@@ -294,7 +321,8 @@ export function getFunnel(db: DB, id: number): FunnelDetail | null {
   const template = listTemplate(db);
   const overrides = listOverrides(db, row.id);
   const typeCtx = getFunnelTypeContext(db, row.id);
-  const tagSets = computeTagSet(template, axes, overrides, typeCtx);
+  const hasPredspisok = (row.hasPredspisok ?? 1) !== 0;
+  const tagSets = computeTagSet(template, axes, overrides, typeCtx, hasPredspisok);
   return {
     id:           row.id,
     num:          row.num,
@@ -315,6 +343,7 @@ export function getFunnel(db: DB, id: number): FunnelDetail | null {
     roomsReplayEnabled: (row.roomsReplayEnabled ?? 0) === 1,
     roomsEnabled: (row.roomsEnabled ?? 1) === 1,
     typeHasTime: typeCtx.hasTime !== false,
+    hasPredspisok,
     tagSets,
     axes,
   };
@@ -395,6 +424,7 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
         timeLabelB:         data.timeLabelB         ?? '19:00',
         roomsReplayEnabled: data.roomsReplayEnabled ? 1 : 0,
         roomsEnabled:       data.roomsEnabled === false ? 0 : 1,
+        hasPredspisok:      data.hasPredspisok === false ? 0 : 1,
         funnelTypeId:       data.funnelType ? resolveFunnelTypeId(tx, data.funnelType) : null,
       })
       .returning()
@@ -551,6 +581,7 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
     if (data.timeLabelB         !== undefined) scalarUpdate.timeLabelB         = data.timeLabelB;
     if (data.roomsReplayEnabled !== undefined) scalarUpdate.roomsReplayEnabled = data.roomsReplayEnabled ? 1 : 0;
     if (data.roomsEnabled       !== undefined) scalarUpdate.roomsEnabled       = data.roomsEnabled ? 1 : 0;
+    if (data.hasPredspisok      !== undefined) scalarUpdate.hasPredspisok      = data.hasPredspisok ? 1 : 0;
     if (data.funnelType !== undefined) {
       scalarUpdate.funnelTypeId = data.funnelType ? resolveFunnelTypeId(tx, data.funnelType) : null;
     }
@@ -596,9 +627,13 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
     // Тип воронки входит сюда наравне с осями: он тоже слой идентичности,
     // и PATCH с одним лишь типом обязан пересчитать теги. Без этого правка
     // типа молча меняла бы только колонку.
+    // has_predspisok входит сюда наравне с осями и типом: он решает, есть ли
+    // у воронки пятый сценарий вовсе, и PATCH с одной лишь галкой обязан
+    // пересчитать теги. Без этого правка признака молча меняла бы только
+    // колонку, а funnel_tags остался бы с набором снятого шага.
     const hasAxes = data.product !== undefined || data.contractor !== undefined
       || data.channel !== undefined || data.direction !== undefined
-      || data.funnelType !== undefined;
+      || data.funnelType !== undefined || data.hasPredspisok !== undefined;
 
     if (hasAxes) {
       const currentAxes = getAxesForFunnel(tx, id);
@@ -898,6 +933,7 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
         timeLabelB:         source.timeLabelB ?? '19:00',
         roomsReplayEnabled: source.roomsReplayEnabled ?? 0,
         roomsEnabled:       (source.roomsEnabled ?? 1) ? 1 : 0,
+        hasPredspisok:      (source.hasPredspisok ?? 1) ? 1 : 0,
         // Пятая ось — тот же слой идентичности, что и остальные оси выше:
         // дубликат обязан унаследовать тип, иначе «faithful copy» перестаёт
         // быть таковой и маркер тихо теряется на копии.

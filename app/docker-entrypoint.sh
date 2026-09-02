@@ -152,4 +152,17 @@ if [ -n "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] Phase-15 migration done."
 fi
 
+# Apply Phase-16 migration (idempotent: колонка funnels.has_predspisok, разовый
+# бэкфилл нулями по замеру реестра GetCourse и безусловный снос наборов
+# «Предсписок» у воронок без этого шага). Идёт ПОСЛЕ фазы 14: та материализует
+# набор, эта снимает его у тех, у кого шага нет. Бэкфилл срабатывает ровно один
+# раз — в прогон, заводящий колонку, — чтобы не затирать галку, поставленную
+# человеком на карточке; третий шаг самовосстанавливающийся, поэтому из цепочки
+# не убираем.
+if [ -n "$FUNNELS_DB_PATH" ]; then
+  echo "[entrypoint] Running Phase-16 migration against $FUNNELS_DB_PATH"
+  node /app/migrate-phase16.cjs
+  echo "[entrypoint] Phase-16 migration done."
+fi
+
 exec node server.js

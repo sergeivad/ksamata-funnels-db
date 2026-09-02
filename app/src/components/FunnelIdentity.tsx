@@ -7,6 +7,7 @@ import { copyText } from '@/lib/clipboard';
 import { isAxisTag } from '@/lib/ab-tags';
 import { funnelHref } from '@/lib/front-code';
 import Segmented from './Segmented';
+import Switch from './Switch';
 import RefSelect from './RefSelect';
 import { useCanEdit } from './AuthProvider';
 import { STATUS_META } from '@/lib/status';
@@ -32,6 +33,7 @@ type IdentitySnapshot = {
   ta: string;
   tb: string;
   funnelType: string;
+  hasPredspisok: boolean;
 };
 
 interface Props { funnel: FunnelDetail; onDirtyChange?: (dirty: boolean) => void }
@@ -57,6 +59,11 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   // Snapshot of the last successfully persisted state, used to derive the
+  // Шаг предсписка есть не у всякой воронки: в реестре предложений GetCourse
+  // этап заведён у меньшинства (Phase 16). Снятая галка убирает набор целиком,
+  // а не только тег этапа, — оси и маркер типа оверрайдом не снимаются.
+  const [hasPredspisok, setHasPredspisok] = useState(funnel.hasPredspisok);
+
   // "unsaved changes" indicator by comparing it against the live form state.
   const [saved, setSaved] = useState<IdentitySnapshot>({
     frontCode: funnel.frontCode,
@@ -69,6 +76,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
     ta: funnel.timeLabelA,
     tb: funnel.timeLabelB,
     funnelType: funnel.funnelType ?? '',
+    hasPredspisok: funnel.hasPredspisok,
   });
 
   const dirty =
@@ -81,7 +89,8 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
     comment !== saved.comment ||
     ta !== saved.ta ||
     tb !== saved.tb ||
-    funnelType !== (saved.funnelType ?? '');
+    funnelType !== (saved.funnelType ?? '') ||
+    hasPredspisok !== saved.hasPredspisok;
 
   const onDirtyChangeRef = useRef(onDirtyChange);
   onDirtyChangeRef.current = onDirtyChange;
@@ -97,11 +106,16 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   // времени погашен движком), и две вкладки предлагали бы выбор, которого нет.
   const timeless = !funnel.typeHasTime;
 
+  // Вкладка предсписка исчезает вместе с признаком, поэтому выбранной она
+  // остаться не может: иначе снятие галки оставило бы на экране пустой набор
+  // несуществующего шага.
+  const tab: TabKey = scenario === 'predspisok' && !hasPredspisok ? 'reg' : scenario;
+
   // Map the visible tab (+ pay timeSlot) to the canonical Scenario key.
   const activeScenario: Scenario =
-    scenario === 'reg' ? 'reg'
-      : scenario === 'messenger' ? 'messenger'
-        : scenario === 'predspisok' ? 'predspisok'
+    tab === 'reg' ? 'reg'
+      : tab === 'messenger' ? 'messenger'
+        : tab === 'predspisok' ? 'predspisok'
           : timeless ? 'time_19'
             : timeSlot === '15' ? 'time_15' : 'time_19';
 
@@ -140,7 +154,11 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   // Server-provided effective set already encodes template + axes. To reflect
   // live edits without a round-trip, re-derive: start from server tags of this
   // scenario, drop those in ov.remove, and append ov.add customs not already shown.
-  const serverSet = tagSets[activeScenario];
+  // До сохранения сервер ещё отдаёт прежний набор — гасим его на экране сразу,
+  // чтобы галка и содержимое вкладки не расходились.
+  const serverSet = activeScenario === 'predspisok' && !hasPredspisok
+    ? { tags: [], suppressed: [] }
+    : tagSets[activeScenario];
   const removeSet = new Set(ov[activeScenario].remove);
   const shown = serverSet.tags
     .filter((t) => !(t.source !== 'axis' && removeSet.has(t.name)))
@@ -240,7 +258,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
     const submitted: IdentitySnapshot = {
       frontCode, status,
       product: axes.product, contractor: axes.contractor, channel: axes.channel, direction: axes.direction,
-      comment, ta, tb, funnelType,
+      comment, ta, tb, funnelType, hasPredspisok,
     };
     setSaving(true);
     setError(null);
@@ -253,6 +271,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
           product: submitted.product, contractor: submitted.contractor, channel: submitted.channel, direction: submitted.direction,
           comment: submitted.comment, timeLabelA: submitted.ta, timeLabelB: submitted.tb,
           funnelType: submitted.funnelType,
+          hasPredspisok: submitted.hasPredspisok,
         }),
       });
       const body = await res.json().catch(() => null);
@@ -357,18 +376,34 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
 
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <Segmented
-            options={[{ value: 'reg', label: 'Регистрация' }, { value: 'pay', label: 'Оплата' }, { value: 'messenger', label: 'Мессенджер' }, { value: 'predspisok', label: 'Предсписок' }]}
-            value={scenario} onChange={(v) => setScenario(v as TabKey)} />
-          {scenario === 'pay' && !timeless && (
+            options={[
+              { value: 'reg', label: 'Регистрация' },
+              { value: 'pay', label: 'Оплата' },
+              { value: 'messenger', label: 'Мессенджер' },
+              ...(hasPredspisok ? [{ value: 'predspisok', label: 'Предсписок' }] : []),
+            ]}
+            value={tab} onChange={(v) => setScenario(v as TabKey)} />
+          {tab === 'pay' && !timeless && (
             <Segmented
               options={[{ value: '15', label: ta || '15:00' }, { value: '19', label: tb || '19:00' }]}
               value={timeSlot} onChange={(v) => setTimeSlot(v as TimeSlot)} />
           )}
-          {scenario === 'pay' && timeless && (
+          {tab === 'pay' && timeless && (
             <span className="text-[10px] text-[var(--faint)]">
               у этого типа воронки нет эфиров по времени — набор оплаты один
             </span>
           )}
+          {/*
+            Признак шага, а не фильтр показа: снятая галка убирает набор
+            предсписка и из карточки, и из funnel_tags. Стоит рядом со
+            вкладками, потому что именно вкладку она и убирает — решение видно
+            там же, где действует. Применяется по «Сохранить идентификацию»,
+            как и оси: набор пересобирает сервер.
+          */}
+          <span className="ml-auto flex items-center gap-2">
+            <span className="text-[10px] text-[var(--faint)]">предсписок</span>
+            <Switch checked={hasPredspisok} onChange={setHasPredspisok} disabled={!canEdit} />
+          </span>
         </div>
 
         {dirty && (

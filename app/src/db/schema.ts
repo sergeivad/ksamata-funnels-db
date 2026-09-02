@@ -89,6 +89,11 @@ export const funnels = sqliteTable(
     timeLabelB:         text('time_label_b').default('19:00'),
     roomsReplayEnabled: integer('rooms_replay_enabled').default(0),
     roomsEnabled:       integer('rooms_enabled').default(1),
+    // Phase 16: есть ли у воронки шаг предсписка. Ноль = сценарий predspisok
+    // не материализуется вовсе (не «пустой набор» — оси и маркер типа
+    // неудаляемы, см. computeTagSet). Умолчание 1: новая воронка — с
+    // предпиской, решение владельца 02.09.2026.
+    hasPredspisok:      integer('has_predspisok').default(1),
   },
   (t) => ({
     productIdx:    index('idx_funnels_product').on(t.productId),
