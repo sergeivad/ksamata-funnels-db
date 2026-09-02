@@ -8,7 +8,8 @@
 
 from api_source import Offer
 from db_source import FunnelRow
-from findings import find_predspisok_without_flag, offers_by_scenario
+from findings import (find_predspisok_without_flag, find_unused_offers,
+                      offers_by_scenario)
 from normalize import AUTOFUNNEL_TAG, PREDPISOK_STAGE, av_key, parse_tagset
 
 AV = ('АВ Продукт: ДБО|АВ Подрядчик: NR|АВ Канал: ВК|'
@@ -189,3 +190,29 @@ def test_offers_by_scenario_drops_offers_whose_scenario_is_not_derivable():
         offer(AV + '|АВ Этап: Оплата', 2),             # оплата без времени
     ]
     assert offers_by_scenario(offers) == {}
+
+
+def test_overlaps_with_class_14_on_purpose():
+    """Свежее предложение попадает и в класс 14, и в класс 17 — так и надо.
+
+    Сценарий раскатки, а не гипотетика: предложение этапа завели, заказов по
+    нему ещё нет, галку у воронки не подняли. Класс 14 говорит «заказов нет,
+    кандидат в архив», класс 17 — «признак не поднят». Утверждения РАЗНЫЕ, и
+    оба верны; человеку нужны оба, потому что действия по ним противоположны
+    (одно ведёт к архиву, другое — к галке).
+
+    Тест стоит здесь, чтобы пересечение не «починили» как дубль: заглушить
+    класс 14 на предложениях предсписка значило бы спрятать настоящий архивный
+    кандидат в тот день, когда галку поднимут, а предложение так и не выстрелит.
+
+    Проверено на живых данных 02.09.2026: обе находки воспроизводятся.
+    """
+    single = [offer(PREDSPISOK_OFFER)]
+    c17 = find_predspisok_without_flag(single, INDEX, [funnel(has_predspisok=False)])
+    # groups пуст = по ключу нет ни одного заказа за период
+    c14 = find_unused_offers(single, [])
+
+    assert len(c17) == 1 and c17[0].cls == 17
+    assert len(c14) == 1 and c14[0].cls == 14
+    # И это разные утверждения об одном предложении, а не одно и то же дважды.
+    assert c17[0].detail != c14[0].detail
