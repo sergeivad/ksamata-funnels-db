@@ -63,6 +63,22 @@ class LandingDrift:
 
 
 @dataclass
+class AmbiguousRow:
+    """Ступень 3 нашла НЕСКОЛЬКО воронок и отказалась выбирать.
+
+    В «строки без воронки» такое класть нельзя дважды: раздел утверждал бы,
+    что воронки нет, хотя их несколько, — и вдобавок показывает только живые
+    строки, так что отказ читался бы как «расхождений нет». Лечится тем же,
+    чем и пустой лист класса в аудите: отдельным разделом, который говорит
+    прямо, что выбор не сделан.
+
+    Чинит это человек в таблице — дописав F-код или лендинг в строку.
+    """
+    row: object
+    candidates: tuple
+
+
+@dataclass
 class StatusDrift:
     funnel: object
     row: object
@@ -90,6 +106,7 @@ class Report:
     dead: list = field(default_factory=list)
     sheet_only: list = field(default_factory=list)
     landing_drift: list = field(default_factory=list)
+    ambiguous: list = field(default_factory=list)
     status_drift: list = field(default_factory=list)
     sheet_stale: list = field(default_factory=list)
     sheet_status_off: object = None
@@ -173,7 +190,18 @@ def build(combos, blind, funnels, sheet_rows, rules, today):
     for row in sheet_rows:
         match = matching.match_sheet_row(row, funnels)
         if match.funnel is None:
-            if sheet_source.is_live(row.status):
+            # Отказ ступени 3 — не «воронки нет», а «не выбрали из
+            # нескольких». Живость тут НЕ фильтр, в отличие от sheet_only:
+            # там вопрос «существует ли воронка вообще», и мёртвая строка на
+            # него не отвечает, а здесь вопрос к самой таблице — строка
+            # описывает воронку недостаточно точно, и это верно при любом
+            # статусе. Замер 03.09: из 13 несошедшихся строк живых НОЛЬ
+            # (11 «Стоп», 2 без статуса), так что фильтр по живости сделал
+            # бы раздел вечно пустым, то есть неотличимым от «всё сошлось».
+            if match.candidates:
+                report.ambiguous.append(
+                    AmbiguousRow(row=row, candidates=match.candidates))
+            elif sheet_source.is_live(row.status):
                 report.sheet_only.append(SheetOnly(row=row))
             continue
 

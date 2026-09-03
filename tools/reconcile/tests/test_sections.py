@@ -269,3 +269,33 @@ def test_совпадение_по_коду_в_landing_drift_не_идёт():
     row = sheet_source.SheetRow(5, 'f37', 'ВК FAQ', 'БОО', 'Работает', ())
     report = sections.build({}, {'orders': 0, 'paid': 0}, [f37], [row], [], TODAY)
     assert report.landing_drift == []
+
+
+# --- Этап 2. Отказ ступени 3 по неоднозначности ----------------------------
+
+def test_неоднозначная_строка_идёт_в_ambiguous_а_не_в_sheet_only():
+    """«Не выбрали из нескольких» и «воронки нет» — разные утверждения."""
+    a = funnel('f11', ('ДБО', 'NR', 'ВК', 'A', None), source='ВК NR', product='ДБО')
+    b = funnel('f15', ('ДБО', 'NR', 'ВК', 'B', None), source='ВК NR', product='ДБО')
+    row = sheet_source.SheetRow(30, '', 'ВК NR', 'ДБО', 'Работает', ())
+    report = sections.build({}, {'orders': 0, 'paid': 0}, [a, b], [row], [], TODAY)
+    assert [(i.row.row_num, [f.label for f in i.candidates])
+            for i in report.ambiguous] == [(30, ['f11', 'f15'])]
+    assert report.sheet_only == []
+
+
+def test_неоднозначная_строка_попадает_в_отчёт_и_будучи_мёртвой():
+    """Замер 03.09: из 13 несошедшихся строк живых НОЛЬ. Фильтр по живости
+    сделал бы раздел вечно пустым — неотличимым от «всё сошлось»."""
+    a = funnel('f11', ('ДБО', 'NR', 'ВК', 'A', None), source='ВК NR', product='ДБО')
+    b = funnel('f15', ('ДБО', 'NR', 'ВК', 'B', None), source='ВК NR', product='ДБО')
+    row = sheet_source.SheetRow(30, '', 'ВК NR', 'ДБО', 'Стоп', ())
+    report = sections.build({}, {'orders': 0, 'paid': 0}, [a, b], [row], [], TODAY)
+    assert len(report.ambiguous) == 1
+
+
+def test_строка_вообще_без_кандидатов_в_ambiguous_не_идёт():
+    row = sheet_source.SheetRow(53, '', 'ВК БАИНГ', 'БОО', 'Работает', ())
+    report = sections.build({}, {'orders': 0, 'paid': 0}, [], [row], [], TODAY)
+    assert report.ambiguous == []
+    assert [i.row.row_num for i in report.sheet_only] == [53]

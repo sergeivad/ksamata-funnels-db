@@ -106,6 +106,18 @@ def render(report, meta):
                  item.row.landings[0] if item.row.landings else '—')
                 for item in report.landing_drift]),
         '',
+        '## Этап 2. Строку не с чем однозначно связать',
+        '',
+        'Источник и продукт совпали сразу с несколькими воронками, и выбирать '
+        'за человека инструмент не стал. Чинится в таблице: дописать в строку '
+        'F-код или лендинг.',
+        '',
+        _table(['Строка', 'В таблице', 'Источник', 'Воронка', 'Кандидаты'],
+               [(item.row.row_num, item.row.status or '—', item.row.contractor,
+                 item.row.funnel,
+                 ', '.join(f.label for f in item.candidates))
+                for item in report.ambiguous]),
+        '',
         '## Этап 2. Живые строки таблицы без воронки',
         '',
         _table(['Строка', 'Подрядчик', 'Воронка', 'Лендинг'],

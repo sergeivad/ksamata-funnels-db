@@ -98,6 +98,7 @@ def main(argv=None):
     print(f'  расхождений статуса:  {len(report.status_drift)}')
     print(f'  устарела таблица:     {len(report.sheet_stale)}')
     print(f'  лендинг разошёлся:    {len(report.landing_drift)}')
+    print(f'  не с чем связать:     {len(report.ambiguous)}')
     print(f'  строк таблицы без воронки: {len(report.sheet_only)}')
     print(f'  решено ранее (молчим):     {len(report.settled)}')
     return 0

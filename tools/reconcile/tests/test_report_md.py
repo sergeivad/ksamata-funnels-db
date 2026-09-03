@@ -64,3 +64,21 @@ def test_раздел_показывает_оба_статуса_и_адрес()
     text = report_md.render(report, META)
     assert 'f16' in text and 'archive' in text and 'Стоп' in text
     assert 't.ksamata.ru/nr/boo/a' in text
+
+
+def test_раздел_про_неоднозначность_печатается_даже_пустым():
+    assert 'не с чем однозначно связать' in report_md.render(sections.Report(), META)
+
+
+def test_раздел_про_неоднозначность_перечисляет_всех_кандидатов():
+    """Показать одну «наиболее вероятную» — то же самое, что выбрать за
+    человека, только без честной пометки."""
+    report = sections.Report()
+    other = funnels_source.Funnel(
+        funnel_id=15, front_code='f15', status='active', label='f15',
+        key=('ДБО', 'NR', 'ВК', 'B', None), landings=(), source='ВК NR', product='ДБО')
+    report.ambiguous.append(sections.AmbiguousRow(
+        row=sheet_source.SheetRow(30, '', 'ВК NR', 'ДБО', 'Работает', ()),
+        candidates=(FUNNEL, other)))
+    text = report_md.render(report, META)
+    assert 'f16, f15' in text

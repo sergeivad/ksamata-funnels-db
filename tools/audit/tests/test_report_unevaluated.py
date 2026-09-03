@@ -11,8 +11,19 @@
 (фаза 15). Ровно тот же симптом — молчание вместо ответа.
 """
 
+import ast
+import datetime
+from collections import Counter
+from pathlib import Path
+
 import openpyxl
 import pytest
+
+import findings as findings_module
+import run_audit
+from export_source import Observation
+from findings import group_observations, find_unresolved
+from normalize import AUTOFUNNEL_TAG, parse_tagset
 
 from db_source import FunnelRow
 from findings import (
@@ -43,22 +54,124 @@ def note_of(path, cls):
 
 
 # --- какие классы без реестра слепнут -------------------------------------
+#
+# Множества ВЫВОДЯТСЯ ИЗ КОДА, а не переписываются литералом рядом с
+# литералом. Утверждение `REGISTRY_ONLY_CLASSES == {9,...,17}` закрепляет
+# константу, но не сверяет её с финдерами: новый registry-only класс 18,
+# забытый в множестве, оставил бы такой тест зелёным, а лист печатал бы
+# лживый `0` — ровно тот дефект, ради которого всё это и написано. Идиома
+# та же, что у app/tests/migration-runners.test.ts: обойти код и спросить
+# его самого.
 
-def test_registry_only_classes_are_exactly_the_finders_whose_whole_input_is_offers():
-    assert REGISTRY_ONLY_CLASSES == {9, 10, 11, 12, 14, 17}
+
+def _finder_classes():
+    """Финдер -> классы, которые он выдаёт.
+
+    Литерала `cls=N` мало: find_unresolved кладёт номер в ПЕРЕМЕННУЮ
+    (`cls, subject = 5, ...`), и сканер по ключевым аргументам его теряет —
+    молча и с зелёным тестом. Собираем обе формы.
+    """
+    tree = ast.parse(Path(findings_module.__file__).read_text(encoding='utf-8'))
+    out = {}
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef) or not node.name.startswith('find_'):
+            continue
+        classes = set()
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Call):
+                classes |= {kw.value.value for kw in sub.keywords
+                            if kw.arg == 'cls' and isinstance(kw.value, ast.Constant)
+                            and isinstance(kw.value.value, int)}
+            if isinstance(sub, ast.Assign) and isinstance(sub.value, ast.Tuple):
+                for target in sub.targets:
+                    if not isinstance(target, ast.Tuple):
+                        continue
+                    for name, value in zip(target.elts, sub.value.elts):
+                        if (isinstance(name, ast.Name) and name.id == 'cls'
+                                and isinstance(value, ast.Constant)
+                                and isinstance(value.value, int)):
+                            classes.add(value.value)
+        if classes:
+            out[node.name] = classes
+    return out
 
 
-def test_registry_filtered_classes_are_the_two_that_only_lose_a_filter():
-    # 2 (find_extra_axes ← registry_av_tags) и 7 (find_unresolved ←
-    # registry_keys). Класс 5 приходит из той же функции, что и 7, но
-    # фильтра не касается — легко ошибиться, поэтому закреплено.
+def _registry_args_by_finder():
+    """Финдер -> что из реестра ему отдаёт collect_findings.
+
+    Смотрим на РЕАЛЬНУЮ проводку в run_audit, а не на сигнатуры: важно не
+    то, что функция умеет принять, а то, что ей отдают в прогоне. Развилка
+    там ровно одна — финдеру дают либо сырой реестр (`offers`), либо
+    производный от него фильтр (`registry_keys` / `registry_tags`).
+    """
+    tree = ast.parse(Path(run_audit.__file__).read_text(encoding='utf-8'))
+    body = next(n for n in tree.body
+                if isinstance(n, ast.FunctionDef) and n.name == 'collect_findings')
+    return {call.func.attr: {a.id for a in call.args if isinstance(a, ast.Name)}
+            for call in ast.walk(body)
+            if isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+            and call.func.attr.startswith('find_')}
+
+
+def test_registry_only_classes_are_derived_from_the_finders_given_the_raw_registry():
+    """Кому отдают сам реестр — тот без реестра не даёт ничего."""
+    wiring = _registry_args_by_finder()
+    classes = _finder_classes()
+    derived = set()
+    for name, args in wiring.items():
+        if 'offers' in args:
+            derived |= classes.get(name, set())
+    assert derived == REGISTRY_ONLY_CLASSES
+
+
+def test_registry_filtered_finders_are_derived_but_class_5_is_excluded_by_hand():
+    """Кому отдают производный фильтр — тот считается, но с завышением.
+
+    Вывести это множество ДО КОНЦА нельзя, и в этом вся ловушка:
+    find_unresolved выдаёт два класса, 5 и 7, а фильтр стоит внутри ветки,
+    которая ставит cls = 7. Поэтому здесь выводятся ФИНДЕРЫ, а разделение
+    их классов закрепляет тест ниже — поведением, а не разбором текста.
+    """
+    wiring = _registry_args_by_finder()
+    classes = _finder_classes()
+    filtered = {name for name, args in wiring.items()
+                if args & {'registry_keys', 'registry_tags'}}
+    assert filtered == {'find_extra_axes', 'find_unresolved'}
+    assert classes['find_unresolved'] == {5, 7}
+    assert REGISTRY_FILTERED_CLASSES < set().union(*(classes[n] for n in filtered))
     assert REGISTRY_FILTERED_CLASSES == {2, 7}
-    assert 5 not in REGISTRY_FILTERED_CLASSES
 
 
-def test_the_two_sets_do_not_overlap_and_name_only_real_classes():
-    assert not (REGISTRY_ONLY_CLASSES & REGISTRY_FILTERED_CLASSES)
-    assert (REGISTRY_ONLY_CLASSES | REGISTRY_FILTERED_CLASSES) <= set(CLASS_TITLES)
+def test_registry_keys_filters_class_7_and_leaves_class_5_alone():
+    """Поведенческое доказательство, что 5 в множество не входит по праву.
+
+    Класс 5 приходит из той же функции, но зависимости от реестра у него
+    нет: пустой registry_keys не меняет по нему ровным счётом ничего.
+    Ложная пометка «без реестра число завышено» легла бы на честный лист.
+    """
+    orphan = ('АВ Продукт: ЩЖ|АВ Подрядчик: НИМБ|АВ Канал: Яндекс|'
+              'АВ Направление: РСЯ|' + AUTOFUNNEL_TAG)
+    av = 'АВ Продукт: ДБО|АВ Подрядчик: NR|АВ Канал: ВК|АВ Направление: In Stream'
+
+    def obs(raw, deal_id):
+        return Observation(deal_id=deal_id, tags=parse_tagset(raw),
+                           file_name='deal_export_2026-05-02_00-00-00.csv',
+                           file_date=datetime.date(2026, 5, 2),
+                           deal_created='2026-05-01 00:00:00')
+
+    groups = group_observations([
+        obs(av + '|АВ Этап: Оплата', '1'),              # класс 5: оплата без времени
+        obs(orphan + '|АВ Этап: Регистрация', '2'),     # класс 7: ключа нет в базе
+    ])
+    index = {('ДБО', 'NR', 'ВК', 'In Stream', None): {11}}
+
+    without = Counter(f.cls for f in find_unresolved(groups, index))
+    with_registry = Counter(f.cls for f in find_unresolved(
+        groups, index, registry_keys={('нет', 'такого', 'ключа', 'в', 'реестре')}))
+
+    assert without == {5: 1, 7: 1}
+    assert with_registry[5] == without[5]   # фильтр пятого не касается
+    assert with_registry[7] == 0            # а седьмой гасит целиком
 
 
 # --- признак «реестр не читали» — данные, а не флаг ------------------------
