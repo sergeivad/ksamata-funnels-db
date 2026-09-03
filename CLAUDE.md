@@ -1051,8 +1051,18 @@ Phase 17 чинит результат ЛЮБОГО писателя. После
   and class numbers are never reused); it fixes nothing, in
   the DB or in GetCourse. The DB is opened read-only; GetCourse credentials
   are read from the environment (`GC_DEV_KEY`, `GC_API_KEY`, `GC_DOMAIN`) and
-  never committed. `--no-api` skips GetCourse (classes 9-12, 14 and 17 stay
-  empty). **Class 17 reads `funnels.has_predspisok`, so the audit now requires
+  never committed. `--no-api` skips GetCourse — and the report then **says so
+  on the sheet**: classes 9-12, 14 and 17 are not evaluated at all (sheet note
+  «ПРОВЕРКА НЕ ВЫПОЛНЯЛАСЬ…», summary column «Класс N (не проверялся)», `н/д`
+  instead of `0` in the console), while classes 2 and 7 lose the «no longer in
+  the registry» filter and are marked as an upper bound. Which class is in
+  which list lives in `findings.py` (`REGISTRY_ONLY_CLASSES` /
+  `REGISTRY_FILTERED_CLASSES`), and the mark is driven by the **data**
+  (`unevaluated_classes(offers)`), not by the flag — the registry comes back
+  empty from a failed fetch too, and the class is equally blind either way.
+  Before 2026-09-03 an unchecked class printed a plain `0`, indistinguishable
+  from an honest one — the same silent-zero symptom as the stage-tag spelling
+  (Phase 15). **Class 17 reads `funnels.has_predspisok`, so the audit now requires
   a Phase-16 database** — on an older one `load_funnels` fails loudly with
   `no such column`, which is the intended outcome: a silent default would mean
   "flag raised everywhere", i.e. a permanent zero indistinguishable from an

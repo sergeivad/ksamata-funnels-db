@@ -11,7 +11,10 @@ deal_export и ksamata_funnels.db — в один XLSX с 15 классами н
 
     GC_DEV_KEY=... GC_API_KEY=... GC_DOMAIN=... python3 tools/audit/run_audit.py
 
-Без сети (только база и выгрузки, классы 9-12, 14 и 17 будут пусты):
+Без сети (только база и выгрузки). Классы 9-12, 14 и 17 тогда НЕ считаются,
+а 2 и 7 теряют фильтр «в текущем реестре этого уже нет» и дают верхнюю оценку.
+Отчёт помечает и те, и другие, чтобы пустой лист нельзя было прочитать как
+«расхождений нет»:
 
     python3 tools/audit/run_audit.py --no-api
 """
@@ -78,7 +81,8 @@ def main(argv=None, env=None):
     env = os.environ if env is None else env
     parser = argparse.ArgumentParser(description='Карта расхождений тегов воронок')
     parser.add_argument('--no-api', action='store_true',
-                        help='не ходить в GetCourse; классы 9-12, 14 и 17 останутся пустыми')
+                        help='не ходить в GetCourse; классы 9-12, 14 и 17 не будут '
+                             'посчитаны, а 2 и 7 дадут верхнюю оценку')
     parser.add_argument('--downloads', default=paths.DOWNLOADS_DIR,
                         help='каталог с выгрузками deal_export')
     parser.add_argument('--since', default=paths.SINCE_DATE.isoformat(),
@@ -138,7 +142,9 @@ def main(argv=None, env=None):
 
     offers = []
     if args.no_api:
-        print('API пропущен (--no-api): классы 9-12, 14 и 17 будут пусты.')
+        print('API пропущен (--no-api): классы 9-12, 14 и 17 не считаются, '
+              'а 2 и 7 считаются без фильтра «нет в текущем реестре» — '
+              'их числа верхняя оценка.')
         sources.append({'kind': 'API', 'name': '—', 'detail': 'пропущен (--no-api)'})
     else:
         print('Читаю реестр предложений GetCourse…')
@@ -160,14 +166,26 @@ def main(argv=None, env=None):
 
     os.makedirs(paths.OUT_DIR, exist_ok=True)
     out_path = os.path.join(paths.OUT_DIR, 'Карта_расхождений_тегов.xlsx')
-    report.write_report(out_path, result, funnels, sources)
+    # Что прогон вправе утверждать, решают данные, а не флаг: реестр остаётся
+    # пустым и от --no-api, и от ответа API, из которого ничего не пришло.
+    not_evaluated = F.unevaluated_classes(offers)
+    degraded = F.degraded_classes(offers)
+    report.write_report(out_path, result, funnels, sources, not_evaluated, degraded)
 
     by_class = {}
     for item in result:
         by_class[item.cls] = by_class.get(item.cls, 0) + 1
     print(f'\nНаходок всего: {len(result)}')
     for cls in sorted(F.CLASS_TITLES):
-        print(f'  Класс {cls:>2}: {by_class.get(cls, 0):>5}  {F.CLASS_TITLES[cls]}')
+        # Ноль у несчитанного класса — не ответ, и печатать его цифрой нельзя:
+        # именно так «не проверяли» и читается как «расхождений нет».
+        if cls in not_evaluated:
+            count = '  н/д'
+            mark = '  ← НЕ ПРОВЕРЯЛСЯ (нет реестра GetCourse)'
+        else:
+            count = f'{by_class.get(cls, 0):>5}'
+            mark = '  ← без реестра: верхняя оценка' if cls in degraded else ''
+        print(f'  Класс {cls:>2}: {count}  {F.CLASS_TITLES[cls]}{mark}')
     print(f'\nОтчёт: {out_path}')
     return 0
 
