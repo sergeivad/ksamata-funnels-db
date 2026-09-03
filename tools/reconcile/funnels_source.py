@@ -9,6 +9,15 @@
 Воронка нередко держит второй адрес только в блоке (f84), и чтение одного
 поля даёт ложные пропажи.
 
+`source` — это `sources.name` через `funnels.source_id`, и берётся он сюда
+вместо `contractors.name` намеренно: в колонке «подрядчик» таблицы
+маркетологов лежат ИМЕННО источники («ВК NR», «Ютуб органика», «Яндекс
+Директ  (холод)» — с двойным пробелом, как в базе). Сверка с подрядчиками
+давала ровно ноль совпадений, см. matching.match_sheet_row.
+
+Отсюда же следует, что `contractor_id` этот инструмент больше не читает
+вовсе; осевые FK правит Phase 17, и на сверку это теперь не влияет.
+
 ВНИМАНИЕ: модуль с тем же именем есть в tools/audit. conftest.py и run.py
 кладут наш каталог в sys.path первым, поэтому выигрывает этот файл. Если
 он исчезнет, импорт молча разрешится в чужой — там нет поля landings.
@@ -30,7 +39,7 @@ class Funnel:
     label: str
     key: tuple
     landings: tuple
-    contractor: str
+    source: str
     product: str
     start_date: str = ''
 
@@ -46,10 +55,10 @@ def load_funnels(db_path):
         base = con.execute("""
             SELECT f.id, COALESCE(f.front_code, ''), COALESCE(f.status, ''),
                    COALESCE(f.landing_url, ''),
-                   COALESCE(c.name, ''), COALESCE(p.name, ''),
+                   COALESCE(s.name, ''), COALESCE(p.name, ''),
                    COALESCE(f.start_date, '')
             FROM funnels f
-            LEFT JOIN contractors c ON c.id = f.contractor_id
+            LEFT JOIN sources s ON s.id = f.source_id
             LEFT JOIN products p ON p.id = f.product_id
             ORDER BY f.id
         """).fetchall()
@@ -77,7 +86,7 @@ def load_funnels(db_path):
         extra_landings[funnel_id].extend(urls.split_field(url))
 
     result = []
-    for (funnel_id, code, status, landing_url, contractor, product,
+    for (funnel_id, code, status, landing_url, source, product,
          start_date) in base:
         collected = urls.split_field(landing_url)
         for address in extra_landings.get(funnel_id, ()):
@@ -90,7 +99,7 @@ def load_funnels(db_path):
             label=code.strip().lower() or f'#{funnel_id}',
             key=combo.key_of(frozenset(tags_by_funnel.get(funnel_id, ()))),
             landings=tuple(collected),
-            contractor=contractor,
+            source=source,
             product=product,
             start_date=str(start_date)[:10],
         ))

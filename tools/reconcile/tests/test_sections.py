@@ -9,12 +9,12 @@ import sheet_source
 TODAY = datetime.date(2026, 8, 1)
 
 
-def funnel(label, key, status='active', landings=(), contractor='', product='',
+def funnel(label, key, status='active', landings=(), source='', product='',
            start_date='2024-01-01'):
     return funnels_source.Funnel(
         funnel_id=abs(hash(label)) % 1000, front_code=label, status=status,
         label=label, key=key, landings=tuple(landings),
-        contractor=contractor, product=product, start_date=start_date)
+        source=source, product=product, start_date=start_date)
 
 
 def stat(key, orders=10, paid=1, last='2026-07-31 10:00:00'):
@@ -229,3 +229,43 @@ def test_у_молодой_воронки_заказы_рассудить_не_�
                             datetime.date(2026, 8, 3))
     assert report.sheet_stale == []
     assert [item.funnel.label for item in report.status_drift] == ['f73']
+
+
+# --- Этап 2. Лендинг разошёлся (ступень source_product) --------------------
+#
+# Совпадение по третьей ступени — само по себе находка: строку опознали не по
+# лендингу и не по коду, значит адрес в базе разошёлся с таблицей. До
+# 2026-09-03 ступень не срабатывала вовсе (сверялась с подрядчиками вместо
+# источников), и даже сработав, никуда не выводилась: sections брал из
+# результата только funnel, а tier терялся. Обе половины чинятся вместе —
+# работающая ступень без раздела в отчёте по-прежнему «третья проверка,
+# которой нет».
+
+def test_совпадение_по_источнику_и_продукту_идёт_в_landing_drift():
+    f16 = funnel('f16', ('БОО', 'NR', 'ВК', 'In Stream', None),
+                 status='archive', landings=('t.ksamata.ru/nr/boo/d',),
+                 source='ВК NR', product='БОО')
+    row = sheet_source.SheetRow(25, '', 'ВК NR', 'БОО', 'Стоп',
+                                ('t.ksamata.ru/nr/boo/a',))
+    report = sections.build({}, {'orders': 0, 'paid': 0}, [f16], [row], [], TODAY)
+    assert [(item.funnel.label, item.row.row_num)
+            for item in report.landing_drift] == [('f16', 25)]
+    # И строка НЕ считается «без воронки»: воронка есть, разошёлся адрес.
+    assert report.sheet_only == []
+
+
+def test_совпадение_по_лендингу_в_landing_drift_не_идёт():
+    f16 = funnel('f16', ('БОО', 'NR', 'ВК', 'In Stream', None),
+                 landings=('t.ksamata.ru/nr/boo/a',), source='ВК NR', product='БОО')
+    row = sheet_source.SheetRow(25, '', 'ВК NR', 'БОО', 'Работает',
+                                ('t.ksamata.ru/nr/boo/a',))
+    report = sections.build({}, {'orders': 0, 'paid': 0}, [f16], [row], [], TODAY)
+    assert report.landing_drift == []
+
+
+def test_совпадение_по_коду_в_landing_drift_не_идёт():
+    """Код разошёлся не с лендингом, а вместо него: ступень 2, не 3."""
+    f37 = funnel('f37', ('БОО', 'FAQ', 'ВК', 'A', None), source='ВК FAQ', product='БОО')
+    row = sheet_source.SheetRow(5, 'f37', 'ВК FAQ', 'БОО', 'Работает', ())
+    report = sections.build({}, {'orders': 0, 'paid': 0}, [f37], [row], [], TODAY)
+    assert report.landing_drift == []

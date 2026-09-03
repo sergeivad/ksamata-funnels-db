@@ -24,7 +24,7 @@ build and export the same database from Excel sources.
 | `tools/data-import/` | Python scripts that build or mutate the root SQLite DB. |
 | `tools/data-export/` | Python scripts that export the DB to XLSX reports. |
 | `tools/audit/` | Tag drift map: reconciles the GetCourse offer registry, `deal_export` history, and the DB. Read-only; output is an XLSX in `data/generated/`. See [tools/audit/README.md](tools/audit/README.md). |
-| `tools/reconcile/` | **Сверка источников по воронкам** — база ↔ таблица маркетологов ↔ выгрузка заказов, в один markdown-отчёт по этапам разбора. Read-only. **Начинать с него любую сессию по сверке данных.** См. [tools/reconcile/README.md](tools/reconcile/README.md) и [порядок разбора](docs/plans/2026-08-04-razbor-design.md). |
+| `tools/reconcile/` | **Сверка источников по воронкам** — база ↔ таблица маркетологов ↔ выгрузка заказов, в один markdown-отчёт по этапам разбора. Read-only. Стык «таблица ↔ база» идёт тремя ступенями (лендинг → код → «источник + продукт»), и третья сверяет колонку «подрядчик» таблицы с **`sources.name`**, а не с `contractors.name`: там лежат источники («ВК NR», «Ютуб органика»), словари с подрядчиками не пересекаются вовсе, и до 03.09.2026 ступень не срабатывала ни разу. Неоднозначность на ней — **отказ**: пар (источник, продукт) 68, семь неуникальны. **Начинать с него любую сессию по сверке данных.** См. [tools/reconcile/README.md](tools/reconcile/README.md) и [порядок разбора](docs/plans/2026-08-04-razbor-design.md). |
 | `tools/sheet-links/` | **Ссылки воронок из таблицы «Воронки ссылки»** — сверка гугл-таблицы маркетологов с блоками воронки. Сейчас собирает `tariffs`/`applications`/`upsell`; колонка продажной страницы делится по хосту (`t.ksamata.ru` → тарифы, `gc.ksamata.ru` → допродажи/дожим). Read-only, отчёт в `data/generated/`, план заливки — флагом `--plan`. **Колонки ищутся по названию: раскладка листов различается, жёсткие номера верны лишь для 19 из 26.** См. [tools/sheet-links/README.md](tools/sheet-links/README.md) и **[карту источника](docs/sheet-links-source-map.md) — с неё начинать любую новую сборку ссылок из этой таблицы**. |
 | `docs/` | Development notes, project map, docs index, and historical plans/specs. See [docs/README.md](docs/README.md). |
 
@@ -803,7 +803,11 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
   тоже (`getRefUsage`), поэтому «Органика» (4) и «Перелив» (2) числились
   занятыми и **не удалялись**, хотя подрядчиком их не несёт ни одна воронка;
   `tools/data-export` печатал в XLSX неверного подрядчика; `tools/reconcile`
-  держит колонку в `Funnel.contractor`. Замер после фазы: обе показывают ноль
+  держал колонку в `Funnel.contractor` — **больше не держит**: с 03.09.2026
+  он читает `sources.name`, потому что в колонке «подрядчик» таблицы
+  маркетологов лежат источники, а не подрядчики (см. ниже про сверку).
+  Так что из трёх помех у фазы осталось две; обе живы. Замер после фазы:
+  обе показывают ноль
   (как «ВК БАИНГ», у которого ноль и без всякой фазы), а колонка и тег сходятся
   у всех одиннадцати подрядчиков.
   Фазой, а не разовым скриптом, ровно по доводу фаз 10 и 11: колонку

@@ -95,6 +95,17 @@ def render(report, meta):
                  combo.label(item.funnel.key)) for item in report.dead]),
         '',
         *_status_sections(report),
+        '## Этап 2. Лендинг разошёлся',
+        '',
+        'Строку опознали по «источник + продукт» — значит ни лендинг, ни код '
+        'не совпали. Адрес из таблицы в базе либо другой, либо его нет.',
+        '',
+        _table(['Воронка', 'В базе', 'Строка', 'В таблице', 'Лендинг строки'],
+               [(item.funnel.label, item.funnel.status, item.row.row_num,
+                 item.row.status or '—',
+                 item.row.landings[0] if item.row.landings else '—')
+                for item in report.landing_drift]),
+        '',
         '## Этап 2. Живые строки таблицы без воронки',
         '',
         _table(['Строка', 'Подрядчик', 'Воронка', 'Лендинг'],

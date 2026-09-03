@@ -1,6 +1,13 @@
+import funnels_source
 import orders_source
 import report_md
 import sections
+import sheet_source
+
+FUNNEL = funnels_source.Funnel(
+    funnel_id=16, front_code='f16', status='archive', label='f16',
+    key=('БОО', 'NR', 'ВК', 'In Stream', None),
+    landings=('t.ksamata.ru/nr/boo/d',), source='ВК NR', product='БОО')
 
 META = {'export': 'deal_export_2026-08-01_01-48-36.xlsx',
         'sheet': 'Ссылки для сбора статы.xlsx',
@@ -37,3 +44,23 @@ def test_render_на_пустом_отчёте_говорит_что_разде�
     text = report_md.render(sections.Report(blind={'orders': 0, 'paid': 0}),
                             META)
     assert 'расхождений нет' in text
+
+
+def test_раздел_про_разошедшийся_лендинг_печатается_даже_пустым():
+    """Пустой раздел печатается явно: «расхождений нет» читается иначе, чем
+    отсутствие раздела. Ровно тот же довод, по которому в аудите лист класса
+    заводится всегда."""
+    text = report_md.render(sections.Report(), META)
+    assert 'Лендинг разошёлся' in text
+
+
+def test_раздел_показывает_оба_статуса_и_адрес():
+    """Статусы нужны для сортировки по важности: расхождение у архивной
+    воронки и остановленной строки — не то же самое, что у живой пары."""
+    report = sections.Report()
+    report.landing_drift.append(sections.LandingDrift(
+        funnel=FUNNEL, row=sheet_source.SheetRow(
+            25, '', 'ВК NR', 'БОО', 'Стоп', ('t.ksamata.ru/nr/boo/a',))))
+    text = report_md.render(report, META)
+    assert 'f16' in text and 'archive' in text and 'Стоп' in text
+    assert 't.ksamata.ru/nr/boo/a' in text
