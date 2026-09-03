@@ -95,6 +95,29 @@ def render(report, meta):
                  combo.label(item.funnel.key)) for item in report.dead]),
         '',
         *_status_sections(report),
+        '## Этап 2. Лендинг разошёлся',
+        '',
+        'Строку опознали по «источник + продукт» — значит ни лендинг, ни код '
+        'не совпали. Адрес из таблицы в базе либо другой, либо его нет.',
+        '',
+        _table(['Воронка', 'В базе', 'Строка', 'В таблице', 'Лендинг строки'],
+               [(item.funnel.label, item.funnel.status, item.row.row_num,
+                 item.row.status or '—',
+                 item.row.landings[0] if item.row.landings else '—')
+                for item in report.landing_drift]),
+        '',
+        '## Этап 2. Строку не с чем однозначно связать',
+        '',
+        'Источник и продукт совпали сразу с несколькими воронками, и выбирать '
+        'за человека инструмент не стал. Чинится в таблице: дописать в строку '
+        'F-код или лендинг.',
+        '',
+        _table(['Строка', 'В таблице', 'Источник', 'Воронка', 'Кандидаты'],
+               [(item.row.row_num, item.row.status or '—', item.row.contractor,
+                 item.row.funnel,
+                 ', '.join(f.label for f in item.candidates))
+                for item in report.ambiguous]),
+        '',
         '## Этап 2. Живые строки таблицы без воронки',
         '',
         _table(['Строка', 'Подрядчик', 'Воронка', 'Лендинг'],

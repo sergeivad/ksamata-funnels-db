@@ -3,12 +3,12 @@ import matching
 import sheet_source
 
 
-def make_funnel(label, key, landings=(), contractor='', product='',
+def make_funnel(label, key, landings=(), source='', product='',
                 status='active'):
     return funnels_source.Funnel(
         funnel_id=abs(hash(label)) % 1000, front_code=label, status=status,
         label=label, key=key, landings=tuple(landings),
-        contractor=contractor, product=product)
+        source=source, product=product)
 
 
 F69 = make_funnel('f69', ('БОО', 'НИМБ', 'Сайт', 'СЕО', 'АВ Автоворонка'))
@@ -89,15 +89,118 @@ def test_match_sheet_row_первая_ступень_лендинг():
     assert result.funnel is funnel and result.tier == 'landing'
 
 
-def test_match_sheet_row_вторая_ступень_подрядчик_и_продукт():
-    """Совпадение по второй ступени — САМО ПО СЕБЕ находка: лендинг разошёлся."""
+def test_match_sheet_row_третья_ступень_источник_и_продукт():
+    """Совпадение по третьей ступени — САМО ПО СЕБЕ находка: лендинг разошёлся."""
     funnel = make_funnel('f37', ('БОО', 'НИМБ', 'Ютуб', 'Органика', None),
                          landings=['t.ksamata.ru/old'],
-                         contractor='Ютуб органика', product='БОО')
+                         source='Ютуб органика', product='БОО')
     row = sheet_source.SheetRow(5, '', 'Ютуб органика', 'БОО', 'Работает',
                                 ('t.ksamata.ru/new',))
     result = matching.match_sheet_row(row, [funnel])
-    assert result.funnel is funnel and result.tier == 'contractor_product'
+    assert result.funnel is funnel and result.tier == 'source_product'
+
+
+def test_третья_ступень_сверяет_ИСТОЧНИК_а_не_подрядчика():
+    """Регресс, из-за которого ступень молчала два года.
+
+    В колонке таблицы «подрядчик» лежат ИСТОЧНИКИ («ВК NR», «Ютуб органика»,
+    «Яндекс РСЯ»), а сверялись они с `contractors.name` («NR», «НИМБ»,
+    «Внутренний»). Замер 2026-09-03: из 8 имён подрядчиков, которые реально
+    несут воронки, с таблицей не совпадает ни одно — 0 совпадений из 68
+    строк, не «редко», а никогда. (В самом справочнике `contractors` 11
+    строк, и одно значение — «ВК БАИНГ» — с таблицей совпадает, но его не
+    несёт ни одна воронка, так что ступени оно не помогало.)
+
+    Прошлый тест этого не ловил, потому что сам подавал источник в поле
+    подрядчика: фикстура повторяла замысел автора, а не то, что лежит в базе.
+    Поэтому здесь имя подрядчика подаётся ЯВНО и совпадения быть не должно.
+    """
+    funnel = make_funnel('f16', ('БОО', 'NR', 'ВК', 'In Stream', None),
+                         source='ВК NR', product='БОО')
+    row = sheet_source.SheetRow(25, '', 'NR', 'БОО', 'Стоп', ())
+    assert matching.match_sheet_row(row, [funnel]).funnel is None
+
+
+def test_третья_ступень_молчит_на_неоднозначности():
+    """Две воронки на одну пару — не повод выбрать первую по порядку.
+
+    Пар (источник, продукт) в базе 68, неуникальных 7 — например «ВК NR + ДБО»
+    держат f11, f15, f64 и f86. Порядок обхода — порядок `funnels.id`, то есть
+    произвольный, но устойчивый: неверная воронка выглядела бы авторитетно и
+    воспроизводимо, а дальше по коду стала бы утверждением о её статусе.
+    """
+    a = make_funnel('f11', ('ДБО', 'NR', 'ВК', 'A', None), source='ВК NR', product='ДБО')
+    b = make_funnel('f15', ('ДБО', 'NR', 'ВК', 'B', None), source='ВК NR', product='ДБО')
+    row = sheet_source.SheetRow(30, '', 'ВК NR', 'ДБО', 'Работает', ())
+    result = matching.match_sheet_row(row, [a, b])
+    assert result.funnel is None and result.tier is None
+
+
+def test_отказ_по_неоднозначности_отдаёт_кандидатов():
+    """Отказ обязан отличаться от «кандидатов нет вовсе».
+
+    Иначе строка уходит в раздел «без воронки», который утверждает, что
+    воронки нет, — хотя их четыре; а раздел вдобавок показывает только живые
+    строки (замер 03.09: из 13 несошедшихся живых ноль), так что отказ читался
+    бы как «расхождений нет». Ровно та болезнь, которую в этой же ветке лечит
+    пометка несчитанных классов аудита.
+    """
+    a = make_funnel('f11', ('ДБО', 'NR', 'ВК', 'A', None), source='ВК NR', product='ДБО')
+    b = make_funnel('f15', ('ДБО', 'NR', 'ВК', 'B', None), source='ВК NR', product='ДБО')
+    row = sheet_source.SheetRow(30, '', 'ВК NR', 'ДБО', 'Работает', ())
+    result = matching.match_sheet_row(row, [a, b])
+    assert [f.label for f in result.candidates] == ['f11', 'f15']
+
+
+def test_единственное_совпадение_кандидатов_не_отдаёт():
+    """Кандидаты — признак отказа, а не побочный вывод: на успехе их нет."""
+    funnel = make_funnel('f16', ('БОО', 'NR', 'ВК', 'A', None),
+                         source='ВК NR', product='БОО')
+    row = sheet_source.SheetRow(25, '', 'ВК NR', 'БОО', 'Стоп', ())
+    assert matching.match_sheet_row(row, [funnel]).candidates == ()
+
+
+def test_несошедшаяся_строка_кандидатов_не_отдаёт():
+    row = sheet_source.SheetRow(53, '', 'ВК БАИНГ', 'БОО', 'Стоп', ())
+    assert matching.match_sheet_row(row, []).candidates == ()
+
+
+def test_третья_ступень_сжимает_пробелы_внутри_имени():
+    """ЗАЩИТА НА БУДУЩЕЕ, а не описание сегодняшней поломки.
+
+    Замер 03.09.2026: на всех 68 строках сжатие не меняет ни одного исхода.
+    Двойной пробел «Яндекс Директ  (холод)» стоит по обе стороны сразу, а
+    хвостовые табы срезает `sheet_source._text` ещё при сборке SheetRow —
+    внутренних табов в листе нет вовсе. Поэтому проверяется ровно то, от чего
+    сжатие защищает: одинарный пробел в таблице против двойного в базе. Такого
+    сочетания сегодня нет, и тест честно говорит, что он про будущую опечатку.
+    """
+    funnel = make_funnel('f21', ('СВС', 'Алексей', 'Яндекс', 'Холод', None),
+                         source='Яндекс Директ  (холод)', product='СВС')
+    row = sheet_source.SheetRow(7, '', 'Яндекс Директ (холод)', 'СВС',
+                                'Работает', ())
+    result = matching.match_sheet_row(row, [funnel])
+    assert result.funnel is funnel and result.tier == 'source_product'
+
+
+def test_хвостовые_табы_срезаются_до_сравнения_а_не_ступенью():
+    """Замер: 11 ячеек листа несут табы (18-34 штуки, у строки 30 их 34), и
+    все хвостовые. `_text` их снимает при сборке строки, так что до ступени
+    они не доходят — приписывать эту заслугу `_loose` было бы неверно."""
+    assert sheet_source._text('ДБО  (In-stream) \t\t\t') == 'ДБО  (In-stream)'
+
+
+def test_третья_ступень_ниже_лендинга_и_кода():
+    """Порядок ступеней — порядок надёжности признака. Совпадение по лендингу
+    обязано победить совпадение по источнику даже на другой воронке."""
+    by_landing = make_funnel('f95', ('БОО', 'HT', 'ВК', 'A', None),
+                             landings=['t.ksamata.ru/x'], source='ВК HomeTraffic',
+                             product='БОО-ВК')
+    by_pair = make_funnel('f16', ('БОО', 'NR', 'ВК', 'B', None),
+                          source='ВК NR', product='БОО')
+    row = sheet_source.SheetRow(25, '', 'ВК NR', 'БОО', 'Стоп',
+                                ('t.ksamata.ru/x',))
+    assert matching.match_sheet_row(row, [by_landing, by_pair]).tier == 'landing'
 
 
 def test_match_sheet_row_не_находит_ничего():

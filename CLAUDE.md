@@ -24,7 +24,7 @@ build and export the same database from Excel sources.
 | `tools/data-import/` | Python scripts that build or mutate the root SQLite DB. |
 | `tools/data-export/` | Python scripts that export the DB to XLSX reports. |
 | `tools/audit/` | Tag drift map: reconciles the GetCourse offer registry, `deal_export` history, and the DB. Read-only; output is an XLSX in `data/generated/`. See [tools/audit/README.md](tools/audit/README.md). |
-| `tools/reconcile/` | **Сверка источников по воронкам** — база ↔ таблица маркетологов ↔ выгрузка заказов, в один markdown-отчёт по этапам разбора. Read-only. **Начинать с него любую сессию по сверке данных.** См. [tools/reconcile/README.md](tools/reconcile/README.md) и [порядок разбора](docs/plans/2026-08-04-razbor-design.md). |
+| `tools/reconcile/` | **Сверка источников по воронкам** — база ↔ таблица маркетологов ↔ выгрузка заказов, в один markdown-отчёт по этапам разбора. Read-only. Стык «таблица ↔ база» идёт тремя ступенями (лендинг → код → «источник + продукт»), и третья сверяет колонку «подрядчик» таблицы с **`sources.name`**, а не с `contractors.name`: там лежат источники («ВК NR», «Ютуб органика»): из 8 имён подрядчиков, которые реально несут воронки, с таблицей не совпадает ни одно, и до 03.09.2026 ступень не срабатывала ни разу (в справочнике `contractors` 11 строк, и одна — «ВК БАИНГ» — с таблицей совпадает, но её не несёт ни одна воронка). Неоднозначность на ней — **отказ с перечислением кандидатов** отдельным разделом отчёта, а не молчание: пар (источник, продукт) 68, семь неуникальны, а раздел «без воронки» и утверждал бы неверное, и показывает только живые строки. **Начинать с него любую сессию по сверке данных.** См. [tools/reconcile/README.md](tools/reconcile/README.md) и [порядок разбора](docs/plans/2026-08-04-razbor-design.md). |
 | `tools/sheet-links/` | **Ссылки воронок из таблицы «Воронки ссылки»** — сверка гугл-таблицы маркетологов с блоками воронки. Сейчас собирает `tariffs`/`applications`/`upsell`; колонка продажной страницы делится по хосту (`t.ksamata.ru` → тарифы, `gc.ksamata.ru` → допродажи/дожим). Read-only, отчёт в `data/generated/`, план заливки — флагом `--plan`. **Колонки ищутся по названию: раскладка листов различается, жёсткие номера верны лишь для 19 из 26.** См. [tools/sheet-links/README.md](tools/sheet-links/README.md) и **[карту источника](docs/sheet-links-source-map.md) — с неё начинать любую новую сборку ссылок из этой таблицы**. |
 | `docs/` | Development notes, project map, docs index, and historical plans/specs. See [docs/README.md](docs/README.md). |
 
@@ -803,7 +803,11 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
   тоже (`getRefUsage`), поэтому «Органика» (4) и «Перелив» (2) числились
   занятыми и **не удалялись**, хотя подрядчиком их не несёт ни одна воронка;
   `tools/data-export` печатал в XLSX неверного подрядчика; `tools/reconcile`
-  держит колонку в `Funnel.contractor`. Замер после фазы: обе показывают ноль
+  держал колонку в `Funnel.contractor` — **больше не держит**: с 03.09.2026
+  он читает `sources.name`, потому что в колонке «подрядчик» таблицы
+  маркетологов лежат источники, а не подрядчики (см. ниже про сверку).
+  Так что из трёх помех у фазы осталось две; обе живы. Замер после фазы:
+  обе показывают ноль
   (как «ВК БАИНГ», у которого ноль и без всякой фазы), а колонка и тег сходятся
   у всех одиннадцати подрядчиков.
   Фазой, а не разовым скриптом, ровно по доводу фаз 10 и 11: колонку
@@ -1051,8 +1055,18 @@ Phase 17 чинит результат ЛЮБОГО писателя. После
   and class numbers are never reused); it fixes nothing, in
   the DB or in GetCourse. The DB is opened read-only; GetCourse credentials
   are read from the environment (`GC_DEV_KEY`, `GC_API_KEY`, `GC_DOMAIN`) and
-  never committed. `--no-api` skips GetCourse (classes 9-12, 14 and 17 stay
-  empty). **Class 17 reads `funnels.has_predspisok`, so the audit now requires
+  never committed. `--no-api` skips GetCourse — and the report then **says so
+  on the sheet**: classes 9-12, 14 and 17 are not evaluated at all (sheet note
+  «ПРОВЕРКА НЕ ВЫПОЛНЯЛАСЬ…», summary column «Класс N (не проверялся)», `н/д`
+  instead of `0` in the console), while classes 2 and 7 lose the «no longer in
+  the registry» filter and are marked as an upper bound. Which class is in
+  which list lives in `findings.py` (`REGISTRY_ONLY_CLASSES` /
+  `REGISTRY_FILTERED_CLASSES`), and the mark is driven by the **data**
+  (`unevaluated_classes(offers)`), not by the flag — the registry comes back
+  empty from a failed fetch too, and the class is equally blind either way.
+  Before 2026-09-03 an unchecked class printed a plain `0`, indistinguishable
+  from an honest one — the same silent-zero symptom as the stage-tag spelling
+  (Phase 15). **Class 17 reads `funnels.has_predspisok`, so the audit now requires
   a Phase-16 database** — on an older one `load_funnels` fails loudly with
   `no such column`, which is the intended outcome: a silent default would mean
   "flag raised everywhere", i.e. a permanent zero indistinguishable from an
