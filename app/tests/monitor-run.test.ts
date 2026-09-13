@@ -189,6 +189,45 @@ describe('runMonitorCycle', () => {
     expect(s.consecutive_failures).toBe(0);
   });
 
+  it('отдаёт уведомителю отсечку, снятую до прогона', async () => {
+    const id = seedTarget();
+    await runMonitorCycle(db, { check: scriptedCheck([up]).fn, sync: false, sleep: noSleep });
+    const before = (sqlite.prepare(`SELECT MAX(id) AS m FROM monitor_events`).get() as { m: number }).m;
+
+    const seen: number[] = [];
+    await runMonitorCycle(db, {
+      check: scriptedCheck([down]).fn,
+      sync: false,
+      sleep: noSleep,
+      notify: async (_db, since) => {
+        seen.push(since);
+      },
+    });
+
+    // Отсечка снята ДО прогона, поэтому событие этого цикла в неё не попало —
+    // иначе уведомитель не увидел бы ровно то падение, ради которого зовётся.
+    expect(seen).toEqual([before]);
+    expect(events(id)).toHaveLength(2);
+  });
+
+  it('не роняет цикл, если уведомление не ушло', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    seedTarget();
+
+    const result = await runMonitorCycle(db, {
+      check: scriptedCheck([down]).fn,
+      sync: false,
+      sleep: noSleep,
+      notify: async () => {
+        throw new Error('Telegram недоступен');
+      },
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.down).toBe(1);
+    log.mockRestore();
+  });
+
   it('пропускает выключенные цели', async () => {
     const id = seedTarget();
     sqlite.prepare(`UPDATE monitor_targets SET enabled = 0 WHERE id = ?`).run(id);

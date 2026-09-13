@@ -3,6 +3,7 @@ import { type AnyDB } from '../db/client';
 import { monitorTargets, monitorState, monitorEvents } from '../db/schema';
 import { checkUrl, type CheckFn, type CheckResult } from './monitor-check';
 import { syncMonitorTargets } from './monitor-targets';
+import { notifyMonitorEvents } from './monitor-notify';
 
 export const RETRY_DELAY_MS = 3_000;
 export const CONCURRENCY = 8;
@@ -32,7 +33,12 @@ export interface CycleOptions {
   sleep?: (ms: number) => Promise<void>;
   /** Синк целей перед прогоном. Выключается в тестах, где цели заводятся руками. */
   sync?: boolean;
+  /** Уведомление по итогам прогона. Подменяется в тестах — сети там нет. */
+  notify?: NotifyFn;
 }
+
+/** Получает отсечку `monitor_events.id`, снятую перед прогоном. */
+export type NotifyFn = (db: AnyDB, sinceEventId: number) => Promise<unknown>;
 
 // Одиночный флаг на процесс: планировщик и ручная кнопка не должны наложиться.
 // Живёт на globalThis, а не в модуле: webpack кладёт этот модуль в два разных
@@ -94,6 +100,15 @@ export function pruneEvents(db: AnyDB, retentionDays = EVENT_RETENTION_DAYS): nu
     .where(sql`${monitorEvents.at} < datetime('now', ${'-' + retentionDays + ' days'})`)
     .run();
   return Number((res as { changes?: number }).changes ?? 0);
+}
+
+/** Последний id журнала смен статуса; 0 на пустой таблице. */
+function maxEventId(db: AnyDB): number {
+  const row = db
+    .select({ max: sql<number>`COALESCE(MAX(${monitorEvents.id}), 0)` })
+    .from(monitorEvents)
+    .get() as { max: number } | undefined;
+  return row?.max ?? 0;
 }
 
 function persist(db: AnyDB, target: TargetRow, result: CheckResult): void {
@@ -167,11 +182,18 @@ export async function runMonitorCycle(
   const concurrency = opts.concurrency ?? CONCURRENCY;
   const retryDelayMs = opts.retryDelayMs ?? RETRY_DELAY_MS;
   const sleep = opts.sleep ?? defaultSleep;
+  const notify = opts.notify ?? notifyMonitorEvents;
   const startedAt = new Date().toISOString();
 
   const tally = { up: 0, slow: 0, down: 0 };
 
   try {
+    // Отсечку журнала снимаем ДО проверок: всё, что появится после неё, и есть
+    // смены статуса этого прогона. Сравниваем по id, а не по времени — в
+    // таблице UTC-строки SQLite с точностью до секунды, и два цикла подряд
+    // (кнопка «проверить» сразу после планировщика) по времени не разделить.
+    const sinceEventId = maxEventId(db);
+
     if (opts.sync !== false) syncMonitorTargets(db);
 
     const targets = db
@@ -208,6 +230,15 @@ export async function runMonitorCycle(
     );
 
     pruneEvents(db);
+
+    // Уведомление не вправе ронять проверки: Telegram недоступен чаще, чем
+    // наши ленды, и упавший цикл означал бы, что мы перестали замечать падения
+    // вообще. Поэтому ошибка только в лог.
+    try {
+      await notify(db, sinceEventId);
+    } catch (err) {
+      console.error('[monitor] уведомление не ушло', err);
+    }
 
     return {
       checked,

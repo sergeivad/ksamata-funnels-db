@@ -1,7 +1,7 @@
 'use client';
 
 import { RefreshCw } from 'lucide-react';
-import { formatAgo } from '@/lib/monitor-status';
+import { formatAgo, telegramLabel } from '@/lib/monitor-status';
 import type { MonitorSummaryView } from '@/lib/monitor-view';
 
 interface Props {
@@ -30,6 +30,20 @@ export default function MonitorSummary({ summary, running, onRun }: Props) {
       ))}
 
       <div className="ml-auto flex items-center gap-3">
+        {/* Ненастроенная рассылка молчит так же, как настроенная и спокойная, —
+            поэтому её состояние написано рядом со временем последней проверки. */}
+        <span
+          className={`text-[11px] ${
+            summary.telegram.configured ? 'text-[var(--muted)]' : 'text-[#8A6100]'
+          }`}
+          title={
+            summary.telegram.configured
+              ? 'О падениях и восстановлениях приходит сводка за цикл проверки'
+              : 'Задайте MONITOR_TELEGRAM_BOT_TOKEN и MONITOR_TELEGRAM_CHAT_IDS — уведомления о падениях никуда не идут'
+          }
+        >
+          {telegramLabel(summary.telegram)}
+        </span>
         <span className="text-[11px] text-[var(--muted)]">
           Проверка: {formatAgo(summary.lastCheckedAt)}
         </span>

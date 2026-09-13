@@ -12,6 +12,7 @@ import { isCycleRunning } from './monitor-run';
 import { collectFunnelUrls, MONITORED_FUNNEL_STATUS } from './monitor-targets';
 import { FUNNEL_STATUS_VALUES, isFunnelStatus, type FunnelStatus } from './status';
 import { compareByFrontCodeAsc } from './funnel-sort';
+import { readTelegramConfig } from './monitor-notify';
 
 /** Статусы воронки, страницы которых не проверяются (черновик, архив). */
 const INACTIVE_FUNNEL_STATUSES: readonly FunnelStatus[] = FUNNEL_STATUS_VALUES.filter(
@@ -78,6 +79,12 @@ export interface MonitorSummaryView {
   unknown: number;
   lastCheckedAt: string | null;
   running: boolean;
+  /**
+   * Состояние телеграм-уведомлений. Стоит в сводке, а не только в переменных
+   * окружения контейнера: ненастроенная рассылка молчит ровно так же, как
+   * настроенная и спокойная, — и отличить одно от другого иначе нельзя.
+   */
+  telegram: { configured: boolean; chats: number };
 }
 
 export interface MonitorSourceKindView {
@@ -161,7 +168,10 @@ function funnelRefsById(db: AnyDB): Map<number, MonitorInactiveFunnelRef> {
   return map;
 }
 
-export function getMonitorDashboard(db: AnyDB): {
+export function getMonitorDashboard(
+  db: AnyDB,
+  env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
+): {
   summary: MonitorSummaryView;
   sourceKinds: MonitorSourceKindView[];
   targets: MonitorTargetView[];
@@ -253,6 +263,10 @@ export function getMonitorDashboard(db: AnyDB): {
     unknown: 0,
     lastCheckedAt: null,
     running: isCycleRunning(),
+    telegram: (() => {
+      const config = readTelegramConfig(env);
+      return { configured: config !== null, chats: config?.chatIds.length ?? 0 };
+    })(),
   };
 
   const kinds = new Map<string, MonitorSourceKindView>();

@@ -334,3 +334,18 @@ describe('funnelsByTarget', () => {
     expect(map.size).toBe(0);
   });
 });
+
+describe('getMonitorDashboard: уведомления', () => {
+  it('сообщает, настроены ли уведомления в Telegram', () => {
+    // Молчащая интеграция неотличима от «всё хорошо», поэтому состояние видно
+    // в дашборде, а не только в переменных окружения контейнера.
+    expect(getMonitorDashboard(db, {}).summary.telegram).toEqual({ configured: false, chats: 0 });
+
+    const configured = getMonitorDashboard(db, {
+      MONITOR_TELEGRAM_BOT_TOKEN: '123:AA',
+      MONITOR_TELEGRAM_CHAT_IDS: '42,-100777',
+    });
+
+    expect(configured.summary.telegram).toEqual({ configured: true, chats: 2 });
+  });
+});

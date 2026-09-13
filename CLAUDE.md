@@ -455,6 +455,27 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   target still produces ~190 rows a day and there are ~600 targets, so without a
   bound the table never stops growing. Pruning rides the cycle because the cycle
   is the table's only writer — no separate cleanup schedule to forget about.
+  Перед проверками цикл снимает отсечку `MAX(monitor_events.id)` и по
+  завершении отдаёт её `monitor-notify` — всё, что появилось после неё, и есть
+  смены статуса этого прогона. Отсечка по `id`, а не по времени: в таблице
+  UTC-строки SQLite с точностью до секунды, и ручную «проверить сейчас» сразу
+  после планировщика по времени не отделить. Ошибка уведомления ловится и
+  уходит в лог: Telegram недоступен чаще наших лендов, а упавший цикл означал
+  бы, что падений мы не замечаем вовсе.
+- `monitor-notify.ts` — сводка о падениях в Telegram. Поводов два:
+  переход **в** `down` («упало») и **из** `down` («поднялось», в том числе в
+  `slow`). Всё остальное молчит, и это не экономия: первая проверка новой цели
+  даёт `unknown → up`, а таких на свежей базе шесть сотен. Сообщение одно на
+  цикл — обрыв сети на сервере роняет разом все ~600 целей, и «по сообщению на
+  страницу» половину съел бы лимит Telegram. Число в заголовке раздела всегда
+  полное, режется только список (`MAX_LINES_PER_SECTION`, плюс жёсткий
+  `MAX_MESSAGE_CHARS` — в живой базе лежит адрес длиной 2019 знаков, и двух
+  таких хватает, чтобы сводка не ушла вовсе: превышение 4096 Telegram отбивает
+  целиком). Текст шлётся **без `parse_mode`**: в адресах сплошь `_`, `(` и `[`,
+  и ошибка экранирования стоила бы всего сообщения. Пока страница лежит,
+  напоминаний нет — второе сообщение приходит на восстановление. Нет токена
+  или нет ни одного чата (`readTelegramConfig`) — рассылка выключена, поэтому
+  локально и в тестах наружу ничего не уходит само.
 - `monitor-view.ts` — dashboard read models. Group counters (`sourceKinds`) count
   **only pages of active funnels**: archiving a funnel is itself the decision that
   its pages leave monitoring, so they drop out of the denominator, as do orphaned
@@ -464,7 +485,13 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   a draft/archive funnel) / `orphan` (held by nobody) — used **only** to explain
   in the table why a row is off. `inactive` vs `orphan` is resolved by
   re-collecting funnel URLs for non-active statuses via `collectFunnelUrls`
-  (same normalization as the sync), not from a stored column.
+  (same normalization as the sync), not from a stored column. В `summary` лежит
+  и `telegram` (`{ configured, chats }`) — состояние рассылки читается из
+  окружения и показывается в шапке `/monitoring`: ненастроенная рассылка молчит
+  ровно так же, как настроенная и спокойная. Ошибки **отправки** там не
+  показываем и показать не можем: цикл живёт в рантайме инструментации, а
+  страница рендерится в Node, общего `globalThis` у них нет (см. раздел про
+  синглтоны), так что такой индикатор врал бы.
 - `monitor-scheduler.ts` — env config + `setInterval` (started by `src/instrumentation.ts`).
 
 ## API routes (`app/src/app/api/`)
@@ -1001,7 +1028,8 @@ hot-reload, auth off) that bind-mounts the real repo DB at `/data`. It does
 
 Env vars: `FUNNELS_DB_PATH`, `ADMIN_USERS`, `ADMIN_SESSION_SECRET`,
 `PUBLIC_READ_ENABLED`, `ADMIN_BASIC_AUTH`, `ADMIN_AUTH_DISABLED`,
-`MONITOR_ENABLED`, `MONITOR_INTERVAL_MINUTES`, `NODE_ENV`, `PORT`. See
+`MONITOR_ENABLED`, `MONITOR_INTERVAL_MINUTES`, `MONITOR_TELEGRAM_BOT_TOKEN`,
+`MONITOR_TELEGRAM_CHAT_IDS`, `PUBLIC_BASE_URL`, `NODE_ENV`, `PORT`. See
 [app/.env.example](app/.env.example).
 
 ## Data tools (`tools/`)

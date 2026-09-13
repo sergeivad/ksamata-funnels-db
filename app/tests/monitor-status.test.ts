@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  telegramLabel,
   MONITOR_STATUS_VALUES,
   isMonitorStatus,
   MONITOR_STATUS_META,
@@ -54,5 +55,19 @@ describe('formatAgo', () => {
 
   it('показывает дни', () => {
     expect(formatAgo('2026-07-22 12:00:00', now)).toBe('2 дн назад');
+  });
+});
+
+describe('telegramLabel', () => {
+  it('называет число чатов по-русски', () => {
+    expect(telegramLabel({ configured: true, chats: 1 })).toBe('Telegram: 1 чат');
+    expect(telegramLabel({ configured: true, chats: 2 })).toBe('Telegram: 2 чата');
+    expect(telegramLabel({ configured: true, chats: 5 })).toBe('Telegram: 5 чатов');
+    expect(telegramLabel({ configured: true, chats: 11 })).toBe('Telegram: 11 чатов');
+    expect(telegramLabel({ configured: true, chats: 21 })).toBe('Telegram: 21 чат');
+  });
+
+  it('прямо говорит, что уведомления никуда не идут', () => {
+    expect(telegramLabel({ configured: false, chats: 0 })).toBe('Telegram: не настроен');
   });
 });

@@ -37,3 +37,18 @@ export function formatAgo(iso: string | null, nowMs: number = Date.now()): strin
   if (hours < 24) return `${hours} ч назад`;
   return `${Math.floor(hours / 24)} дн назад`;
 }
+
+/**
+ * Подпись состояния телеграм-уведомлений для шапки мониторинга.
+ * Живёт здесь, а не рядом с отправкой: `monitor-notify` тянет drizzle и схему,
+ * и импорт из клиентского компонента утащил бы их в браузерный бандл.
+ */
+export function telegramLabel(telegram: { configured: boolean; chats: number }): string {
+  if (!telegram.configured) return 'Telegram: не настроен';
+
+  const n = telegram.chats;
+  const ones = n % 10;
+  const teens = n % 100 >= 11 && n % 100 <= 14;
+  const tail = !teens && ones === 1 ? 'чат' : !teens && ones >= 2 && ones <= 4 ? 'чата' : 'чатов';
+  return `Telegram: ${n} ${tail}`;
+}
