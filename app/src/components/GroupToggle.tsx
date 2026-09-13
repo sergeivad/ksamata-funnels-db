@@ -1,24 +1,30 @@
 'use client';
 
-export type GroupBy = 'contractor' | 'product' | 'none';
+import { AXIS_LABEL, AXIS_ORDER, type GroupBy } from '@/lib/funnel-facets';
+
+export type { GroupBy };
+
+// Подписи и порядок берём из осей, а не держим второй список: ряд кнопок
+// группировки, ряд пилюль фильтра и порядок drill-down — это одно и то же
+// слева направо, и разъехаться им нельзя.
+const OPTIONS: { value: GroupBy; label: string }[] = [
+  ...AXIS_ORDER.map((axis) => ({ value: axis as GroupBy, label: AXIS_LABEL[axis] })),
+  { value: 'none', label: 'Без группировки' },
+];
 
 interface GroupToggleProps {
   value: GroupBy;
   onChange: (value: GroupBy) => void;
 }
 
-const OPTIONS: { value: GroupBy; label: string }[] = [
-  { value: 'contractor', label: 'По подрядчику' },
-  { value: 'product', label: 'По продукту' },
-  { value: 'none', label: 'Без группировки' },
-];
-
 export default function GroupToggle({ value, onChange }: GroupToggleProps) {
   return (
     <div
       role="group"
       aria-label="Группировка воронок"
-      className="inline-flex rounded-[8px] border border-[var(--color-border-soft)] bg-[rgba(255,255,255,0.38)] p-0.5"
+      // Осей стало четыре, и пять кнопок в ряд не влезают в телефон: пусть
+      // переносятся, а не уезжают за край экрана.
+      className="inline-flex max-w-full flex-wrap rounded-[8px] border border-[var(--color-border-soft)] bg-[rgba(255,255,255,0.38)] p-0.5"
     >
       {OPTIONS.map((opt) => {
         const active = opt.value === value;
