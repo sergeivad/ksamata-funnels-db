@@ -350,13 +350,33 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   вкладка статуса, условия перемножаются (`isFunnelVisible`). По всем воронкам
   поиск идёт не потому, что функция игнорирует вкладку, а потому, что список
   сам встаёт на «Все» при первом нажатии в поле (`handleSearchChange` в
-  `app/src/app/page.tsx`, переключение только на переходе «пусто → запрос»).
+  `app/src/app/page.tsx`, переключение только на переходе «пусто → запрос»);
+  там же на этом переходе снимаются фильтры осей — по тому же доводу.
   Так вкладка не врёт: раньше она игнорировалась на время поиска и стояла
   «Активные», пока в выдаче лежал архив. Раздел, выбранный уже поверх запроса,
   сужает выдачу — это решение человека, и отменять его нельзя.
   Сама вкладка **«Все» показывает все три статуса, включая архив**
   (`matchesStatusFilter` в `status.ts`): пока она прятала архив, счётчик писал
   «54 из 75» на разделе, который называется «Все».
+- `funnel-facets.ts` — фильтр списка по осям и порядок drill-down
+  (`AXIS_ORDER`, `matchesFilters`, `nextGroupAxis`, `drillInto`, `clearAxis`,
+  `axisOptions`, `buildGroups`). Имя воронки — это путь по четырём осям, то
+  есть список четырёхмерный, и здесь живёт всё, чем по нему ходят. Два
+  правила не косметические. **Группировка переезжает на следующую свободную
+  ось только тогда, когда фильтруют ТУ САМУЮ ось, по которой идёт разбивка** —
+  у неё после фильтра остаётся ровно одна группа и нажимать дальше нечего;
+  фильтр по любой другой оси вид не дёргает, а «без группировки» drill-down не
+  отменяет, это решение человека. **Счётчики значений оси считаются без её
+  собственного фильтра** (`axisOptions`) — иначе в открытом меню осталась бы
+  одна строка, та, что уже выбрана, и сменить значение было бы нельзя, только
+  снять; поэтому же странице нужны два прохода фильтрации, и `FacetBar`
+  получает список, суженный вкладкой и поиском, но ещё не осями. Пустая строка
+  — законное значение фильтра («воронки без продукта»), так что «фильтр стоит»
+  определяется наличием ключа, а не истинностью значения. `buildGroups` не
+  сортирует воронки внутри группы: порядок задаёт вызывающая сторона
+  (`compareByFrontCodeDesc`), и держать это правило в двух местах не надо.
+  `isGroupBy` принимает и `contractor`/`product` — они уже лежат в localStorage
+  у всех, кто выбирал прежнюю пару кнопок.
 - `funnel-sort.ts` — list order by F (`compareByFrontCodeDesc`) plus
   `compareByFrontCodeAsc` for the monitoring chip rows. Codeless funnels go
   **last in both**: that is a property of having no code, not of the direction,
@@ -558,6 +578,9 @@ dashboard),
 Components (`app/src/components/`): `AppHeader`, `FunnelCard`,
 `FunnelCompactView`, `FunnelIdentity`, `FunnelSections`, `BlockEditor`,
 `BlockListField`, `RoomsEditor`, `TagTemplateEditor`, `RefSelect`/`RefTable`,
+`FacetBar` (строка фильтра по осям — четыре пилюли с меню значений, видна
+**всегда**: клик по заголовку группы делает то же самое, но о нём надо знать
+заранее, и фильтра на экране просто не было видно),
 `AuthProvider` (контекст прав + `useCanEdit`), `EditorGate`, `LoginForm`,
 plus UI primitives (`StatusPill`, `CodeChip`, `Segmented`, `Switch`,
 `GroupToggle`, `UrlInput`, `Toast` — у первых четырёх есть `disabled`/
@@ -603,6 +626,18 @@ sqlite3 ksamata_funnels.db 'PRAGMA wal_checkpoint(TRUNCATE);'
 rm -f app/seed/ksamata_funnels.db
 sqlite3 ksamata_funnels.db "VACUUM INTO 'app/seed/ksamata_funnels.db';"
 ```
+
+**`VACUUM INTO` оставляет сид в режиме `delete`, и это ломало сборку прода.**
+`next build` собирает page data параллельными воркерами, каждый роут с БД при
+импорте делает `PRAGMA journal_mode = WAL`, а на базе в `delete` это **запись** —
+двое разом получают `SQLITE_BUSY: database is locked`, и сборка падает на
+случайном роуте (13.09 `/api/export`, 14.09 `/api/funnels/[id]/blocks/[kind]`).
+Локально это не воспроизводится: корневая база давно в WAL, потому что её
+открывает dev-сервер. `busy_timeout` не лечит — SQLite не применяет ожидание к
+самой смене journal_mode. Лечит шаг в [app/Dockerfile](app/Dockerfile),
+переводящий сид в WAL **одним** процессом до `npm run build`; правя сборку, не
+потеряйте его. Сид в гите при этом остаётся в `delete` — режим журнала это
+свойство файла, а не данных, и `seed-parity.test.ts` сверяет строки.
 
 **Monitoring gotcha:** the tracked DB's `monitor_*` tables are intentionally
 **empty**. Running the dev server starts the background scheduler, which syncs

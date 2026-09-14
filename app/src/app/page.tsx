@@ -2,15 +2,26 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Download, X } from 'lucide-react';
+import { ChevronRight, Download, X } from 'lucide-react';
 import FunnelCard from '@/components/FunnelCard';
 import Toast from '@/components/Toast';
-import GroupToggle, { type GroupBy } from '@/components/GroupToggle';
+import GroupToggle from '@/components/GroupToggle';
+import FacetBar from '@/components/FacetBar';
 import Segmented from '@/components/Segmented';
 import { confirmUnsavedNavigation } from '@/lib/useUnsavedGuard';
 import { useCanEdit } from '@/components/AuthProvider';
 import { compareByFrontCodeDesc } from '@/lib/funnel-sort';
 import { isFunnelVisible, isSearching } from '@/lib/funnel-search';
+import {
+  buildGroups,
+  clearAxis,
+  drillInto,
+  isGroupBy,
+  matchesFilters,
+  type AxisFilters,
+  type AxisKey,
+  type GroupBy,
+} from '@/lib/funnel-facets';
 import { funnelHref } from '@/lib/front-code';
 import {
   type FunnelStatus,
@@ -54,10 +65,6 @@ interface ToastState {
   key: number;
 }
 
-function isGroupBy(v: unknown): v is GroupBy {
-  return v === 'contractor' || v === 'product' || v === 'none';
-}
-
 /**
  * Чем назвать воронку в диалоге удаления. Показывать `num` тут нельзя: на
  * карточке, которую человек только что нажал, написан F-код, и «Удалить
@@ -83,6 +90,9 @@ export default function HomePage() {
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [search, setSearch] = useState('');
+  // Фильтры осей живут только в состоянии страницы: сохранённый в localStorage
+  // фильтр через неделю читается как «база усохла».
+  const [filters, setFilters] = useState<AxisFilters>({});
 
   // Load groupBy / statusFilter from localStorage on mount (client-only)
   useEffect(() => {
@@ -123,12 +133,14 @@ export default function HomePage() {
    * Начало поиска само переводит список на «Все»: искать человек идёт по всей
    * базе, а не внутри раздела, в котором стоит, — запрос по архивной воронке с
    * «Активных» отвечал «Ничего не найдено», то есть «такой воронки нет».
+   * Вместе с разделом снимаются и фильтры осей — по тому же доводу.
    * Переключаем только на переходе «пусто → есть запрос»: раздел, выбранный
    * уже поверх поиска, следующая же буква иначе сбрасывала бы обратно.
    */
   function handleSearchChange(value: string) {
     if (!isSearching(search) && isSearching(value)) {
       handleStatusFilterChange('all');
+      setFilters({});
     }
     setSearch(value);
   }
@@ -255,39 +267,45 @@ export default function HomePage() {
     []
   );
 
-  const visibleFunnels = useMemo(() => {
+  /**
+   * Выдача считается в два шага, и это не лишний проход: счётчики в меню оси
+   * берутся без её собственного фильтра, поэтому `FacetBar` нужен список,
+   * суженный вкладкой и поиском, но ещё не осями.
+   */
+  const searchedFunnels = useMemo(() => {
     return funnels
       .filter((f) => isFunnelVisible(f, statusFilter, search))
       .sort(compareByFrontCodeDesc);
   }, [funnels, statusFilter, search]);
 
+  const visibleFunnels = useMemo(
+    () => searchedFunnels.filter((f) => matchesFilters(f.axes, filters)),
+    [searchedFunnels, filters]
+  );
+
+  function handlePickAxis(axis: AxisKey, value: string) {
+    const step = drillInto(filters, groupBy, axis, value);
+    setFilters(step.filters);
+    handleGroupByChange(step.group);
+  }
+
+  /** Всё, чем сужен список: оси, раздел и поиск. Кнопка одна — и сбрасывает всё. */
+  function resetAllFilters() {
+    setFilters({});
+    setSearch('');
+    handleStatusFilterChange('all');
+  }
+
+  function handleClearAxis(axis: AxisKey) {
+    const step = clearAxis(filters, groupBy, axis);
+    setFilters(step.filters);
+    handleGroupByChange(step.group);
+  }
 
   function buildTitle(f: FunnelListItem): string {
     const allEmpty =
       !f.axes.product && !f.axes.contractor && !f.axes.channel && !f.axes.direction;
     return allEmpty ? 'Новая воронка (черновик)' : f.name;
-  }
-
-  /** Build sorted groups from current funnels list */
-  function buildGroups(
-    items: FunnelListItem[],
-    by: 'contractor' | 'product'
-  ): { name: string; funnels: FunnelListItem[] }[] {
-    const map = new Map<string, FunnelListItem[]>();
-    for (const f of items) {
-      const raw = by === 'contractor' ? f.axes.contractor : f.axes.product;
-      const key = raw || '— без осей';
-      const bucket = map.get(key) ?? [];
-      bucket.push(f);
-      map.set(key, bucket);
-    }
-    // Sort groups alphabetically, items within group by F desc (as in the flat list)
-    return Array.from(map.entries())
-      .sort(([a], [b]) => a.localeCompare(b, 'ru'))
-      .map(([name, gs]) => ({
-        name,
-        funnels: [...gs].sort(compareByFrontCodeDesc),
-      }));
   }
 
   function renderCard(funnel: FunnelListItem) {
@@ -323,15 +341,24 @@ export default function HomePage() {
     return (
       <div className="grid gap-6">
         {groups.map((group) => (
-          <section key={group.name}>
-            <div className="mb-2 flex items-baseline gap-2">
+          <section key={group.value}>
+            {/* Заголовок группы — кнопка: клик оставляет в списке только её и
+                переводит разбивку на следующую ось. Это ускоритель к строке
+                фильтра, а не единственный путь: о нём надо знать заранее. */}
+            <button
+              type="button"
+              onClick={() => handlePickAxis(groupBy, group.value)}
+              title={`Показать только «${group.label}»`}
+              className="group -ml-2 mb-2 inline-flex items-baseline gap-2 rounded-[6px] px-2 py-0.5 transition hover:bg-[var(--chip)]"
+            >
               <h2 className="text-[13px] font-semibold text-[var(--color-text)]">
-                {group.name}
+                {group.label}
               </h2>
               <span className="text-[11px] text-[var(--color-text-secondary)]">
                 {group.funnels.length}
               </span>
-            </div>
+              <ChevronRight className="h-3 w-3 self-center text-[var(--faint)] transition group-hover:text-[var(--color-text-secondary)]" />
+            </button>
             <div className="grid gap-1.5">
               {group.funnels.map(renderCard)}
             </div>
@@ -390,9 +417,20 @@ export default function HomePage() {
         </div>
       )}
 
+      {/* Фильтр по осям — всегда на экране: иначе о нём не догадаться */}
+      {!loading && funnels.length > 0 && (
+        <FacetBar
+          items={searchedFunnels}
+          filters={filters}
+          onPick={handlePickAxis}
+          onClear={handleClearAxis}
+          onClearAll={() => setFilters({})}
+        />
+      )}
+
       {/* Grouping toggle + count */}
       {!loading && funnels.length > 0 && (
-        <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <GroupToggle value={groupBy} onChange={handleGroupByChange} />
           <div className="flex items-center gap-3">
             <span className="text-[12px] text-[var(--color-text-secondary)]">
@@ -431,9 +469,18 @@ export default function HomePage() {
       ) : funnels.length === 0 ? (
         <p className="text-[13px] text-[var(--color-text-secondary)]">Нет воронок.</p>
       ) : visibleFunnels.length === 0 ? (
-        <p className="text-[13px] text-[var(--color-text-secondary)]">
-          Ничего не найдено.
-        </p>
+        /* Выход из тупика на виду: с четырьмя осями пустую выдачу теперь легко
+           собрать, а понять, какое из условий её обнулило, — нет. */
+        <div className="rounded-[8px] border border-dashed border-[var(--line)] px-5 py-7 text-center">
+          <p className="text-[13px] text-[var(--color-text-secondary)]">Ничего не найдено.</p>
+          <button
+            type="button"
+            onClick={resetAllFilters}
+            className="mt-2.5 rounded-[8px] border border-[var(--color-border-soft)] bg-white px-3 py-1.5 text-[12px] text-[var(--color-text)] transition hover:border-[var(--color-text-secondary)]"
+          >
+            Сбросить фильтры
+          </button>
+        </div>
       ) : (
         renderList()
       )}

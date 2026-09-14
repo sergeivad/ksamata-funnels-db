@@ -26,6 +26,21 @@ COPY . .
 # can connect to the DB when it pre-renders pages.
 ENV FUNNELS_DB_PATH=/build/seed/ksamata_funnels.db
 
+# Перевести сид в WAL ОДНИМ процессом, до сборки.
+#
+# `next build` собирает page data параллельными воркерами, и каждый роут с БД
+# при импорте делает `PRAGMA journal_mode = WAL`. Если база ещё в режиме
+# `delete` — а `VACUUM INTO`, которым пересобирают сид, оставляет именно его, —
+# то это ЗАПИСЬ, и двое воркеров разом получают `SQLITE_BUSY: database is
+# locked`. Сборка падает на случайном роуте: 13.09 на /api/export, 14.09 на
+# /api/funnels/[id]/blocks/[kind], локально на /api/funnels/[id]/tags.
+#
+# `busy_timeout` тут не помогает: SQLite не применяет ожидание к самой смене
+# journal_mode. Лечит только то, чтобы к началу сборки база УЖЕ была в WAL —
+# тогда прагма воркера становится чтением. Замер: без этого шага 3 падения из
+# 3 (два на проде, одно локально), с ним — 3 чистые сборки из 3.
+RUN node -e "const D=require('better-sqlite3');const d=new D('/build/seed/ksamata_funnels.db');d.pragma('journal_mode = WAL');d.close();"
+
 # Build Next.js in standalone mode
 RUN npm run build
 
