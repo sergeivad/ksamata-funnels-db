@@ -600,6 +600,18 @@ rm -f app/seed/ksamata_funnels.db
 sqlite3 ksamata_funnels.db "VACUUM INTO 'app/seed/ksamata_funnels.db';"
 ```
 
+**`VACUUM INTO` оставляет сид в режиме `delete`, и это ломало сборку прода.**
+`next build` собирает page data параллельными воркерами, каждый роут с БД при
+импорте делает `PRAGMA journal_mode = WAL`, а на базе в `delete` это **запись** —
+двое разом получают `SQLITE_BUSY: database is locked`, и сборка падает на
+случайном роуте (13.09 `/api/export`, 14.09 `/api/funnels/[id]/blocks/[kind]`).
+Локально это не воспроизводится: корневая база давно в WAL, потому что её
+открывает dev-сервер. `busy_timeout` не лечит — SQLite не применяет ожидание к
+самой смене journal_mode. Лечит шаг в [app/Dockerfile](app/Dockerfile),
+переводящий сид в WAL **одним** процессом до `npm run build`; правя сборку, не
+потеряйте его. Сид в гите при этом остаётся в `delete` — режим журнала это
+свойство файла, а не данных, и `seed-parity.test.ts` сверяет строки.
+
 **Monitoring gotcha:** the tracked DB's `monitor_*` tables are intentionally
 **empty**. Running the dev server starts the background scheduler, which syncs
 ~600 targets and writes check results straight into that same tracked file. So
