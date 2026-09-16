@@ -306,7 +306,19 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   that a funnel holds no webinars must not be undone silently.
 - `funnel-blocks.ts` — read/replace blocks and items.
 - `blocks.ts` — static block-kind registry.
-- `block-fill.ts` — block-editing helpers (parse pasted lines, mirror slots, labels).
+- `block-fill.ts` — block-editing helpers (parse pasted lines, mirror slots,
+  labels). **Слотовое зеркало блоков не отказывает — оно помечает.**
+  `mirrorSlotUrl` меняет токен `15` на `19` с границей «не цифра» (то же
+  правило, что у `mirrorDayUrl`), а `mirrorSlotItems` возвращает вместе с
+  новыми строками список `verbatim` — адреса, в которых токена не нашлось и
+  которые перенесены дословно. Замер по 251 строке колонки 15:00 всех
+  двусторонних блоков живой базы: когда правило применимо, оно верно
+  **101 из 101** раз; когда нет — 50 строк совпадают с 19:00 законно, а **90
+  нет**. Поэтому отказ (как у `mirrorSlotRoomUrl`) был бы неверен, а молчание
+  давало тихий дубль, читающийся как готовый ответ, — и давало его до
+  16.09.2026. Счётчик для сводки даёт `countVerbatimRows` по живым строкам, а
+  не размер набора: поправленный адрес обязан уходить из пометки и из сводки
+  одновременно.
 - `room-urls.ts` — правила адресов вебинарных комнат: `webRoomFromGc`,
   `mirrorDayUrl`, `mirrorSlotRoomUrl`. Слотовое зеркало знает **две** семьи
   слагов, и это не украшение: половина воронок несёт время в адресе
@@ -405,6 +417,14 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   хватает дневного зеркала, и только потом в чужом. **Повтор выводится
   только по дням своего слота:** правила, связывающего повтор с комнатой,
   в данных нет — «вставить `r` после цифры дня» верно в 38 случаях из 44.
+  Замер 16.09.2026: сетка каждой из 62 воронок с комнатами, засеянная ОДНОЙ
+  ячейкой (15:00, день 1, GC), восстанавливается достройкой полностью —
+  **1168 ячеек из 1168, ноль ошибок**. `appendDay` добавляет день `N+1` и
+  сразу выводит его по тем же правилам, но **только его**: пятидневных воронок
+  53 из 62, а сетка открывается на трёх, так что «добавить день» жмут почти
+  всегда — и пустая строка требовала второго клика по «Заполнить остальные».
+  Остальную сетку `appendDay` не трогает: день, оставленный пустым, — решение
+  человека, и добавление строки не повод его отменять.
 - `funnel-compact.ts` — grouping/visibility for the compact view.
 - `export.ts` — build export rows + CSV serialization. Fields starting with
   `=`, `+`, `-`, `@`, TAB or CR get a leading apostrophe: the route serves a BOM

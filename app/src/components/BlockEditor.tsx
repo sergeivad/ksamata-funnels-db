@@ -5,7 +5,7 @@ import * as Icons from 'lucide-react';
 import { Wand2, Copy, Check, AlertCircle } from 'lucide-react';
 import { getBlockDef, type BlockMode } from '@/lib/blocks';
 import type { BlockState, BlockItem } from '@/lib/funnel-blocks';
-import { mirrorSlotUrl, formatBlockLinks, flattenToCommon, restoreByTime } from '@/lib/block-fill';
+import { mirrorSlotItems, countVerbatimRows, formatBlockLinks, flattenToCommon, restoreByTime } from '@/lib/block-fill';
 import { urlFieldErrors } from '@/lib/url-field';
 import { copyText } from '@/lib/clipboard';
 import Switch from './Switch';
@@ -18,6 +18,8 @@ interface Props {
   initial: BlockState;
   timeLabelA: string;
   timeLabelB: string;
+  /** Есть ли у воронки шаг предсписка — от этого зависит «Стандартный набор». */
+  hasPredspisok?: boolean;
   onDirtyChange?: (dirty: boolean) => void;
 }
 
@@ -30,7 +32,7 @@ function normalizeItems(items: BlockItem[], mode: BlockMode): BlockItem[] {
 
 type SavedSnapshot = { enabled: boolean; mode: BlockMode; items: BlockItem[] };
 
-export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB, onDirtyChange }: Props) {
+export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB, hasPredspisok = false, onDirtyChange }: Props) {
   const canEdit = useCanEdit();
   const def = getBlockDef(initial.kind);
   const [enabled, setEnabled] = useState(initial.enabled);
@@ -39,6 +41,8 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedAll, setCopiedAll] = useState<'ok' | 'failed' | null>(null);
+  // Адреса, перенесённые в 19:00 дословно последним «Заполнить из 15:00».
+  const [verbatim, setVerbatim] = useState<Set<string>>(() => new Set());
   const copyAllTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Items as they were before the last by_time → common switch, so toggling
   // back restores the 15/19 split instead of dumping every row into slot 15.
@@ -64,15 +68,15 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const Icon = (Icons as any)[def.icon] ?? Icons.Link;
 
+  // Ссылки, которые зеркало НЕ смогло преобразовать и перенесло дословно.
+  // Ключ — сам адрес, поэтому пометка исчезает сама, как только строку
+  // поправили. Замер по живой базе: из 251 строки колонки 15:00 таких 90, и
+  // 50 из них совпадают с 19:00 законно — то есть отказываться нельзя, а
+  // молчать нельзя тем более: дубль читается как готовый ответ.
   function fillSlot19FromSlot15() {
-    const slot15 = items.filter((it) => it.slot === '15');
-    const mirrored: BlockItem[] = slot15.map((it) => ({
-      slot: '19',
-      label: mirrorSlotUrl(it.label),
-      url: mirrorSlotUrl(it.url),
-    }));
-    const next = [...items, ...mirrored];
-    setItems(next);
+    const res = mirrorSlotItems(items);
+    setItems(res.items);
+    setVerbatim(new Set(res.verbatim));
   }
 
   async function copyAllLinks() {
@@ -88,6 +92,11 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
   // стоит на сервере — здесь он только для того, чтобы человек увидел проблему
   // до нажатия «Сохранить», а не в виде 400 из API.
   const brokenUrlRows = urlFieldErrors(items).length;
+
+  // Сколько дословных переносов ещё висит в колонке 19:00 — считается по
+  // живым строкам, а не по размеру набора: поправленная строка должна уходить
+  // и из пометки, и из сводки одновременно.
+  const verbatimRows = countVerbatimRows(items, verbatim);
 
   const hasAnyLink = items.some((it) => it.url.trim() !== '');
   const slot19Empty = mode === 'by_time' && items.filter((it) => it.slot === '19').length === 0;
@@ -214,6 +223,7 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
       {mode === 'common' ? (
         <BlockListField fields={def.fields} slot={null} items={items}
           showStandardSet={def.kind === 'links'}
+          hasPredspisok={hasPredspisok}
           onChange={(next) => { setItems(next); }} />
       ) : (
         // 15:00/19:00 side by side; stacked on narrow screens where two
@@ -223,6 +233,7 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
             <div className="mb-1 text-[11px] font-medium text-[var(--muted)]">{timeLabelA}</div>
             <BlockListField fields={def.fields} slot="15" items={items}
               showStandardSet={def.kind === 'links'}
+              hasPredspisok={hasPredspisok}
               onChange={(next) => setItems(next)} />
           </div>
           <div className="flex-1">
@@ -236,8 +247,17 @@ export default function BlockEditor({ funnelId, initial, timeLabelA, timeLabelB,
                 <Wand2 size={13} /> Заполнить из {timeLabelA}
               </button>
             )}
+            {verbatimRows > 0 && (
+              <p role="status" className="mb-1.5 pl-0.5 text-[11px] text-[#8A6512]">
+                {verbatimRows === 1
+                  ? 'Одна ссылка перенесена без изменений — метки времени в адресе нет.'
+                  : `Перенесены без изменений: ${verbatimRows} — метки времени в адресе нет.`}
+              </p>
+            )}
             <BlockListField fields={def.fields} slot="19" items={items}
               showStandardSet={def.kind === 'links'}
+              hasPredspisok={hasPredspisok}
+              verbatimUrls={verbatim}
               onChange={(next) => setItems(next)} />
           </div>
         </div>
