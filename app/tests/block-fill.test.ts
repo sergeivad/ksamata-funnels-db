@@ -2,9 +2,12 @@ import { describe, it, expect } from 'vitest';
 import {
   parsePastedLine,
   mirrorSlotUrl,
+  mirrorSlotItems,
+  countVerbatimRows,
   missingStandardLabels,
   formatBlockLinks,
   STANDARD_LINKS_LABELS,
+  PREDSPISOK_LINK_LABEL,
 } from '../src/lib/block-fill';
 import type { BlockItem } from '../src/lib/funnel-blocks';
 
@@ -77,6 +80,78 @@ describe('mirrorSlotUrl', () => {
   it('mirrors a trailing /15', () => {
     expect(mirrorSlotUrl('https://example.com/15')).toBe('https://example.com/19');
   });
+
+  // Граница токена — «не цифра», а не «разделитель»: то же правило, что у
+  // mirrorDayUrl в room-urls.ts. Замер по 251 живой строке колонки 15:00 —
+  // +9 верных строк, 0 регрессий.
+  it('mirrors 15 glued to a letter (br_mdyo15)', () => {
+    expect(mirrorSlotUrl('https://gc.ksamata.ru/dbo/br_mdyo15')).toBe('https://gc.ksamata.ru/dbo/br_mdyo19');
+  });
+});
+
+describe('mirrorSlotItems', () => {
+  it('appends a mirrored 19:00 row for every 15:00 row', () => {
+    const items: BlockItem[] = [{ slot: '15', label: 'Тариф 15:00', url: 'https://e.example/tarif-15-yo' }];
+    const res = mirrorSlotItems(items);
+    expect(res.items).toEqual([
+      items[0],
+      { slot: '19', label: 'Тариф 19:00', url: 'https://e.example/tarif-19-yo' },
+    ]);
+    expect(res.verbatim).toEqual([]);
+  });
+
+  it('reports a url copied verbatim because it carries no 15 token', () => {
+    const items: BlockItem[] = [{ slot: '15', label: '', url: 'https://t.ksamata.ru/dbo/tarif-yo1' }];
+    const res = mirrorSlotItems(items);
+    expect(res.items[1]).toEqual({ slot: '19', label: '', url: 'https://t.ksamata.ru/dbo/tarif-yo1' });
+    expect(res.verbatim).toEqual(['https://t.ksamata.ru/dbo/tarif-yo1']);
+  });
+
+  it('does not report a row whose url is empty', () => {
+    const items: BlockItem[] = [{ slot: '15', label: 'Пусто', url: '' }];
+    expect(mirrorSlotItems(items).verbatim).toEqual([]);
+  });
+
+  it('leaves rows of other slots alone', () => {
+    const items: BlockItem[] = [
+      { slot: null, label: '', url: 'https://e.example/common' },
+      { slot: '15', label: '', url: 'https://e.example/a-15' },
+    ];
+    const res = mirrorSlotItems(items);
+    expect(res.items).toHaveLength(3);
+    expect(res.items[0]).toEqual(items[0]);
+  });
+});
+
+describe('countVerbatimRows', () => {
+  // Сводка над колонкой и пометка на строке считаются ОДНОЙ функцией: иначе
+  // они разъезжаются — строка чинится правкой адреса, а счётчик остаётся
+  // висеть от момента нажатия кнопки.
+  it('counts the 19:00 rows still holding a verbatim url', () => {
+    const items: BlockItem[] = [
+      { slot: '15', label: '', url: 'https://e.example/a' },
+      { slot: '19', label: '', url: 'https://e.example/a' },
+    ];
+    expect(countVerbatimRows(items, new Set(['https://e.example/a']))).toBe(1);
+  });
+
+  it('stops counting a row once its url was edited', () => {
+    const items: BlockItem[] = [
+      { slot: '15', label: '', url: 'https://e.example/a' },
+      { slot: '19', label: '', url: 'https://e.example/b' },
+    ];
+    expect(countVerbatimRows(items, new Set(['https://e.example/a']))).toBe(0);
+  });
+
+  it('never counts the 15:00 source row itself', () => {
+    const items: BlockItem[] = [{ slot: '15', label: '', url: 'https://e.example/a' }];
+    expect(countVerbatimRows(items, new Set(['https://e.example/a']))).toBe(0);
+  });
+
+  it('is zero for an empty set', () => {
+    const items: BlockItem[] = [{ slot: '19', label: '', url: 'https://e.example/a' }];
+    expect(countVerbatimRows(items, new Set())).toBe(0);
+  });
 });
 
 describe('missingStandardLabels', () => {
@@ -96,6 +171,21 @@ describe('missingStandardLabels', () => {
 
   it('returns empty array when all labels are present', () => {
     expect(missingStandardLabels(STANDARD_LINKS_LABELS)).toEqual([]);
+  });
+
+  // Ссылка на предсписок — 7-я по частоте подпись блока (20 воронок), и 19 из
+  // этих 20 несут признак шага. Поэтому она в наборе ровно тогда, когда
+  // признак поднят, а не всегда.
+  it('adds the predspisok label when the funnel has that step', () => {
+    expect(missingStandardLabels([], true)).toEqual([...STANDARD_LINKS_LABELS, PREDSPISOK_LINK_LABEL]);
+  });
+
+  it('omits the predspisok label when the funnel has no such step', () => {
+    expect(missingStandardLabels([], false)).toEqual(STANDARD_LINKS_LABELS);
+  });
+
+  it('excludes the predspisok label when it is already there', () => {
+    expect(missingStandardLabels([...STANDARD_LINKS_LABELS, ' предсписок '], true)).toEqual([]);
   });
 });
 

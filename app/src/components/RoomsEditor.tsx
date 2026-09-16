@@ -6,7 +6,7 @@ import Switch from './Switch';
 import UrlInput from './UrlInput';
 import type { DayCell } from '@/lib/funnel-days';
 import { webRoomFromGc } from '@/lib/room-urls';
-import { SLOTS, buildGrid, cellsFromGrid, fillRoomGrid, gridKey as key, type RoomCell as Cell, type RoomGrid as Grid } from '@/lib/rooms-grid';
+import { SLOTS, appendDay, buildGrid, cellsFromGrid, fillRoomGrid, gridKey as key, type RoomCell as Cell, type RoomGrid as Grid } from '@/lib/rooms-grid';
 import { useCanEdit } from './AuthProvider';
 
 interface Props {
@@ -75,15 +75,14 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
   const canFill =
     JSON.stringify(cellsFromGrid(filled, dayCount)) !== JSON.stringify(cellsFromGrid(grid, dayCount));
 
+  // Новый день сразу достраивается по уже заполненным — правило то же, что у
+  // «Заполнить остальные», и применяется только к добавленной паре ячеек
+  // (см. appendDay). Сетка открывается на трёх днях, а пятидневных воронок
+  // 53 из 62, так что этот клик делают почти всегда.
   function addDay() {
     if (dayCount >= MAX_DAYS) return;
-    const next = dayCount + 1;
-    setGrid((p) => {
-      const g = { ...p };
-      for (const slot of SLOTS) g[key(slot, next)] = { gcRoom: '', webRoom: '', replayUrl: '' };
-      return g;
-    });
-    setDayCount(next);
+    setGrid((p) => appendDay(p, dayCount, replay));
+    setDayCount(dayCount + 1);
   }
 
   // Remove a day from both slots and renumber the remaining days so they stay

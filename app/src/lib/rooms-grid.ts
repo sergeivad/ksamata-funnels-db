@@ -81,6 +81,29 @@ function sourceFor(grid: RoomGrid, slot: string, day: number, field: FillField, 
 }
 
 /**
+ * Добавить в сетку день `dayCount + 1`, сразу выведя его ячейки по тем же
+ * правилам, что и «Заполнить остальные».
+ *
+ * Почему автоматически: сетка открывается на трёх днях, а пятидневных воронок
+ * в живой базе 53 из 62 — то есть «добавить день» жмут почти всегда, и пустая
+ * строка после него требовала второго клика по «Заполнить остальные».
+ *
+ * Почему только новый день: достройка берётся из `fillRoomGrid`, но
+ * применяется исключительно к добавленной паре ячеек. День, который человек
+ * оставил пустым, — это его решение, и добавление шестой строки не повод его
+ * отменять. Кнопка «Заполнить остальные» рядом никуда не делась.
+ */
+export function appendDay(grid: RoomGrid, dayCount: number, replayEnabled: boolean): RoomGrid {
+  const day = dayCount + 1;
+  const widened: RoomGrid = { ...grid };
+  for (const slot of SLOTS) widened[gridKey(slot, day)] = { gcRoom: '', webRoom: '', replayUrl: '' };
+  const filled = fillRoomGrid(widened, day, replayEnabled);
+  const out: RoomGrid = { ...widened };
+  for (const slot of SLOTS) out[gridKey(slot, day)] = filled[gridKey(slot, day)];
+  return out;
+}
+
+/**
  * Достроить пустые ячейки сетки по образцу заполненных. Два прохода: сначала
  * каждое поле выводится из одноимённого (GC из GC, Web из Web, повтор из
  * повтора), затем оставшийся пустым Web берётся из GC своей же ячейки — это и

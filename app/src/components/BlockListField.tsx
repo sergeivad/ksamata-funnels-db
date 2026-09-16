@@ -15,9 +15,17 @@ interface Props {
   onChange: (items: BlockItem[]) => void;
   /** Only for kind==='links' (fields===2): show the "Стандартный набор" button. */
   showStandardSet?: boolean;
+  /** Шаг предсписка у воронки — добавляет свою подпись в стандартный набор. */
+  hasPredspisok?: boolean;
+  /**
+   * Адреса, которые «Заполнить из 15:00» перенесло сюда ДОСЛОВНО — метки
+   * времени в них не нашлось. Ключ — сам адрес, поэтому пометка исчезает,
+   * как только строку поправили руками.
+   */
+  verbatimUrls?: Set<string>;
 }
 
-export default function BlockListField({ fields, slot, items, onChange, showStandardSet }: Props) {
+export default function BlockListField({ fields, slot, items, onChange, showStandardSet, hasPredspisok = false, verbatimUrls }: Props) {
   const canEdit = useCanEdit();
   const rows = items.filter((it) => it.slot === slot);
 
@@ -64,7 +72,7 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
     update(indexInRows, { url: check.fix.url, ...(takeLabel ? { label: check.fix.label } : {}) });
   }
 
-  const missingStandard = showStandardSet ? missingStandardLabels(rows.map((r) => r.label)) : [];
+  const missingStandard = showStandardSet ? missingStandardLabels(rows.map((r) => r.label), hasPredspisok) : [];
 
   function addStandardSet() {
     if (!canEdit) return;
@@ -145,10 +153,11 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
         const openableUrl = /^https?:\/\//i.test(row.url.trim()) ? row.url.trim() : null;
         const flash = copyFlash?.index === i ? copyFlash : null;
         const check = checkUrlField(row.url);
+        const verbatim = hasUrl && (verbatimUrls?.has(row.url.trim()) ?? false);
         const urlBorder =
           check.level === 'error'
             ? 'border-[#B42318]'
-            : check.level === 'warn'
+            : check.level === 'warn' || verbatim
               ? 'border-[#B4841C]'
               : 'border-[var(--line-soft)]';
         return (
@@ -230,6 +239,11 @@ export default function BlockListField({ fields, slot, items, onChange, showStan
               <span aria-hidden />
             )}
           </div>
+          {verbatim && check.level === 'ok' && (
+            <p className="flex flex-wrap items-center gap-2 pl-0.5 text-[11px] text-[#8A6512]">
+              <span>Скопировано без изменений — метки времени в адресе нет. Проверьте ссылку.</span>
+            </p>
+          )}
           {check.level !== 'ok' && (
             <p
               role={check.level === 'error' ? 'alert' : undefined}

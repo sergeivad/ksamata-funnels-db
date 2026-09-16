@@ -130,6 +130,7 @@ export default function FunnelSections({ funnel, funnelId, initialDays, landings
           initial={landings}
           timeLabelA={funnel.timeLabelA}
           timeLabelB={funnel.timeLabelB}
+          hasPredspisok={funnel.hasPredspisok}
           onDirtyChange={(d) => setSectionDirty(`block:${landings.kind}`, d)}
         />
         <RoomsEditor
@@ -148,6 +149,7 @@ export default function FunnelSections({ funnel, funnelId, initialDays, landings
             initial={b}
             timeLabelA={funnel.timeLabelA}
             timeLabelB={funnel.timeLabelB}
+            hasPredspisok={funnel.hasPredspisok}
             onDirtyChange={(d) => setSectionDirty(`block:${b.kind}`, d)}
           />
         ))}

@@ -33,12 +33,40 @@ export function parsePastedLine(line: string): { label: string; url: string } {
 
 /**
  * Mirror a slot-15 url/label string into its slot-19 equivalent by replacing
- * the standalone token "15" with "19". A token is bounded by -, _, /, ., :,
- * whitespace, or the start/end of the string, so numbers like 1534353
- * (no boundary between "5" and "3") are left alone.
+ * the standalone token "15" with "19". "Standalone" means not adjacent to
+ * another digit, so ids like 1534353 are left alone — the very same rule
+ * `mirrorDayUrl` uses in room-urls.ts.
+ *
+ * It used to demand a separator (-, _, /, ., :, space) on both sides, which
+ * missed the time glued to a word: `br_mdyo15` → `br_mdyo19`. Measured over
+ * the 251 slot-15 rows of every two-sided by_time block in the live DB, the
+ * looser boundary is right 9 times more often and wrong zero times more.
  */
 export function mirrorSlotUrl(s: string): string {
-  return s.replace(/(^|[-_/.:\s])15(?=[-_/.:\s]|$)/g, '$119');
+  return s.replace(/(?<!\d)15(?!\d)/g, '19');
+}
+
+/**
+ * Build the 19:00 rows of a block from its 15:00 rows and append them to
+ * `items`.
+ *
+ * `verbatim` lists the urls the mirror could NOT transform — those carrying
+ * no standalone 15 — and they are copied across unchanged. Copying is the
+ * right default: of the 251 live slot-15 rows, 50 legitimately hold the same
+ * address in both columns, so refusing outright would be wrong. But 99 do
+ * not, and a duplicate reads exactly like a filled-in answer, so the caller
+ * must SAY which rows it only copied. That is the one contract the rooms grid
+ * already keeps by refusing (see `mirrorSlotRoomUrl`) and this button did not.
+ */
+export function mirrorSlotItems(items: BlockItem[]): { items: BlockItem[]; verbatim: string[] } {
+  const slot15 = items.filter((it) => it.slot === '15');
+  const verbatim: string[] = [];
+  const mirrored: BlockItem[] = slot15.map((it) => {
+    const url = mirrorSlotUrl(it.url);
+    if (it.url.trim() !== '' && url === it.url) verbatim.push(it.url.trim());
+    return { slot: '19', label: mirrorSlotUrl(it.label), url };
+  });
+  return { items: [...items, ...mirrored], verbatim };
 }
 
 /** The 6 labels ever used in the `links` block, in canonical order. */
@@ -51,10 +79,37 @@ export const STANDARD_LINKS_LABELS: string[] = [
   'Регистрации без времени',
 ];
 
-/** Standard labels not yet present among `existing` (trim + case-insensitive compare). */
-export function missingStandardLabels(existing: string[]): string[] {
+/**
+ * Сколько строк 19:00 всё ещё держат дословно перенесённый адрес.
+ *
+ * Сводка над колонкой и пометка на строке считаются этой одной функцией:
+ * человек чинит адрес, пометка со строки уходит — и счётчик обязан уйти
+ * вместе с ней, иначе он врёт от момента нажатия кнопки. Тот же довод, по
+ * которому `canFill` в RoomsEditor выводится из самой достройки, а не из
+ * отдельной эвристики.
+ */
+export function countVerbatimRows(items: BlockItem[], verbatim: Set<string>): number {
+  return items.filter((it) => it.slot === '19' && it.url.trim() !== '' && verbatim.has(it.url.trim())).length;
+}
+
+/**
+ * Подпись ссылки на предсписок. В общий набор не входит: шаг есть не у всякой
+ * воронки (`funnels.has_predspisok`, Phase 16). Замер по живой базе: это 7-я
+ * по частоте подпись блока — 20 воронок, и 19 из них с поднятым признаком,
+ * против одной из 25 со снятым.
+ */
+export const PREDSPISOK_LINK_LABEL = 'Предсписок';
+
+/**
+ * Standard labels not yet present among `existing` (trim + case-insensitive
+ * compare). `hasPredspisok` adds the predspisok link to the set — the step is
+ * a property of the funnel, so the checklist follows the funnel and not the
+ * block kind.
+ */
+export function missingStandardLabels(existing: string[], hasPredspisok = false): string[] {
   const have = new Set(existing.map((l) => l.trim().toLowerCase()));
-  return STANDARD_LINKS_LABELS.filter((l) => !have.has(l.trim().toLowerCase()));
+  const wanted = hasPredspisok ? [...STANDARD_LINKS_LABELS, PREDSPISOK_LINK_LABEL] : STANDARD_LINKS_LABELS;
+  return wanted.filter((l) => !have.has(l.trim().toLowerCase()));
 }
 
 /**
