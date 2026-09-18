@@ -12,7 +12,9 @@ import { runMigratePhase6 } from '../scripts/migrate-phase6';
 import * as schema from '../src/db/schema';
 import { clearMonitoringState } from './helpers/monitoring';
 import { runMonitorCycle, runFunnelCheck, EVENT_RETENTION_DAYS, isCycleRunning } from '../src/lib/monitor-run';
+import { notifyMonitorEvents } from '../src/lib/monitor-notify';
 import type { CheckResult } from '../src/lib/monitor-check';
+import type { AnyDB } from '../src/db/client';
 import { copyDbForTest } from './helpers/db';
 
 const REAL_DB = path.resolve(process.cwd(), '..', 'ksamata_funnels.db');
@@ -439,7 +441,10 @@ describe('ручная проверка воронки', () => {
 
     expect(asked).toEqual(['https://lp.example.ru/mine']);
     expect(asked).not.toContain('https://lp.example.ru/alien');
-    expect(alien).toBeGreaterThan(0);
+    // Не просто «id вставки валиден» — доказываем, что чужую цель реально не
+    // тронули: persist не писал в её состояние, оно осталось тем, с чем цель
+    // была заведена в addTarget.
+    expect(state(alien).status).toBe('unknown');
   });
 
   it('вторая проверка воронки подряд отказывается, пока идёт первая', async () => {
@@ -472,5 +477,84 @@ describe('ручная проверка воронки', () => {
     const manual = await runFunnelCheck(db, funnelId, { check, sync: false, notify: async () => undefined });
     expect(manual).not.toBeNull();
     await cycle;
+  });
+
+  it('идущая ручная проверка не мешает общему циклу', async () => {
+    const t = addTarget('https://lp.example.ru/both2', 1);
+    linkTarget(t, funnelId);
+    const check = async (url: string) => ({
+      status: 'up' as const, httpStatus: 200, finalUrl: url, latencyMs: 1, error: '',
+    });
+
+    // Зеркало предыдущего теста: на этот раз первой стартует (и не ждётся)
+    // ручная проверка, а дожидаемся общего цикла — обратное направление той
+    // же независимости флагов.
+    const manual = runFunnelCheck(db, funnelId, { check, sync: false, notify: async () => undefined });
+    const cycle = await runMonitorCycle(db, { check, sync: false, notify: async () => undefined });
+    expect(cycle).not.toBeNull();
+    await manual;
+  });
+});
+
+/**
+ * Уведомление из ручной проверки — тем же способом, что и общий цикл: своя
+ * отсечка `maxEventId`, тот же `notify(db, sinceEventId)`. Без этого падение,
+ * найденное кнопкой, ворует переход у ближайшего фонового цикла: тот увидит
+ * статус уже изменившимся и не напишет второе событие — уведомления не будет
+ * никогда, не только «с опозданием». `notify` здесь — обёртка над настоящим
+ * `notifyMonitorEvents` (не голый мок, как в тестах выше), чтобы заодно
+ * проверить фильтр по `enabled` конкретно в связке с ручной проверкой.
+ */
+describe('уведомление из ручной проверки', () => {
+  const env = {
+    MONITOR_TELEGRAM_BOT_TOKEN: '123:AA',
+    MONITOR_TELEGRAM_CHAT_IDS: '42',
+  };
+
+  function realNotify() {
+    const texts: string[] = [];
+    const fetchImpl = async (_url: string, init?: { body?: string }) => {
+      texts.push(JSON.parse(init?.body ?? '{}').text as string);
+      return { ok: true, status: 200, text: async () => '' };
+    };
+    const notify = (notifyDb: AnyDB, sinceEventId: number) =>
+      notifyMonitorEvents(notifyDb, sinceEventId, { env, fetchImpl });
+    return { notify, texts };
+  }
+
+  it('находит падение на включённой цели и шлёт уведомление о нём — как это сделал бы общий цикл', async () => {
+    const t = addTarget('https://lp.example.ru/falls', 1);
+    linkTarget(t, funnelId);
+    const { notify, texts } = realNotify();
+
+    const result = await runFunnelCheck(db, funnelId, {
+      check: async () => down,
+      sync: false,
+      sleep: noSleep,
+      notify,
+    });
+
+    expect(result).not.toBeNull();
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).toContain('https://lp.example.ru/falls');
+  });
+
+  it('находит падение на выключенной цели (черновик) и не шлёт ничего', async () => {
+    // Без фильтра по enabled в notifyMonitorEvents первая проверка черновика —
+    // десятки unknown → down — зашумила бы чат тем, что не падение, а
+    // ненастроенная страница.
+    const t = addTarget('https://lp.example.ru/draft-falls', 0);
+    linkTarget(t, funnelId);
+    const { notify, texts } = realNotify();
+
+    const result = await runFunnelCheck(db, funnelId, {
+      check: async () => down,
+      sync: false,
+      sleep: noSleep,
+      notify,
+    });
+
+    expect(result).not.toBeNull();
+    expect(texts).toEqual([]);
   });
 });

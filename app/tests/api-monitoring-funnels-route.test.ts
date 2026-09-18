@@ -134,4 +134,45 @@ describe('POST /api/monitoring/funnels/[id]/run', () => {
     });
     expect(res.status).toBe(404);
   });
+
+  it('нечисловой id — 400', async () => {
+    const res = await RUN(editorRequest('http://localhost/api/monitoring/funnels/f101/run', 'POST'), {
+      params: Promise.resolve({ id: 'f101' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('вторая проверка воронки — 409, пока идёт первая', async () => {
+    // Без сети и без мока модуля: runningFunnelCheckId() читает тот же
+    // globalThis-слот, что и настоящий runFunnelCheck, — подменяем его
+    // напрямую, как это делают тесты самого monitor-run.ts.
+    const saved = globalThis.__ksamataMonitorRun;
+    globalThis.__ksamataMonitorRun = { cycleRunning: false, funnelCheckId: funnelId };
+    try {
+      const res = await RUN(editorRequest(`http://localhost/api/monitoring/funnels/${funnelId}/run`, 'POST'), {
+        params: Promise.resolve({ id: String(funnelId) }),
+      });
+      expect(res.status).toBe(409);
+    } finally {
+      globalThis.__ksamataMonitorRun = saved;
+    }
+  });
+
+  it('успешный старт — 202, не дожидаясь конца проверки', async () => {
+    // Модуль подменяем целиком — тот же приём, что и у POST /api/monitoring/run
+    // в api-monitoring-route.test.ts: без него запуск дошёл бы до настоящего
+    // checkUrl и настоящей сети.
+    vi.doMock('@/lib/monitor-run', () => ({
+      runningFunnelCheckId: () => null,
+      runFunnelCheck: async () => null,
+    }));
+    const { POST } = await import('../src/app/api/monitoring/funnels/[id]/run/route');
+
+    const res = await POST(editorRequest(`http://localhost/api/monitoring/funnels/${funnelId}/run`, 'POST'), {
+      params: Promise.resolve({ id: String(funnelId) }),
+    });
+
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ started: true });
+  });
 });

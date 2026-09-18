@@ -238,10 +238,10 @@ describe('notifyMonitorEvents', () => {
     return { fakeFetch, texts };
   }
 
-  function seedTarget(url: string): number {
+  function seedTarget(url: string, enabled: 0 | 1 = 1): number {
     return sqlite
-      .prepare(`INSERT INTO monitor_targets (url, source_kind, enabled) VALUES (?, 'landings', 1)`)
-      .run(url).lastInsertRowid as number;
+      .prepare(`INSERT INTO monitor_targets (url, source_kind, enabled) VALUES (?, 'landings', ?)`)
+      .run(url, enabled).lastInsertRowid as number;
   }
 
   function seedEvent(targetId: number, from: string, to: string, error = ''): void {
@@ -327,5 +327,36 @@ describe('notifyMonitorEvents', () => {
 
     expect(texts[0]).toContain('https://fresh.ru/');
     expect(texts[0]).not.toContain('https://old.ru/');
+  });
+
+  // Фильтр по enabled нужен ручной проверке воронки (задача 5): та обходит
+  // ВСЕ цели воронки, включая выключенные, и первая проверка черновика даёт
+  // десятки переходов unknown → down — не падения, а ненастроенные страницы.
+  // Фоновый цикл проверяет только включённые цели и без фильтра, поэтому его
+  // события фильтр не задевает (см. тесты выше — все используют enabled=1 по
+  // умолчанию и остаются зелёными без правок).
+  it('шлёт событие включённой цели', async () => {
+    const since = maxEventId();
+    const target = seedTarget('https://on.ru/', 1);
+    seedEvent(target, 'up', 'down', 'HTTP 502');
+
+    const { fakeFetch, texts } = recorder();
+    const result = await notifyMonitorEvents(db, since, { env, fetchImpl: fakeFetch });
+
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).toContain('https://on.ru/');
+    expect(result?.down).toBe(1);
+  });
+
+  it('молчит про событие выключенной цели', async () => {
+    const since = maxEventId();
+    const target = seedTarget('https://off.ru/', 0);
+    seedEvent(target, 'up', 'down', 'HTTP 502');
+
+    const { fakeFetch, texts } = recorder();
+    const result = await notifyMonitorEvents(db, since, { env, fetchImpl: fakeFetch });
+
+    expect(texts).toEqual([]);
+    expect(result).toBeNull();
   });
 });

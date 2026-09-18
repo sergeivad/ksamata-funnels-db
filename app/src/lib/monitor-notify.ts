@@ -8,7 +8,7 @@
  * ISO с миллисекундами, и сравнение времён здесь было бы источником ошибок.
  */
 
-import { eq, gt, asc, inArray } from 'drizzle-orm';
+import { eq, gt, and, asc, inArray } from 'drizzle-orm';
 import { type AnyDB } from '../db/client';
 import { funnels, monitorEvents, monitorTargets, monitorTargetFunnels } from '../db/schema';
 import { funnelRefLabel } from './front-code';
@@ -249,7 +249,13 @@ export async function notifyMonitorEvents(
     })
     .from(monitorEvents)
     .innerJoin(monitorTargets, eq(monitorTargets.id, monitorEvents.targetId))
-    .where(gt(monitorEvents.id, sinceEventId))
+    // enabled=1 — не «фоновый цикл проверяет только включённое» (это и так
+    // верно само по себе, здесь ничего не меняет), а фильтр для ручной
+    // проверки: она обходит ВСЕ цели воронки, включая выключенные, и первая
+    // проверка черновика даёт десятки переходов unknown → down — не падения,
+    // а ненастроенные страницы. Уведомляем ровно о том, о чём сообщил бы
+    // фоновый цикл, — не больше.
+    .where(and(gt(monitorEvents.id, sinceEventId), eq(monitorTargets.enabled, 1)))
     .orderBy(asc(monitorEvents.id))
     .all()) as {
     targetId: number;

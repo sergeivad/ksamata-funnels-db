@@ -2,7 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { type AnyDB } from '../db/client';
 import { monitorTargets, monitorState, monitorEvents, monitorTargetFunnels } from '../db/schema';
 import { checkUrl, type CheckFn, type CheckResult } from './monitor-check';
-import { syncFunnelTargets, syncMonitorTargets } from './monitor-targets';
+import { syncTargetsForFunnelCheck, syncMonitorTargets } from './monitor-targets';
 import { notifyMonitorEvents } from './monitor-notify';
 
 export const RETRY_DELAY_MS = 3_000;
@@ -119,10 +119,17 @@ function maxEventId(db: AnyDB): number {
 }
 
 /**
- * Чтение прошлого статуса стоит ВНУТРИ транзакции: SQLite сериализует пишущие
- * транзакции, и «прочитали оба, записали оба» становится невозможным. Пока
- * писатель был один, снаружи это не стреляло; ручная проверка воронки идёт
- * параллельно общему циклу, и запрет пришлось заменить настоящей защитой.
+ * Чтение прошлого статуса — ВНУТРИ транзакции, но не потому, что здесь раньше
+ * была гонка между двумя прогонами одного процесса: better-sqlite3 синхронна,
+ * а SELECT и `db.transaction(...)` шли подряд без единого `await` — наложиться
+ * было некому, и однопоточный JS уже гарантировал атомарность.
+ *
+ * Гарантия нужна для двух других случаев, которых однопоточность не покрывает:
+ * (1) второе соединение к тому же файлу — SQLite сериализует пишущие
+ * транзакции МЕЖДУ соединениями (другой процесс, отдельный tsx-скрипт), а не
+ * только внутри одного; (2) появление `await` между чтением и записью в
+ * будущем — тогда наложение станет возможным и в одном процессе, и граница
+ * транзакции уже будет на месте, а не потребует нового ревью.
  */
 function persist(db: AnyDB, target: TargetRow, result: CheckResult): void {
   db.transaction((tx) => {
@@ -279,8 +286,15 @@ export async function runMonitorCycle(
  * выключены по построению, и «только включённое» проверило бы ноль адресов и
  * отчиталось бы об успехе.
  *
- * Telegram отсюда молчит: человек смотрит на экран, а сообщение на каждый клик
- * превратило бы сводку о падениях в шум.
+ * Уведомляет так же, как общий цикл, и тем же способом (своя отсечка
+ * `maxEventId`, тот же перехват ошибки) — иначе падение, найденное ручной
+ * проверкой, тихо украло бы переход у ближайшего фонового цикла: тот увидел
+ * бы статус уже изменившимся, второго события не написал бы, и в чат не
+ * ушло бы уже ничего и никогда — не «узнали с опозданием», а «не узнали
+ * вовсе». `notifyMonitorEvents` при этом фильтрует события по `enabled = 1`
+ * (см. там же) — без фильтра первая проверка черновика (десятки выключенных
+ * целей со статусом `unknown → down`) зашумила бы чат тем, что не падение, а
+ * ненастроенная страница.
  */
 export async function runFunnelCheck(
   db: AnyDB,
@@ -295,11 +309,17 @@ export async function runFunnelCheck(
   const concurrency = opts.concurrency ?? CONCURRENCY;
   const retryDelayMs = opts.retryDelayMs ?? RETRY_DELAY_MS;
   const sleep = opts.sleep ?? defaultSleep;
+  const notify = opts.notify ?? notifyMonitorEvents;
   const startedAt = new Date().toISOString();
   const tally = { up: 0, slow: 0, down: 0 };
 
   try {
-    if (opts.sync !== false) syncFunnelTargets(db, funnelId);
+    // Отсечка — тем же способом и по той же причине, что в общем цикле
+    // (комментарий там же): иначе найденный здесь переход не попал бы под
+    // «после отсечки» и уведомитель его не увидел бы.
+    const sinceEventId = maxEventId(db);
+
+    if (opts.sync !== false) syncTargetsForFunnelCheck(db);
 
     const targets = db
       .select({ id: monitorTargets.id, url: monitorTargets.url })
@@ -330,6 +350,14 @@ export async function runFunnelCheck(
     await Promise.all(
       Array.from({ length: Math.min(concurrency, Math.max(targets.length, 1)) }, worker)
     );
+
+    // Уведомление не вправе ронять ручную проверку — та же причина, что и в
+    // общем цикле: упавший Telegram не должен превращаться в упавшую кнопку.
+    try {
+      await notify(db, sinceEventId);
+    } catch (err) {
+      console.error('[monitor] уведомление не ушло (ручная проверка)', err);
+    }
 
     return {
       checked,
