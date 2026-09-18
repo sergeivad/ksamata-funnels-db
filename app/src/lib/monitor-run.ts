@@ -1,8 +1,8 @@
 import { eq, sql } from 'drizzle-orm';
 import { type AnyDB } from '../db/client';
-import { monitorTargets, monitorState, monitorEvents, monitorTargetFunnels } from '../db/schema';
+import { monitorTargets, monitorState, monitorEvents } from '../db/schema';
 import { checkUrl, type CheckFn, type CheckResult } from './monitor-check';
-import { syncTargetsForFunnelCheck, syncMonitorTargets } from './monitor-targets';
+import { syncTargetsForFunnelCheck, syncMonitorTargets, selectFunnelCheckTargets } from './monitor-targets';
 import { notifyMonitorEvents } from './monitor-notify';
 
 export const RETRY_DELAY_MS = 3_000;
@@ -282,9 +282,17 @@ export async function runMonitorCycle(
  * пятнадцати, и единый флаг давал бы отказ на каждом пятом клике по главной
  * кнопке. Гонку за одну цель закрывает транзакция в persist, а не запрет.
  *
- * Проверяются ВСЕ адреса воронки, включая выключенные: у черновика все цели
- * выключены по построению, и «только включённое» проверило бы ноль адресов и
- * отчиталось бы об успехе.
+ * Берутся цели, у которых `enabled = 1` ИЛИ включён дефолт их группы
+ * (`selectFunnelCheckTargets` в `monitor-targets.ts` — там же живёт единственное
+ * определение дефолта, общее с синком). Это не «включённые», но и не «все
+ * подряд»: у черновика все цели `enabled = 0` не потому, что решена группа, а
+ * потому, что ни одна активная воронка адрес не держит (`hasActive` в синке)
+ * — дефолт группы (`landings`, `room_*`, `tariffs`, …) при этом включён, и
+ * такая цель проверяется. А у `links`/`processes` `enabled = 0` — это и есть
+ * решение по группе («не проверять»), и ручная проверка его уважает: до
+ * 18.09.2026 она била по всем целям без разбора, и четыре служебных адреса
+ * `links` (админка GetCourse, требует сессии, всегда 403) красили воронку в
+ * «упало» на неделю, топя единственную настоящую находку под собой.
  *
  * Уведомляет так же, как общий цикл, и тем же способом (своя отсечка
  * `maxEventId`, тот же перехват ошибки) — иначе падение, найденное ручной
@@ -321,12 +329,7 @@ export async function runFunnelCheck(
 
     if (opts.sync !== false) syncTargetsForFunnelCheck(db);
 
-    const targets = db
-      .select({ id: monitorTargets.id, url: monitorTargets.url })
-      .from(monitorTargets)
-      .innerJoin(monitorTargetFunnels, eq(monitorTargetFunnels.targetId, monitorTargets.id))
-      .where(eq(monitorTargetFunnels.funnelId, funnelId))
-      .all() as TargetRow[];
+    const targets = selectFunnelCheckTargets(db, funnelId);
 
     let cursor = 0;
     let checked = 0;

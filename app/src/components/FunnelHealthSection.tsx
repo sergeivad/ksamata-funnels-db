@@ -20,6 +20,19 @@ interface Payload {
 const POLL_INTERVAL_MS = 2_000;
 const MAX_POLL_FAILURES = 5;
 
+/**
+ * Отображаемая длина адреса в разборе. В живой базе лежит адрес на 2019
+ * знаков — без границы один такой пункт растягивался на пол-экрана простынёй
+ * и топил под собой настоящую находку (мёртвую комнату, ревью шага 9). Само
+ * значение не меняем — усечение только визуальное, полный адрес остаётся в
+ * `title`.
+ */
+const URL_DISPLAY_MAX = 120;
+
+function truncateUrl(url: string): string {
+  return url.length > URL_DISPLAY_MAX ? `${url.slice(0, URL_DISPLAY_MAX)}…` : url;
+}
+
 export default function FunnelHealthSection({ funnelId }: Props) {
   const canEdit = useCanEdit();
   const [data, setData] = useState<Payload | null>(null);
@@ -115,8 +128,11 @@ export default function FunnelHealthSection({ funnelId }: Props) {
                   </span>
                 )}
               </div>
-              <div className="mt-0.5 break-all text-[11px] text-[var(--color-text-secondary)]">
-                {p.url}
+              <div
+                className="mt-0.5 break-all text-[11px] text-[var(--color-text-secondary)]"
+                title={p.url}
+              >
+                {truncateUrl(p.url)}
               </div>
               {p.since && (
                 <div className="mt-0.5 text-[11px] text-[var(--color-text-secondary)]">

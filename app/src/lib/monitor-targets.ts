@@ -434,6 +434,56 @@ export function syncTargetsForFunnelCheck(db: AnyDB): void {
   syncMonitorTargets(db);
 }
 
+export interface FunnelCheckTarget {
+  id: number;
+  url: string;
+}
+
+/**
+ * Цели воронки, которые стоит проверить кнопкой «Проверить ссылки».
+ *
+ * Правило то же, что решает `enabled` в синке (`groupDefault` — предпочтение
+ * человека по группе, а если его не было, `DEFAULT_ENABLED_SOURCE_KINDS`), но
+ * применяется без оглядки на `hasActive`: `enabled = 1` ИЛИ дефолт группы
+ * цели включён. Определение дефолта живёт только здесь и в `syncMonitorTargets`
+ * (через общий `groupDefault`) — второго они не заводят.
+ *
+ * Различие принципиальное, и оно есть в данных. У черновика все цели
+ * `enabled = 0` — не потому, что группа выключена, а потому, что ни одна
+ * активная воронка адрес не держит (`hasActive` в синке); дефолт же его
+ * группы (`landings`, `room_*`, `tariffs`, `applications`, `upsell`) остаётся
+ * включённым, и ручная проверка обязана эти цели брать — иначе результат
+ * «Проверить ссылки» на черновике был бы всегда пуст. У `links` и `processes`
+ * цель выключена ПОТОМУ, что решение по группе — «не проверять»: это
+ * служебные страницы (например админка GetCourse вида
+ * `/pl/user/user/index?uc[segment_id]=…`), которые требуют сессии и без неё
+ * отвечают 403 всегда. Замер на f37: без этого различия ручная проверка
+ * красила воронку в «упало» на семь дней (`STALE_AFTER_DAYS`) по четырём
+ * таким адресам, а настоящая находка — мёртвая комната — тонула под ними.
+ * `enabled = 1` перебивает выключенный дефолт группы в обратную сторону:
+ * человек включил цель руками вопреки дефолту (см. `setTargetEnabled`), и
+ * это решение сильнее.
+ */
+export function selectFunnelCheckTargets(db: AnyDB, funnelId: number): FunnelCheckTarget[] {
+  const prefs = loadGroupPrefs(db);
+
+  const rows = db
+    .select({
+      id: monitorTargets.id,
+      url: monitorTargets.url,
+      sourceKind: monitorTargets.sourceKind,
+      enabled: monitorTargets.enabled,
+    })
+    .from(monitorTargets)
+    .innerJoin(monitorTargetFunnels, eq(monitorTargetFunnels.targetId, monitorTargets.id))
+    .where(eq(monitorTargetFunnels.funnelId, funnelId))
+    .all() as { id: number; url: string; sourceKind: string; enabled: number }[];
+
+  return rows
+    .filter((r) => r.enabled === 1 || groupDefault(prefs, r.sourceKind) === 1)
+    .map((r) => ({ id: r.id, url: r.url }));
+}
+
 /**
  * Переключает целую группу по виду источника. Возвращает число затронутых целей.
  *

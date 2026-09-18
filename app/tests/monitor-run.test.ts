@@ -59,6 +59,15 @@ function addTarget(url: string, enabled: 0 | 1): number {
   return id;
 }
 
+/** Как addTarget, но с настраиваемым source_kind — нужен для правила дефолта группы. */
+function addKindTarget(url: string, sourceKind: string, enabled: 0 | 1): number {
+  const id = sqlite
+    .prepare(`INSERT INTO monitor_targets (url, source_kind, enabled) VALUES (?, ?, ?)`)
+    .run(url, sourceKind, enabled).lastInsertRowid as number;
+  sqlite.prepare(`INSERT INTO monitor_state (target_id, status) VALUES (?, 'unknown')`).run(id);
+  return id;
+}
+
 /** Связывает цель с воронкой — как это делает синк, только вручную. */
 function linkTarget(targetId: number, fId: number): void {
   sqlite
@@ -426,7 +435,12 @@ describe('запись результата', () => {
 });
 
 describe('ручная проверка воронки', () => {
-  it('проверяет только адреса этой воронки, включая выключенные', async () => {
+  it('проверяет только адреса этой воронки, включая выключенные с рабочим дефолтом группы', async () => {
+    // `mine` в группе 'landings' (см. addTarget) — её дефолт включён
+    // (DEFAULT_ENABLED_SOURCE_KINDS), поэтому цель проверяется, хотя своя
+    // enabled=0 (типичный черновик: hasActive=false в синке). Это не «все
+    // выключенные подряд» — правило и его границу (группа `links`) отдельно
+    // проверяет describe('правка 1: ...') ниже.
     const mine = addTarget('https://lp.example.ru/mine', 0);   // выключенная цель воронки
     const alien = addTarget('https://lp.example.ru/alien', 1); // чужая, включённая
     linkTarget(mine, funnelId);
@@ -493,6 +507,76 @@ describe('ручная проверка воронки', () => {
     const cycle = await runMonitorCycle(db, { check, sync: false, notify: async () => undefined });
     expect(cycle).not.toBeNull();
     await manual;
+  });
+});
+
+/**
+ * Ревью шага 9 (замер на f37, 18.09.2026): ручная проверка била по ВСЕМ целям
+ * воронки без разбора, включая четыре адреса служебной группы `links`
+ * (админка GetCourse вида `/pl/user/user/index?uc[segment_id]=…`) — они
+ * требуют сессии и без неё отвечают 403 всегда, а группа именно поэтому
+ * выключена по умолчанию. Один клик красил воронку в «упало» на семь дней
+ * (STALE_AFTER_DAYS), а настоящая находка (мёртвая комната) тонула под
+ * четырьмя простынями двухтысячезначных адресов. Правило теперь живёт в
+ * `selectFunnelCheckTargets` (`monitor-targets.ts`), и `runFunnelCheck` — тонкая
+ * обёртка над ним; три теста ниже проверяют ровно три границы правила.
+ */
+describe('правка 1: ручная проверка уважает дефолт группы', () => {
+  it('черновик: enabled=0 у цели, но дефолт её группы включён — цель проверяется', async () => {
+    // 'landings' в DEFAULT_ENABLED_SOURCE_KINDS — своя enabled=0 здесь не
+    // решение по группе, а следствие hasActive=false (воронка не активна).
+    const t = addKindTarget('https://lp.example.ru/draft-landing', 'landings', 0);
+    linkTarget(t, funnelId);
+
+    const asked: string[] = [];
+    const check = async (url: string) => {
+      asked.push(url);
+      return { status: 'up' as const, httpStatus: 200, finalUrl: url, latencyMs: 1, error: '' };
+    };
+
+    await runFunnelCheck(db, funnelId, { check, sync: false, notify: async () => undefined });
+
+    expect(asked).toEqual(['https://lp.example.ru/draft-landing']);
+  });
+
+  it('links: enabled=0 — решение по группе, ручная проверка его уважает и цель не трогает', async () => {
+    const t = addKindTarget(
+      'https://gc.ksamata.ru/pl/user/user/index?uc[segment_id]=1',
+      'links',
+      0
+    );
+    linkTarget(t, funnelId);
+
+    const asked: string[] = [];
+    const check = async (url: string) => {
+      asked.push(url);
+      return { status: 'up' as const, httpStatus: 200, finalUrl: url, latencyMs: 1, error: '' };
+    };
+
+    await runFunnelCheck(db, funnelId, { check, sync: false, notify: async () => undefined });
+
+    expect(asked).toEqual([]);
+    // Не только «не спрошено» — состояние цели тоже не тронуто.
+    expect(state(t).status).toBe('unknown');
+  });
+
+  it('enabled=1 проверяется всегда, даже у links — человек включил её руками, его решение сильнее', async () => {
+    const t = addKindTarget(
+      'https://gc.ksamata.ru/pl/user/user/index?uc[segment_id]=2',
+      'links',
+      1
+    );
+    linkTarget(t, funnelId);
+
+    const asked: string[] = [];
+    const check = async (url: string) => {
+      asked.push(url);
+      return { status: 'up' as const, httpStatus: 200, finalUrl: url, latencyMs: 1, error: '' };
+    };
+
+    await runFunnelCheck(db, funnelId, { check, sync: false, notify: async () => undefined });
+
+    expect(asked).toEqual(['https://gc.ksamata.ru/pl/user/user/index?uc[segment_id]=2']);
   });
 });
 
