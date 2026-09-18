@@ -1,25 +1,34 @@
-import { eq, sql, inArray, notInArray } from 'drizzle-orm';
+import { and, eq, sql, inArray, notInArray } from 'drizzle-orm';
 import { type AnyDB } from '../db/client';
 import {
   funnels,
   funnelBlocks,
   funnelBlockItems,
+  funnelDays,
   monitorTargets,
   monitorTargetFunnels,
   monitorState,
   monitorSourceKindPrefs,
 } from '../db/schema';
 import { normalizeUrl } from './monitor-urls';
+import { FUNNEL_STATUS_VALUES } from './status';
 
 /**
- * Мониторим только страницы воронок в этом статусе. Черновики и архив не
- * проверяем: их падения — шум, из-за которого перестают смотреть на настоящие.
+ * Единственный статус, чьи страницы реально проверяются. Определяет
+ * `hasActive` в `collectTargets` и, через него, `enabled` цели — а на
+ * дашборде решает, попадёт ли связь в `usage: 'active'`.
+ *
+ * Черновик и архив тоже получают цель и связь (см. `collectTargets`) —
+ * только выключенную: их падения были бы шумом, из-за которого перестают
+ * смотреть на настоящие.
  */
 export const MONITORED_FUNNEL_STATUS = 'active';
 
 /**
- * Группа лендингов — единственная, которая проверяется, пока по ней не было
- * решения человека.
+ * Главный вид источника для sourceRank: если один и тот же адрес пришёл сразу
+ * из блока «Лендинги» и откуда-то ещё (другого блока, комнаты), побеждает
+ * `landings`. С 18.09.2026 это уже не единственная группа, включённая по
+ * умолчанию, — тот набор задаёт DEFAULT_ENABLED_SOURCE_KINDS ниже.
  *
  * Страница воронки хранится ровно в одном месте — в блоке «Лендинги». Раньше
  * мест было два (ещё колонка funnels.landing_url), и они давали два вида
@@ -40,8 +49,26 @@ function loadGroupPrefs(db: AnyDB): Map<string, boolean> {
 }
 
 /**
+ * Группы, которые проверяются, пока по ним не было решения человека.
+ *
+ * До 18.09.2026 здесь был один `landings`. Набор расширен до того, что видит
+ * клиент и что стоит денег, плюс комнаты: молчание пилюли воронки иначе
+ * означало бы «в проверяемом всё живо», а читалось бы как «всё живо».
+ * Служебные `links` и `processes` остаются выключенными — их включают руками.
+ */
+export const DEFAULT_ENABLED_SOURCE_KINDS: ReadonlySet<string> = new Set([
+  'landings',
+  'tariffs',
+  'applications',
+  'upsell',
+  'room_gc',
+  'room_web',
+  'room_replay',
+]);
+
+/**
  * Проверяется ли группа по умолчанию. Решение человека по группе, а если его
- * не было — прежнее правило: ленды да, остальное нет.
+ * не было — дефолт из DEFAULT_ENABLED_SOURCE_KINDS.
  *
  * Именно эта функция и делает «новая ссылка наследует группу»: цель заводится
  * с дефолтом своей группы, а не с захардкоженным списком лендов.
@@ -49,7 +76,28 @@ function loadGroupPrefs(db: AnyDB): Map<string, boolean> {
 function groupDefault(prefs: Map<string, boolean>, sourceKind: string): 0 | 1 {
   const pref = prefs.get(sourceKind);
   if (pref !== undefined) return pref ? 1 : 0;
-  return sourceKind === LANDING_SOURCE_KIND ? 1 : 0;
+  return DEFAULT_ENABLED_SOURCE_KINDS.has(sourceKind) ? 1 : 0;
+}
+
+/**
+ * Предикат «эта группа проверяется по умолчанию», снятый одним запросом.
+ *
+ * Определение дефолта групп обязано быть одно на всех, и это не вкусовщина:
+ * им пользуются две стороны одной фичи — охват ручной проверки
+ * (`selectFunnelCheckTargets` ниже) и счёт падений в пилюле воронки
+ * (`getFunnelHealth`, `monitor-funnel-health.ts`). Пока определений было два,
+ * они разъехались молча: агрегат считал падением любую связанную цель, а
+ * кнопка «Проверить сейчас» цели выключенных групп пропускала — пилюля горела
+ * тем, чего нечем было перепроверить, и гасла сама только через
+ * `STALE_AFTER_DAYS` (семь дней).
+ *
+ * Отдаётся замыканием, а не разовой функцией `(db, kind)`: обе стороны
+ * спрашивают дефолт для десятков целей подряд, и поход в базу на каждую был бы
+ * расточительством — ровно тот же довод, что у `loadGroupPrefs`.
+ */
+export function loadGroupDefaultCheck(db: AnyDB): (sourceKind: string) => boolean {
+  const prefs = loadGroupPrefs(db);
+  return (sourceKind: string) => groupDefault(prefs, sourceKind) === 1;
 }
 
 /**
@@ -64,35 +112,51 @@ interface Collected {
   url: string;
   sourceKind: string;
   funnelIds: Set<number>;
+  /** Держит ли адрес хотя бы одна активная воронка — от этого зависит enabled. */
+  hasActive: boolean;
 }
 
 /**
- * Собирает URL из данных воронок. По умолчанию — только из **активных**: именно
- * этот набор синк держит под проверкой. Параметр `statuses` нужен дашборду,
- * чтобы тем же способом собрать URL неактивных воронок (см. collectFunnelUrls).
+ * Собирает URL из данных воронок — по умолчанию по **всем** статусам разом.
+ * Связь (`monitor_target_funnels`, записываемая синком из результата этой
+ * функции) хранит «кто держит адрес», любого статуса — а не только «кто его
+ * проверяет». Второе решает `hasActive`: адрес, который держит хотя бы одна
+ * активная воронка, проверяется; адрес одного черновика или архива — нет, но
+ * цель и связь всё равно заводятся.
  *
- * Черновик ещё не запущен, архив уже отработал: их страницы могут лежать на
- * законных основаниях, и падения по ним — шум, из-за которого перестают
- * смотреть на настоящие. URL, оставшийся только за неактивными воронками,
- * попадает в общий авто-ретайрмент: гаснет, отвязывается от воронок, но
- * сохраняет историю инцидентов и оживает сам, когда воронку вернут в активные.
+ * Так устроено ради ручной проверки черновика (задача 5): раньше синк отвязывал
+ * всё, чего нет у активных, и результат такой проверки гас бы на ближайшем
+ * фоновом прогоне без единого объяснения — черновик просто исчезал из связей.
+ * Теперь связь переживает синк, а видимость «проверяем ли» несёт `enabled`.
  *
- * URL, который делят активная и архивная воронки, остаётся под проверкой, но
- * в связях (и в чипах «Воронки») числится только за активной.
+ * URL, который делят активная и архивная воронки, остаётся под проверкой
+ * (`hasActive = true`) и в связях числится за обеими — в отличие от прежнего
+ * правила «в связях только активная», которое красиво выглядело в чипах, но
+ * прятало от синка держателя, чей статус ещё может измениться.
+ *
+ * Параметр `statuses` — остаток прежнего API: раньше его переопределял
+ * дашборд отдельным проходом (`collectFunnelUrls`, удалена), чтобы тем же
+ * способом собрать URL неактивных воронок. Теперь дашборд читает статус
+ * держателя прямо из связи через `funnelsByTarget`, второй проход не нужен, а
+ * `collectTargets` не экспортируется и единственный вызов (из
+ * `syncMonitorTargets`) всегда идёт с дефолтом — сегодня параметр ничем не
+ * покрыт и существует только как задел на случай, если понадобится второй
+ * вызов с другим набором статусов.
  */
 function collectTargets(
   db: AnyDB,
-  statuses: readonly string[] = [MONITORED_FUNNEL_STATUS],
+  statuses: readonly string[] = FUNNEL_STATUS_VALUES,
 ): Map<string, Collected> {
   const out = new Map<string, Collected>();
 
-  const add = (url: string, sourceKind: string, funnelId: number) => {
+  const add = (url: string, sourceKind: string, funnelId: number, isActive: boolean) => {
     const existing = out.get(url);
     if (!existing) {
-      out.set(url, { url, sourceKind, funnelIds: new Set([funnelId]) });
+      out.set(url, { url, sourceKind, funnelIds: new Set([funnelId]), hasActive: isActive });
       return;
     }
     existing.funnelIds.add(funnelId);
+    if (isActive) existing.hasActive = true;
     if (sourceRank(sourceKind) < sourceRank(existing.sourceKind)) {
       existing.sourceKind = sourceKind;
     }
@@ -103,53 +167,97 @@ function collectTargets(
       url: funnelBlockItems.url,
       kind: funnelBlocks.kind,
       funnelId: funnelBlocks.funnelId,
+      status: funnels.status,
     })
     .from(funnelBlockItems)
     .innerJoin(funnelBlocks, eq(funnelBlocks.id, funnelBlockItems.blockId))
     .innerJoin(funnels, eq(funnels.id, funnelBlocks.funnelId))
     .where(inArray(funnels.status, [...statuses]))
-    .all() as { url: string; kind: string; funnelId: number }[];
+    .all() as { url: string; kind: string; funnelId: number; status: string }[];
 
   for (const row of items) {
     const url = normalizeUrl(row.url);
-    if (url) add(url, row.kind, row.funnelId);
+    if (url) add(url, row.kind, row.funnelId, row.status === MONITORED_FUNNEL_STATUS);
   }
 
-  // Второго источника нет: до Phase-10 адрес лендинга приходил ещё и из колонки
-  // funnels.landing_url, и одна и та же страница жила в двух местах сразу.
-  // Теперь у неё одно место — блок «Лендинги», колонка пуста и не читается.
+  // Второй источник — сетка комнат. Комнаты живут не в блоках, а в funnel_days,
+  // и до 18.09.2026 в мониторинг не попадали вовсе: у F101 из-за этого
+  // несуществующие комнаты были невидимы.
+  const rooms = db
+    .select({
+      funnelId: funnelDays.funnelId,
+      gcRoom: funnelDays.gcRoom,
+      webRoom: funnelDays.webRoom,
+      replayUrl: funnelDays.replayUrl,
+      roomsEnabled: funnels.roomsEnabled,
+      replayEnabled: funnels.roomsReplayEnabled,
+      status: funnels.status,
+    })
+    .from(funnelDays)
+    .innerJoin(funnels, eq(funnels.id, funnelDays.funnelId))
+    .where(inArray(funnels.status, [...statuses]))
+    .all() as {
+      funnelId: number;
+      gcRoom: string | null;
+      webRoom: string | null;
+      replayUrl: string | null;
+      roomsEnabled: number | null;
+      replayEnabled: number | null;
+      status: string;
+    }[];
+
+  const addRoom = (raw: string | null, kind: string, funnelId: number, isActive: boolean) => {
+    const url = normalizeUrl(raw ?? '');
+    if (url) add(url, kind, funnelId, isActive);
+  };
+
+  for (const row of rooms) {
+    const isActive = row.status === MONITORED_FUNNEL_STATUS;
+    // rooms_enabled = 0 — решение человека «здесь нет эфиров». Его уже уважают
+    // карточка, компактный вид и buildExportRows; мониторинг обязан читать
+    // данные так же, иначе он видит то, чего для сервиса не существует.
+    if (row.roomsEnabled === 1) {
+      addRoom(row.gcRoom, 'room_gc', row.funnelId, isActive);
+      addRoom(row.webRoom, 'room_web', row.funnelId, isActive);
+    }
+    if (row.replayEnabled === 1) {
+      addRoom(row.replayUrl, 'room_replay', row.funnelId, isActive);
+    }
+  }
+
   return out;
 }
 
 /**
- * URL, которые держат воронки перечисленных статусов: url → id воронок.
- *
- * Нужна дашборду, чтобы отличить два вида погашенных целей: URL, который ещё
- * лежит в блоке неактивной воронки (архив/черновик — вернут в активные, и цель
- * оживёт), от осиротевшего, который не держит уже никто. Нормализация та же, что
- * у синка, — иначе два места считали бы «тот же URL» по-разному.
- */
-export function collectFunnelUrls(db: AnyDB, statuses: readonly string[]): Map<string, number[]> {
-  const out = new Map<string, number[]>();
-  if (statuses.length === 0) return out;
-  for (const item of collectTargets(db, statuses).values()) {
-    out.set(item.url, [...item.funnelIds]);
-  }
-  return out;
-}
-
-/**
- * Приводит monitor_targets в соответствие с данными воронок.
- * Инварианты:
- *  - новая цель получает enabled по дефолту своей группы — поэтому ссылка,
- *    добавленная в блок уже включённой группы, начинает проверяться сама;
+ * Приводит monitor_targets и monitor_target_funnels в соответствие с данными
+ * воронок — по всем статусам разом (см. `collectTargets`). Инварианты:
+ *  - связь (`monitor_target_funnels`) хранит «кто держит адрес» — воронку
+ *    ЛЮБОГО статуса, а не только активную;
+ *  - новая цель получает enabled по дефолту своей группы, но только если адрес
+ *    держит хотя бы одна активная воронка (`item.hasActive`) — поэтому ссылка,
+ *    добавленная в блок уже включённой группы, начинает проверяться сама, а
+ *    адрес одного черновика или архива заводит цель и связь, но не проверяется;
  *  - у существующей цели с manual_override=1 enabled НЕ трогается —
  *    ручной тумблер переживает синк;
- *  - у существующей цели с manual_override=0 enabled пересчитывается из дефолта
- *    группы: ленд, пропавший из данных на один синк и вернувшийся, снова
- *    включается, а не остаётся навсегда погашённым;
- *  - исчезнувший URL не удаляется: гасится и отвязывается от воронок,
- *    чтобы не потерять историю инцидентов.
+ *  - у существующей цели с manual_override=0 enabled пересчитывается из
+ *    дефолта группы И `hasActive`: ленд, пропавший из данных на один синк и
+ *    вернувшийся, снова включается, а не остаётся навсегда погашённым;
+ *  - исчезнувший URL не удаляется: гасится и отвязывается от воронок — но
+ *    только когда его не держит уже НИ ОДНА воронка ни одного статуса. Пока
+ *    его держит хотя бы черновик или архив, он остаётся в связях (просто без
+ *    enabled) — это и есть разница с прежним правилом «отвязываем всё, чего
+ *    нет у активных», которое гасило бы результат ручной проверки черновика
+ *    на первом же фоновом прогоне;
+ *  - `updated_at` живой (не осиротевшей) цели не трогается, если синк не
+ *    поменял у неё ни `source_kind`, ни фактический `enabled` — иначе штамп
+ *    двигался бы каждым прогоном у каждой цели и переставал бы значить
+ *    «когда цель последний раз реально менялась» (те же грабли, что уже
+ *    чинили в ветке ретайрмента ниже).
+ *
+ * `retired` в возврате — не «сколько выбыло из активных», а «сколько
+ * осиротело за ЭТОТ прогон» (потеряло последнего держателя любого статуса):
+ * смысл возврата изменился вместе с `collectTargets`, хотя сама формула
+ * (`mutable.length`) не менялась.
  */
 export function syncMonitorTargets(db: AnyDB): { total: number; created: number; retired: number } {
   const collected = collectTargets(db);
@@ -159,27 +267,45 @@ export function syncMonitorTargets(db: AnyDB): { total: number; created: number;
 
   db.transaction((tx) => {
     for (const item of collected.values()) {
+      // Правило «мониторим только активные» не отменено — оно переехало со
+      // сбора на включение. Связь говорит «кто держит адрес», enabled —
+      // «проверяем ли». Иначе ручная проверка черновика гасла бы на ближайшем
+      // фоновом прогоне: синк отвязывал бы его цель.
+      const wanted: 0 | 1 = item.hasActive ? groupDefault(prefs, item.sourceKind) : 0;
+
       const existing = tx
-        .select({ id: monitorTargets.id, manualOverride: monitorTargets.manualOverride })
+        .select({
+          id: monitorTargets.id,
+          manualOverride: monitorTargets.manualOverride,
+          sourceKind: monitorTargets.sourceKind,
+          enabled: monitorTargets.enabled,
+        })
         .from(monitorTargets)
         .where(eq(monitorTargets.url, item.url))
-        .get() as { id: number; manualOverride: number } | undefined;
+        .get() as { id: number; manualOverride: number; sourceKind: string; enabled: number } | undefined;
 
       let targetId: number;
       if (existing) {
-        tx.update(monitorTargets)
-          .set({
-            sourceKind: item.sourceKind,
-            // Ручной тумблер (manual_override=1) неприкосновенен. Без него
-            // enabled — производная от дефолта группы, поэтому пересчитываем:
-            // иначе цель, погашенная авто-ретайрментом, уже никогда не ожила бы.
-            ...(existing.manualOverride === 1
-              ? {}
-              : { enabled: groupDefault(prefs, item.sourceKind) }),
-            updatedAt: sql`(datetime('now'))`,
-          })
-          .where(eq(monitorTargets.id, existing.id))
-          .run();
+        // Ручной тумблер (manual_override=1) неприкосновенен. Без него
+        // enabled — производная от дефолта группы и hasActive, поэтому
+        // пересчитываем: иначе цель, погашенная авто-ретайрментом, уже
+        // никогда не ожила бы.
+        const nextEnabled = existing.manualOverride === 1 ? existing.enabled : wanted;
+        // Пишем, только если что-то фактически меняется. Иначе штамп
+        // `updated_at` двигался бы КАЖДЫМ синком у любой живой цели — ровно
+        // те же грабли, что уже чинили в ветке ретайрмента ниже (комментарий
+        // там же): затираемый штамп не даёт понять, когда цель на самом деле
+        // в последний раз менялась.
+        if (existing.sourceKind !== item.sourceKind || existing.enabled !== nextEnabled) {
+          tx.update(monitorTargets)
+            .set({
+              sourceKind: item.sourceKind,
+              ...(existing.manualOverride === 1 ? {} : { enabled: nextEnabled }),
+              updatedAt: sql`(datetime('now'))`,
+            })
+            .where(eq(monitorTargets.id, existing.id))
+            .run();
+        }
         targetId = existing.id;
       } else {
         const inserted = tx
@@ -187,7 +313,7 @@ export function syncMonitorTargets(db: AnyDB): { total: number; created: number;
           .values({
             url: item.url,
             sourceKind: item.sourceKind,
-            enabled: groupDefault(prefs, item.sourceKind),
+            enabled: wanted,
           })
           .returning({ id: monitorTargets.id })
           .get() as { id: number };
@@ -252,19 +378,47 @@ export function syncMonitorTargets(db: AnyDB): { total: number; created: number;
   return { total: collected.size, created, retired };
 }
 
-/** enabled по умолчанию для вида источника — то же правило, что и в синке. */
-function defaultEnabled(db: AnyDB, sourceKind: string): 0 | 1 {
-  return groupDefault(loadGroupPrefs(db), sourceKind);
+/**
+ * Держит ли цель (по её id, через уже сохранённую связь) хотя бы одна
+ * активная воронка — та же проверка, что `hasActive` в `collectTargets`, но
+ * читается из `monitor_target_funnels`, а не пересчитывается по блокам.
+ */
+function targetHasActiveFunnel(db: AnyDB, targetId: number): boolean {
+  const row = db
+    .select({ funnelId: monitorTargetFunnels.funnelId })
+    .from(monitorTargetFunnels)
+    .innerJoin(funnels, eq(funnels.id, monitorTargetFunnels.funnelId))
+    .where(and(eq(monitorTargetFunnels.targetId, targetId), eq(funnels.status, MONITORED_FUNNEL_STATUS)))
+    .limit(1)
+    .get();
+  return row !== undefined;
+}
+
+/**
+ * enabled по умолчанию для конкретной цели — то же правило, что и в синке:
+ * дефолт группы И хотя бы одна активная воронка держит адрес (`hasActive`).
+ *
+ * Второе условие обязательно, не косметика: без него override у цели,
+ * которую держит только черновик или архив, считался бы неверно — «включить»
+ * совпало бы с голым дефолтом группы (обычно 1 у лендов), override не
+ * ставился бы, и ближайший синк (у которого `hasActive = false` для этой
+ * цели) тут же погасил бы её обратно, молча отменив решение человека.
+ */
+function defaultEnabled(db: AnyDB, sourceKind: string, targetId: number): 0 | 1 {
+  const groupWants = groupDefault(loadGroupPrefs(db), sourceKind) === 1;
+  return groupWants && targetHasActiveFunnel(db, targetId) ? 1 : 0;
 }
 
 /**
  * Переключает одну цель вручную. Возвращает false, если цели нет.
  *
  * manual_override ставится, только если запрошенное состояние отличается от
- * дефолта группы — иначе «включить ленды обратно» намертво пришпиливало бы их
+ * ЭФФЕКТИВНОГО дефолта — дефолта группы с поправкой на то, держит ли адрес
+ * хотя бы одна активная воронка (см. `defaultEnabled`), а не от голого
+ * дефолта группы. Иначе «включить ленды обратно» намертво пришпиливало бы их
  * (override никогда не снимался автоматически), и авто-оживление вернувшегося
  * URL переставало бы работать навсегда. Смысл override после этого читается
- * однозначно: «эта цель отличается от своей группы».
+ * однозначно: «эта цель отличается от того, что ей положено по правилам».
  */
 export function setTargetEnabled(db: AnyDB, targetId: number, enabled: boolean): boolean {
   const existing = db
@@ -275,13 +429,80 @@ export function setTargetEnabled(db: AnyDB, targetId: number, enabled: boolean):
   if (!existing) return false;
 
   const enabledValue = enabled ? 1 : 0;
-  const manualOverride = enabledValue === defaultEnabled(db, existing.sourceKind) ? 0 : 1;
+  const manualOverride = enabledValue === defaultEnabled(db, existing.sourceKind, targetId) ? 0 : 1;
 
   db.update(monitorTargets)
     .set({ enabled: enabledValue, manualOverride, updatedAt: sql`(datetime('now'))` })
     .where(eq(monitorTargets.id, targetId))
     .run();
   return true;
+}
+
+/**
+ * Пересобирает цели и связи перед ручной проверкой воронки. Нужна: сценарий
+ * «поправил адрес → нажал проверить» иначе проверял бы старый адрес и отвечал
+ * бы неверно на прямо заданный вопрос.
+ *
+ * Синкает ВСЕ воронки, а не одну, и без параметра — сужать незачем: полный
+ * синк на 1767 адресов занимает доли секунды на SQLite, а второе, более узкое
+ * правило сбора «только эта воронка» рано или поздно разъехалось бы с общим
+ * (`collectTargets` уже задаёт единственное правило для всех вызовов). Если
+ * синк когда-нибудь подорожает, сузить его можно будет прямо здесь, не меняя
+ * сигнатуру и вызывающий код — это и есть задел, который раньше держал
+ * неиспользуемый параметр `funnelId`.
+ */
+export function syncTargetsForFunnelCheck(db: AnyDB): void {
+  syncMonitorTargets(db);
+}
+
+export interface FunnelCheckTarget {
+  id: number;
+  url: string;
+}
+
+/**
+ * Цели воронки, которые стоит проверить кнопкой «Проверить ссылки».
+ *
+ * Правило то же, что решает `enabled` в синке (`groupDefault` — предпочтение
+ * человека по группе, а если его не было, `DEFAULT_ENABLED_SOURCE_KINDS`), но
+ * применяется без оглядки на `hasActive`: `enabled = 1` ИЛИ дефолт группы
+ * цели включён. Ровно это же правило считает падения в пилюле воронки, и
+ * определение у них одно на двоих — `loadGroupDefaultCheck` выше.
+ *
+ * Различие принципиальное, и оно есть в данных. У черновика все цели
+ * `enabled = 0` — не потому, что группа выключена, а потому, что ни одна
+ * активная воронка адрес не держит (`hasActive` в синке); дефолт же его
+ * группы (`landings`, `room_*`, `tariffs`, `applications`, `upsell`) остаётся
+ * включённым, и ручная проверка обязана эти цели брать — иначе результат
+ * «Проверить ссылки» на черновике был бы всегда пуст. У `links` и `processes`
+ * цель выключена ПОТОМУ, что решение по группе — «не проверять»: это
+ * служебные страницы (например админка GetCourse вида
+ * `/pl/user/user/index?uc[segment_id]=…`), которые требуют сессии и без неё
+ * отвечают 403 всегда. Замер на f37: без этого различия ручная проверка
+ * красила воронку в «упало» на семь дней (`STALE_AFTER_DAYS`) по четырём
+ * таким адресам, а настоящая находка — мёртвая комната — тонула под ними.
+ * `enabled = 1` перебивает выключенный дефолт группы в обратную сторону:
+ * человек включил цель руками вопреки дефолту (см. `setTargetEnabled`), и
+ * это решение сильнее.
+ */
+export function selectFunnelCheckTargets(db: AnyDB, funnelId: number): FunnelCheckTarget[] {
+  const groupWants = loadGroupDefaultCheck(db);
+
+  const rows = db
+    .select({
+      id: monitorTargets.id,
+      url: monitorTargets.url,
+      sourceKind: monitorTargets.sourceKind,
+      enabled: monitorTargets.enabled,
+    })
+    .from(monitorTargets)
+    .innerJoin(monitorTargetFunnels, eq(monitorTargetFunnels.targetId, monitorTargets.id))
+    .where(eq(monitorTargetFunnels.funnelId, funnelId))
+    .all() as { id: number; url: string; sourceKind: string; enabled: number }[];
+
+  return rows
+    .filter((r) => r.enabled === 1 || groupWants(r.sourceKind))
+    .map((r) => ({ id: r.id, url: r.url }));
 }
 
 /**

@@ -436,29 +436,64 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   because the live DB holds a genuine 2019-character GetCourse segment link.
 - `http.ts` / `errors.ts` — response/error helpers.
 - `clipboard.ts` / `useUnsavedGuard.ts` — client hooks.
-- `monitor-status.ts` — monitoring status values, badge metadata, `formatAgo`.
+- `monitor-status.ts` — monitoring status values, badge metadata, `formatAgo`,
+  plus the polling numbers shared by every screen that waits for a check
+  (`POLL_INTERVAL_MS` = 2000, `MAX_POLL_FAILURES` = 5). Three screens poll —
+  `/monitoring`, the card section and the funnel list — and a second period
+  in one service is a divergence waiting for its first edit.
 - `monitor-urls.ts` — URL normalization + multi-URL field splitting. A checkable
   target is http(s), has a dotted hostname (no IP literals) and a standard port —
   otherwise the dashboard becomes an SSRF oracle and a port scanner for the
   container's own network. `resolveRedirectTarget` applies the very same rule to
   each redirect hop; keep the two in one place, a hop that skips the check
   reopens the whole hole.
-- `monitor-targets.ts` — sync targets from funnel data, enable/disable, group defaults.
-  Only funnels with `status = 'active'` are collected (`MONITORED_FUNNEL_STATUS`);
-  drafts and archive are out of scope, and a URL left behind by a funnel leaving
-  `active` goes through the normal retirement path (muted, unlinked, history kept,
-  auto-revived when the funnel comes back) — **unless** `manual_override = 1`,
-  in which case retirement unlinks it but leaves `enabled` alone, same as the
-  live branch. Muting an overridden target would strand it: the override stays
-  set, so the live branch would then refuse to recompute `enabled` and the
-  returning URL would never come back on. Exports `collectFunnelUrls` so the
-  dashboard can collect URLs of **non**-active funnels through the very same
-  normalization. The retirement branch touches only targets that are still
-  `enabled = 1`, so `retired` counts what this run actually muted and the
-  `updatedAt` of a long-retired target is not rewritten by every sync —
-  otherwise the stamp could never tell you when a target actually dropped out.
-- `monitor-kinds.ts` — Russian labels for source kinds (reuses `BLOCK_KINDS`
-  titles) + `sourceKindTone`, which decides how a group chip reads: any group
+- `monitor-targets.ts` — sync targets from funnel data, enable/disable, group
+  defaults. Collects **two** sources: `funnel_block_items` and `funnel_days`
+  (the rooms). A funnel with `rooms_enabled = 0` contributes no rooms and with
+  `rooms_replay_enabled = 0` no replays — that flag is a human saying «here are
+  no webinars», and the card, the compact view and `buildExportRows` already
+  read the data that way.
+  **Targets and links are collected for funnels of every status** — since
+  18.09.2026 `monitor_target_funnels` means «who holds this URL», not «who is
+  being checked». What is checked is `enabled` = the group's default **and**
+  at least one **active** funnel holds the URL (`MONITORED_FUNNEL_STATUS`).
+  The rule «we monitor only active funnels» did not go away: it moved from the
+  place of collection to the place of enabling, where its real content always
+  was. It moved because of the manual check of a draft: with links kept for
+  active funnels only, the result of that check was wiped by the next
+  background sync (≤ 15 min), the pill went dark by itself and nothing said
+  why. Price: 378 extra `monitor_targets` rows (1767 vs 1389), all muted, not
+  one extra request per cycle.
+  A URL left behind by a funnel leaving `active` goes through the normal
+  retirement path (muted, unlinked only when nobody at all holds it, history
+  kept, auto-revived when the funnel comes back) — **unless**
+  `manual_override = 1`, in which case retirement leaves `enabled` alone, same
+  as the live branch. Muting an overridden target would strand it: the override
+  stays set, so the live branch would then refuse to recompute `enabled` and the
+  returning URL would never come back on. The retirement branch touches only
+  targets that are still `enabled = 1`, so `retired` counts what this run
+  actually muted and the `updatedAt` of a long-retired target is not rewritten
+  by every sync — otherwise the stamp could never tell you when a target
+  actually dropped out.
+  `DEFAULT_ENABLED_SOURCE_KINDS` is the set checked until a human decides
+  otherwise: landings, tariffs, applications, upsell and the three room kinds.
+  `links` and `processes` stay off — those are GetCourse admin pages that
+  answer `403` without a session, always. **That default has exactly one
+  definition, exported as `loadGroupDefaultCheck`**, and two callers read it:
+  the scope of the manual check (`selectFunnelCheckTargets`) and the `down`
+  count of a funnel's pill (`getFunnelHealth`). While there were two
+  definitions they diverged silently — the pill lit up for a target the button
+  refused to re-check, and it took `STALE_AFTER_DAYS` (a week) to go dark.
+- `monitor-kinds.ts` — the registry of source kinds, `MONITOR_SOURCE_KINDS` =
+  block kinds ∪ room kinds (`room_gc` «Комнаты ГК», `room_web` «Комнаты Web»,
+  `room_replay` «Повторы»), with their Russian labels. It used to be derived
+  from `BLOCK_KINDS` alone — «every checked page comes from a block» — and that
+  stopped being true when rooms became targets. Three room kinds and not one:
+  three hosts, three reasons to fall, and only `room_web` needs the content
+  check; a merged group could not be switched off in parts. An unknown kind may
+  still be **read**, but never **written** into `monitor_source_kind_prefs` —
+  that table is forever, and a typo would settle in it for good.
+  Here too `sourceKindTone`, which decides how a group chip reads: any group
   with at least one checked target is orange (`on`/`partial`), only a fully
   disabled one is grey. `partial` differs from `on` in wording and
   `aria-pressed="mixed"`, not in colour — a partially enabled group must not
@@ -480,6 +515,53 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   connection re-resolves, so an attacker controlling DNS with a very short TTL
   could still rebind between check and connect. Closing that needs pinning the
   connection to the vetted IP (a custom `undici` dispatcher, a new dependency).
+  For hosts listed in `monitor-content.ts` a 2xx answer is **read** (at most
+  8 KB of the head) instead of being discarded — see that module.
+- `monitor-content.ts` — «HTTP 200, and nothing behind it». Pure: no network, no
+  DB, no `node:*`. `web.ksamatacenter.com` answers **200** for a room that does
+  not exist, and the page is byte-for-byte the size of an invented slug
+  (2388 bytes, measured 18.09.2026 on F101 against a control); only `<title>`
+  tells them apart, so a status-code check reported the dead rooms of F101 as
+  «Работает». Matching is on `<title>`, not on the phrase anywhere in the body:
+  a live room may legitimately carry those words in its chat. `room_gc` is not
+  content-checked — the GetCourse page around a dead room is a full 58 KB page
+  of its own, and with the `gc`/`web` pairs complete in the data (584 and 584)
+  `room_web` is enough.
+- `monitor-canary.ts` — the canary for that rule. A negative marker goes stale
+  silently the day Bizon rewords the page, and every room would then read as
+  «Работает» — the same silent zero this repo has been burned by twice (the
+  `Предписок` spelling, Phase 15; the audit classes under `--no-api`). So a
+  slug that will never exist (`…/room/ksamata-funnels-canary`) is requested by
+  the **`GET /api/monitoring` route**, not by the cycle: the cycle lives in the
+  instrumentation runtime and the page renders in Node, and they share no
+  `globalThis` (see the singletons section), so a flag set by the cycle would
+  lie. Cached on `globalThis` for `CANARY_TTL_MS` (10 min) — while a cycle runs
+  the page polls that route every 2 seconds. Three verdicts, and the third is
+  not pedantry: a network failure also gives `down`, and passing it off as
+  «the marker is intact» is exactly the lie being guarded against. The canary is
+  **not** a monitoring target: otherwise it would sit in the dashboard, in the
+  group counters and in Telegram as a permanent «Упало».
+- `monitor-funnel-health.ts` — the per-funnel aggregate behind the pill and the
+  card section (read-only, no new tables): `monitor_target_funnels` →
+  `monitor_targets` → `monitor_state`, grouped by funnel. `down` beats
+  `unknown`. `down` counts a target that is `enabled` **or** whose group default
+  is on (one definition, in `monitor-targets.ts`), and only if the check is no
+  older than `STALE_AFTER_DAYS` (7). The freshness cutoff is what keeps the
+  archive quiet: its pages are dead lawfully, and that is what «archive» means.
+  `unknown` counts only **enabled** targets never checked — nobody promised to
+  check a muted one. `total` is not decoration: without it the card could not
+  say «12 of 30 addresses are outside the permanent check», and a silent pill on
+  a funnel with «Ссылки» switched off would read as «everything is alive».
+  `collectFunnelOrigins` re-derives «where this URL comes from» («Комнаты ГК ·
+  15:00 · день 2») at read time — a column in `monitor_targets` would be wrong
+  in principle, as one URL can belong to two funnels with different origins.
+- `funnel-health.ts` — the pure leaf of the above: `FunnelHealth`,
+  `FunnelProblem`, `funnelHealthTone`, `funnelHealthPillLabel`, and nothing
+  else. The funnel list is a client component, and importing a **value** from
+  the module above dragged `drizzle-orm` and `db/schema` into the client bundle
+  of `/` — measured on `npm run build`: a 50 KB chunk served to every visitor,
+  anonymous ones included, who are not even shown monitoring. Same split as
+  `monitor-status.ts` / `monitor-notify.ts`. Keep it free of DB imports.
 - `monitor-dns.ts` — pure address classifier (`isPrivateAddress`) + the
   `LookupFn` type. Fails closed: an address it cannot parse counts as private.
   Understands IPv4 embedded in IPv6 (`::ffff:127.0.0.1`, NAT64, 6to4), because
@@ -502,6 +584,17 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   после планировщика по времени не отделить. Ошибка уведомления ловится и
   уходит в лог: Telegram недоступен чаще наших лендов, а упавший цикл означал
   бы, что падений мы не замечаем вовсе.
+  Здесь же **ручная проверка одной воронки** (`runFunnelCheck`) — под
+  **своим** флагом `funnelCheckRunning` (тоже на `globalThis`), параллельно
+  общему циклу: полный цикл идёт ~3 минуты из каждых 15, и единый флаг давал бы
+  отказ на каждом пятом клике. Перед прогоном цели пересобираются синком,
+  иначе «поправил адрес → нажал проверить» проверяло бы старый адрес.
+  Транзакция `persist` открывается с `behavior: 'immediate'`, и это не
+  украшение: `db.transaction()` у better-sqlite3 — DEFERRED, а с `SELECT`-ом
+  первой строкой такая транзакция начинается читающей и при втором писателе
+  того же файла (разовый tsx, Python-инструмент) даёт `SQLITE_BUSY_SNAPSHOT`,
+  которую busy-handler не переигрывает по построению. Исключение всплыло бы в
+  воркере цикла, и цель молча выпала бы из прогона.
 - `monitor-notify.ts` — сводка о падениях в Telegram. Поводов два:
   переход **в** `down` («упало») и **из** `down` («поднялось», в том числе в
   `slow`). Всё остальное молчит, и это не экономия: первая проверка новой цели
@@ -515,7 +608,10 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   и ошибка экранирования стоила бы всего сообщения. Пока страница лежит,
   напоминаний нет — второе сообщение приходит на восстановление. Нет токена
   или нет ни одного чата (`readTelegramConfig`) — рассылка выключена, поэтому
-  локально и в тестах наружу ничего не уходит само.
+  локально и в тестах наружу ничего не уходит само. Коды воронок в сводке —
+  только **активных** держателей адреса, как в ленте инцидентов и в таблице
+  целей: связь с 18.09.2026 хранит держателей всех статусов, а сводка читается
+  как «идите чинить вот это», и архивный код рядом с активным посылает не туда.
 - `monitor-view.ts` — dashboard read models. Group counters (`sourceKinds`) count
   **only pages of active funnels**: archiving a funnel is itself the decision that
   its pages leave monitoring, so they drop out of the denominator, as do orphaned
@@ -523,10 +619,11 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   target that a human enabled by hand still counts, so `enabled` can never exceed
   `total`. Each target also carries `usage` — `active` / `inactive` (held only by
   a draft/archive funnel) / `orphan` (held by nobody) — used **only** to explain
-  in the table why a row is off. `inactive` vs `orphan` is resolved by
-  re-collecting funnel URLs for non-active statuses via `collectFunnelUrls`
-  (same normalization as the sync), not from a stored column. В `summary` лежит
-  и `telegram` (`{ configured, chats }`) — состояние рассылки читается из
+  in the table why a row is off. `inactive` vs `orphan` is read straight from
+  the holders of the link (`funnelsByTarget` carries their status): links now
+  exist for every status, so the second pass over funnel data that used to
+  resolve this — `collectFunnelUrls` — is gone, and with it the whole detour.
+  В `summary` лежит и `telegram` (`{ configured, chats }`) — состояние рассылки читается из
   окружения и показывается в шапке `/monitoring`: ненастроенная рассылка молчит
   ровно так же, как настроенная и спокойная. Ошибки **отправки** там не
   показываем и показать не можем: цикл живёт в рантайме инструментации, а
@@ -554,7 +651,24 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   и отвечает `{ id, hasTime, resynced }`.
 - `GET /api/tag-templates` and `PUT /api/tag-templates/[scenario]` — global template.
 - `GET /api/export` — CSV export of all funnels.
-- `GET /api/monitoring` — summary + targets with state.
+- `GET /api/monitoring` — summary + targets with state, plus `roomCheck` next to
+  `summary` (the canary verdict; it is a separate key so `getMonitorDashboard`
+  stays synchronous).
+- `GET /api/monitoring/funnels` — per-funnel link health for the list, plus
+  `checkingFunnelId`. A separate route and not a field in `/api/funnels`: the
+  latter is on the public-read whitelist, and monitoring would become public.
+- `GET /api/monitoring/funnels/[id]` — that funnel's aggregate, its problem
+  addresses with their origin, and `checking`.
+- `POST /api/monitoring/funnels/[id]/run` — check one funnel's addresses.
+  **202** like the common cycle (24 addresses on average, 49 at most: from 3
+  seconds to ~2.5 minutes); **409** while another check is running, and the body
+  names `checkingFunnelId` — the same funnel and a different one need different
+  words, and a single wording lied in half the cases. Scope: targets with
+  `enabled = 1` **or** whose group default is on. Not «everything, muted
+  included»: measured on `f37` (18.09.2026), four of five findings were `links`
+  — GetCourse admin pages that answer `403` always — and one click would have
+  painted the funnel with a false alarm for seven days, with the real finding, a
+  dead room, fifth in the list.
 - `POST /api/monitoring/run` — start a check cycle. Returns **202** as soon as
   the cycle has started (it is not awaited — a wide scope can take tens of
   minutes and any proxy would cut the request); 409 if one is already running.
@@ -602,7 +716,13 @@ Components (`app/src/components/`): `AppHeader`, `FunnelCard`,
 **всегда**: клик по заголовку группы делает то же самое, но о нём надо знать
 заранее, и фильтра на экране просто не было видно),
 `AuthProvider` (контекст прав + `useCanEdit`), `EditorGate`, `LoginForm`,
-plus UI primitives (`StatusPill`, `CodeChip`, `Segmented`, `Switch`,
+`FunnelHealthPill` (пилюля состояния ссылок — стоит в той же flex-группе, что
+`StatusPill` и чип типа: отдельная колонка сетки оставила бы дыру у
+большинства строк, пилюля есть у меньшинства; видна только редактору) и
+`FunnelHealthSection` (секция «Проверка ссылок» — последней в
+`FunnelSections`: читают её, когда уже что-то заподозрили; анониму её нет
+вовсе, а не `readOnly`, — роут ответит ему 401, и пустая секция выглядела бы
+поломкой), plus UI primitives (`StatusPill`, `CodeChip`, `Segmented`, `Switch`,
 `GroupToggle`, `UrlInput`, `Toast` — у первых четырёх есть `disabled`/
 `readOnly` для режима просмотра). `monitoring/` (`MonitorStatusPill`,
 `MonitorSummary`, `MonitorTable`, `MonitorEvents`) backs the monitoring page.

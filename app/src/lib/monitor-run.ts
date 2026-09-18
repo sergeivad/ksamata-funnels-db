@@ -2,7 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { type AnyDB } from '../db/client';
 import { monitorTargets, monitorState, monitorEvents } from '../db/schema';
 import { checkUrl, type CheckFn, type CheckResult } from './monitor-check';
-import { syncMonitorTargets } from './monitor-targets';
+import { syncTargetsForFunnelCheck, syncMonitorTargets, selectFunnelCheckTargets } from './monitor-targets';
 import { notifyMonitorEvents } from './monitor-notify';
 
 export const RETRY_DELAY_MS = 3_000;
@@ -47,6 +47,8 @@ export type NotifyFn = (db: AnyDB, sinceEventId: number) => Promise<unknown>;
 // наложения работала бы только в тестах, где инстанс модуля один.
 interface MonitorRunState {
   cycleRunning: boolean;
+  /** Воронка, которую проверяют вручную. null — ручной проверки нет. */
+  funnelCheckId?: number | null;
 }
 
 declare global {
@@ -64,6 +66,11 @@ function runState(): MonitorRunState {
 
 export function isCycleRunning(): boolean {
   return runState().cycleRunning;
+}
+
+/** id воронки, которую проверяют прямо сейчас, или null. Наполняется в runFunnelCheck. */
+export function runningFunnelCheckId(): number | null {
+  return runState().funnelCheckId ?? null;
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -111,21 +118,45 @@ function maxEventId(db: AnyDB): number {
   return row?.max ?? 0;
 }
 
+/**
+ * Чтение прошлого статуса — ВНУТРИ транзакции, но не потому, что здесь раньше
+ * была гонка между двумя прогонами одного процесса: better-sqlite3 синхронна,
+ * а SELECT и `db.transaction(...)` шли подряд без единого `await` — наложиться
+ * было некому, и однопоточный JS уже гарантировал атомарность.
+ *
+ * Гарантия нужна для двух других случаев, которых однопоточность не покрывает:
+ * (1) второе соединение к тому же файлу — SQLite сериализует пишущие
+ * транзакции МЕЖДУ соединениями (другой процесс, отдельный tsx-скрипт), а не
+ * только внутри одного; (2) появление `await` между чтением и записью в
+ * будущем — тогда наложение станет возможным и в одном процессе, и граница
+ * транзакции уже будет на месте, а не потребует нового ревью.
+ *
+ * `behavior: 'immediate'` — не украшение, без него первый случай не покрыт.
+ * `db.transaction()` у better-sqlite3 открывает DEFERRED-транзакцию, а она с
+ * `SELECT`-ом первой строкой начинается ЧИТАЮЩЕЙ: попытка записать в неё после
+ * того, как файл успел изменить другой писатель, даёт `SQLITE_BUSY_SNAPSHOT`,
+ * которую busy-handler не переигрывает по построению — снимок читающей
+ * транзакции уже устарел, ждать бесполезно. Исключение всплыло бы в воркере
+ * цикла, и цель молча выпала бы из прогона. `BEGIN IMMEDIATE` берёт write-lock
+ * сразу, до чтения, и `busy_timeout` его честно вытягивает. До переноса
+ * `SELECT` внутрь транзакция начиналась с записи и была immediate по
+ * стечению обстоятельств.
+ */
 function persist(db: AnyDB, target: TargetRow, result: CheckResult): void {
-  const prev = db
-    .select({
-      status: monitorState.status,
-      consecutiveFailures: monitorState.consecutiveFailures,
-    })
-    .from(monitorState)
-    .where(eq(monitorState.targetId, target.id))
-    .get() as { status: string; consecutiveFailures: number } | undefined;
-
-  const prevStatus = prev?.status ?? 'unknown';
-  const failures = result.status === 'down' ? (prev?.consecutiveFailures ?? 0) + 1 : 0;
-  const changed = prevStatus !== result.status;
-
   db.transaction((tx) => {
+    const prev = tx
+      .select({
+        status: monitorState.status,
+        consecutiveFailures: monitorState.consecutiveFailures,
+      })
+      .from(monitorState)
+      .where(eq(monitorState.targetId, target.id))
+      .get() as { status: string; consecutiveFailures: number } | undefined;
+
+    const prevStatus = prev?.status ?? 'unknown';
+    const failures = result.status === 'down' ? (prev?.consecutiveFailures ?? 0) + 1 : 0;
+    const changed = prevStatus !== result.status;
+
     tx.insert(monitorState)
       .values({
         targetId: target.id,
@@ -166,7 +197,7 @@ function persist(db: AnyDB, target: TargetRow, result: CheckResult): void {
         })
         .run();
     }
-  });
+  }, { behavior: 'immediate' });
 }
 
 /** Прогон по всем включённым целям. Возвращает null, если цикл уже идёт. */
@@ -252,5 +283,105 @@ export async function runMonitorCycle(
     // Снимаем флаг в том же слоте, из которого его читали — на случай, если
     // globalThis.__ksamataMonitorRun подменили между стартом и финишем.
     state.cycleRunning = false;
+  }
+}
+
+/**
+ * Прогон по целям одной воронки. Возвращает null, если ручная проверка уже идёт.
+ *
+ * Флаг свой, отдельный от общего цикла: общий идёт около трёх минут из каждых
+ * пятнадцати, и единый флаг давал бы отказ на каждом пятом клике по главной
+ * кнопке. Гонку за одну цель закрывает транзакция в persist, а не запрет.
+ *
+ * Берутся цели, у которых `enabled = 1` ИЛИ включён дефолт их группы
+ * (`selectFunnelCheckTargets` в `monitor-targets.ts` — там же живёт единственное
+ * определение дефолта, общее с синком). Это не «включённые», но и не «все
+ * подряд»: у черновика все цели `enabled = 0` не потому, что решена группа, а
+ * потому, что ни одна активная воронка адрес не держит (`hasActive` в синке)
+ * — дефолт группы (`landings`, `room_*`, `tariffs`, …) при этом включён, и
+ * такая цель проверяется. А у `links`/`processes` `enabled = 0` — это и есть
+ * решение по группе («не проверять»), и ручная проверка его уважает: до
+ * 18.09.2026 она била по всем целям без разбора, и четыре служебных адреса
+ * `links` (админка GetCourse, требует сессии, всегда 403) красили воронку в
+ * «упало» на неделю, топя единственную настоящую находку под собой.
+ *
+ * Уведомляет так же, как общий цикл, и тем же способом (своя отсечка
+ * `maxEventId`, тот же перехват ошибки) — иначе падение, найденное ручной
+ * проверкой, тихо украло бы переход у ближайшего фонового цикла: тот увидел
+ * бы статус уже изменившимся, второго события не написал бы, и в чат не
+ * ушло бы уже ничего и никогда — не «узнали с опозданием», а «не узнали
+ * вовсе». `notifyMonitorEvents` при этом фильтрует события по `enabled = 1`
+ * (см. там же) — без фильтра первая проверка черновика (десятки выключенных
+ * целей со статусом `unknown → down`) зашумила бы чат тем, что не падение, а
+ * ненастроенная страница.
+ */
+export async function runFunnelCheck(
+  db: AnyDB,
+  funnelId: number,
+  opts: CycleOptions = {}
+): Promise<CycleResult | null> {
+  const state = runState();
+  if (state.funnelCheckId != null) return null;
+  state.funnelCheckId = funnelId;
+
+  const check: CheckFn = opts.check ?? ((url) => checkUrl(url));
+  const concurrency = opts.concurrency ?? CONCURRENCY;
+  const retryDelayMs = opts.retryDelayMs ?? RETRY_DELAY_MS;
+  const sleep = opts.sleep ?? defaultSleep;
+  const notify = opts.notify ?? notifyMonitorEvents;
+  const startedAt = new Date().toISOString();
+  const tally = { up: 0, slow: 0, down: 0 };
+
+  try {
+    // Отсечка — тем же способом и по той же причине, что в общем цикле
+    // (комментарий там же): иначе найденный здесь переход не попал бы под
+    // «после отсечки» и уведомитель его не увидел бы.
+    const sinceEventId = maxEventId(db);
+
+    if (opts.sync !== false) syncTargetsForFunnelCheck(db);
+
+    const targets = selectFunnelCheckTargets(db, funnelId);
+
+    let cursor = 0;
+    let checked = 0;
+    const worker = async () => {
+      for (;;) {
+        const index = cursor;
+        cursor += 1;
+        if (index >= targets.length) return;
+        const target = targets[index];
+        try {
+          const result = await checkWithRetry(target.url, check, retryDelayMs, sleep);
+          persist(db, target, result);
+          tally[result.status] += 1;
+          checked += 1;
+        } catch (err) {
+          console.error(`monitor: цель ${target.url} упала с ошибкой`, err);
+        }
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, Math.max(targets.length, 1)) }, worker)
+    );
+
+    // Уведомление не вправе ронять ручную проверку — та же причина, что и в
+    // общем цикле: упавший Telegram не должен превращаться в упавшую кнопку.
+    try {
+      await notify(db, sinceEventId);
+    } catch (err) {
+      console.error('[monitor] уведомление не ушло (ручная проверка)', err);
+    }
+
+    return {
+      checked,
+      up: tally.up,
+      slow: tally.slow,
+      down: tally.down,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+    };
+  } finally {
+    state.funnelCheckId = null;
   }
 }

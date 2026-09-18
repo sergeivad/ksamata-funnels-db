@@ -13,6 +13,14 @@
  * (`/api/funnels/${id}` в BlockEditor, FunnelIdentity, RoomsEditor, page.tsx)
  * — их трогать не нужно, API как адресовал воронку числовым id, так и
  * адресует. Негативный лукбехайд `(?<!\/api)` их исключает.
+ *
+ * Раунд правок 2: тот лукбехайд ловил только плоский `/api/funnels/${…}` —
+ * слэш между `api` и `funnels` там один, и лукбехайд без хвостового слэша
+ * делит его с началом совпадения. У вложенных роутов мониторинга
+ * (`/api/monitoring/funnels/${id}`, задача 6) слэшей уже два — свой у `/api`
+ * и свой перед `funnels` — и старый лукбехайд их не видел, ложно обвиняя
+ * `FunnelHealthSection.tsx` и `page.tsx`. Опциональная группа `(?:\/[\w-]*)?`
+ * покрывает любую глубину пути под `/api/`, не теряя случай без вложенности.
  */
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -23,9 +31,10 @@ const ALLOWED = 'lib/front-code.ts';
 
 // Динамическая сборка адреса: `/funnels/${…}` или '/funnels/' + …
 // Негативный лукбехайд исключает машинные вызовы REST (`/api/funnels/${id}`,
-// GET/PATCH/DELETE /api/funnels/[id] по контракту) — это не ссылка на
-// карточку, а адрес API, и он по-прежнему числовой, менять его не нужно.
-const OFFENDERS = [/(?<!\/api)\/funnels\/\$\{/, /['"`]\/funnels\/['"`]\s*\+/];
+// `/api/monitoring/funnels/${id}` и т.п. — любая глубина пути под `/api/`)
+// — это не ссылка на карточку, а адрес API, и он по-прежнему числовой,
+// менять его не нужно.
+const OFFENDERS = [/(?<!\/api(?:\/[\w-]*)?)\/funnels\/\$\{/, /['"`]\/funnels\/['"`]\s*\+/];
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -52,5 +61,8 @@ describe('ссылка на карточку строится только в fr
     expect(OFFENDERS.some((re) => re.test("router.push('/funnels/' + id)"))).toBe(true);
     expect(OFFENDERS.some((re) => re.test('<Code>/funnels/78</Code>'))).toBe(false);
     expect(OFFENDERS.some((re) => re.test('fetch(`/api/funnels/${id}`)'))).toBe(false);
+    // Раунд 2: вложенный путь под /api/ (мониторинг воронки, задача 6) —
+    // тоже машинный вызов, а не ссылка на карточку.
+    expect(OFFENDERS.some((re) => re.test('fetch(`/api/monitoring/funnels/${id}`)'))).toBe(false);
   });
 });

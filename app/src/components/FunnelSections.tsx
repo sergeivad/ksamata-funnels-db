@@ -11,6 +11,7 @@ import FunnelIdentity from './FunnelIdentity';
 import RoomsEditor from './RoomsEditor';
 import BlockEditor from './BlockEditor';
 import FunnelCompactView from './FunnelCompactView';
+import FunnelHealthSection from './FunnelHealthSection';
 import Segmented from './Segmented';
 import { useCanEdit } from './AuthProvider';
 
@@ -154,6 +155,11 @@ export default function FunnelSections({ funnel, funnelId, initialDays, landings
           />
         ))}
       </div>
+
+      {/* Проверка ссылок — не редактор, поэтому вне переключателя режимов:
+          её читают и в просмотре. Последней: сюда приходят, уже что-то
+          заподозрив, а не первым делом. */}
+      <FunnelHealthSection funnelId={funnelId} />
     </>
   );
 }

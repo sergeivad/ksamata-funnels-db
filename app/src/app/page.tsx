@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronRight, Download, X } from 'lucide-react';
+import { AlertCircle, ChevronRight, Download, X } from 'lucide-react';
 import FunnelCard from '@/components/FunnelCard';
 import Toast from '@/components/Toast';
 import GroupToggle from '@/components/GroupToggle';
@@ -30,9 +30,13 @@ import {
   countLabel,
   STATUS_TOAST,
 } from '@/lib/status';
+import { type FunnelHealth, funnelHealthTone } from '@/lib/funnel-health';
+import { MAX_POLL_FAILURES, POLL_INTERVAL_MS } from '@/lib/monitor-status';
 
 const LS_KEY = 'funnels.groupBy';
 const LS_STATUS_KEY = 'funnels.statusFilter';
+
+const EMPTY_HEALTH: FunnelHealth = { down: 0, unknown: 0, enabled: 0, total: 0, lastCheckedAt: null };
 
 const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: 'Все' },
@@ -93,6 +97,70 @@ export default function HomePage() {
   // Фильтры осей живут только в состоянии страницы: сохранённый в localStorage
   // фильтр через неделю читается как «база усохла».
   const [filters, setFilters] = useState<AxisFilters>({});
+  const [health, setHealth] = useState<Record<number, FunnelHealth>>({});
+  // Пришло ли состояние ссылок. Пустой объект от «ещё не загружали» не
+  // отличить, а чип «Только с проблемами» на неизвестном состоянии опустошает
+  // список: у всех воронок тон 'ok', потому что данных нет.
+  const [healthLoaded, setHealthLoaded] = useState(false);
+  // Какая воронка проверяется прямо сейчас — на весь сервис она одна
+  // (`runningFunnelCheckId`). Пока не null, список опрашивает роут.
+  const [checkingId, setCheckingId] = useState<number | null>(null);
+  const [problemsOnly, setProblemsOnly] = useState(false);
+
+  // Состояние мониторинга приходит вторым запросом и только редактору: роут
+  // закрыт requireEditor, анониму он ответит 401. Отказ гасим молча — список
+  // воронок обязан работать и без мониторинга.
+  useEffect(() => {
+    if (!canEdit) return;
+    let cancelled = false;
+    fetch('/api/monitoring/funnels')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.health) return;
+        setHealth(data.health);
+        setHealthLoaded(true);
+        // Проверку могли запустить с карточки или в другой вкладке — тогда
+        // список показывает её с первой же отрисовки, а не делает вид, что
+        // ничего не происходит.
+        setCheckingId(data.checkingFunnelId ?? null);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [canEdit, reloadKey]);
+
+  /**
+   * Опрос, пока идёт проверка воронки. Без него нажатие «Проверить ссылки»
+   * меняло на экране ровно ничего: тост — и тишина до перезагрузки страницы.
+   *
+   * Период и предел неудач — общие с `/monitoring` и с секцией на карточке
+   * (`monitor-status.ts`): третьего периода в сервисе быть не должно.
+   */
+  useEffect(() => {
+    if (checkingId === null) return;
+    let failures = 0;
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          const res = await fetch('/api/monitoring/funnels');
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          failures = 0;
+          if (data?.health) {
+            setHealth(data.health);
+            setHealthLoaded(true);
+          }
+          // Состояние обновляем ДО того, как гасим индикатор: тот же ответ
+          // несёт и свежий агрегат, и «проверка кончилась».
+          if ((data?.checkingFunnelId ?? null) === null) setCheckingId(null);
+        } catch {
+          failures += 1;
+          // Сервер пропал — снимаем индикатор, иначе он крутится вечно.
+          if (failures >= MAX_POLL_FAILURES) setCheckingId(null);
+        }
+      })();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [checkingId]);
 
   // Load groupBy / statusFilter from localStorage on mount (client-only)
   useEffect(() => {
@@ -267,6 +335,39 @@ export default function HomePage() {
     []
   );
 
+  const handleCheck = useCallback(async (funnel: FunnelListItem) => {
+    try {
+      const res = await fetch(`/api/monitoring/funnels/${funnel.id}/run`, { method: 'POST' });
+
+      // 409 приходит в двух разных случаях, и раньше тост называл только
+      // один: «Проверка другой воронки уже идёт» врало ровно тогда, когда
+      // занята была ЭТА же воронка — нажали дважды или открыли её в двух
+      // вкладках. Кто занял флаг, говорит `checkingFunnelId` в теле отказа.
+      if (res.status === 409) {
+        const body = (await res.json().catch(() => null)) as { checkingFunnelId?: number } | null;
+        const busyId = body?.checkingFunnelId ?? null;
+        if (busyId === funnel.id) {
+          setCheckingId(funnel.id);
+          showToast('Эта воронка уже проверяется', 'success');
+          return;
+        }
+        const busy = funnels.find((f) => f.id === busyId);
+        setCheckingId(busyId);
+        showToast(
+          busy ? `Сейчас проверяется ${funnelLabel(busy)}` : 'Проверка уже идёт',
+          'error',
+        );
+        return;
+      }
+
+      if (!res.ok) throw new Error('Ошибка сервера');
+      setCheckingId(funnel.id);
+      showToast('Проверка запущена', 'success');
+    } catch {
+      showToast('Не удалось запустить проверку', 'error');
+    }
+  }, [funnels]);
+
   /**
    * Выдача считается в два шага, и это не лишний проход: счётчики в меню оси
    * берутся без её собственного фильтра, поэтому `FacetBar` нужен список,
@@ -275,8 +376,9 @@ export default function HomePage() {
   const searchedFunnels = useMemo(() => {
     return funnels
       .filter((f) => isFunnelVisible(f, statusFilter, search))
+      .filter((f) => !problemsOnly || funnelHealthTone(health[f.id] ?? EMPTY_HEALTH) !== 'ok')
       .sort(compareByFrontCodeDesc);
-  }, [funnels, statusFilter, search]);
+  }, [funnels, statusFilter, search, problemsOnly, health]);
 
   const visibleFunnels = useMemo(
     () => searchedFunnels.filter((f) => matchesFilters(f.axes, filters)),
@@ -319,9 +421,12 @@ export default function HomePage() {
           title: buildTitle(funnel),
           funnelType: funnel.funnelType,
         }}
+        health={health[funnel.id] ?? null}
+        checking={checkingId === funnel.id}
         onSetStatus={(s) => handleSetStatus(funnel, s)}
         onDuplicate={() => handleDuplicate(funnel)}
         onDelete={() => handleDelete(funnel)}
+        onCheck={() => handleCheck(funnel)}
       />
     );
   }
@@ -426,6 +531,33 @@ export default function HomePage() {
           onClear={handleClearAxis}
           onClearAll={() => setFilters({})}
         />
+      )}
+
+      {!loading && canEdit && funnels.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setProblemsOnly((v) => !v)}
+          aria-pressed={problemsOnly}
+          // Пока состояние ссылок не пришло, у всех воронок тон 'ok', и
+          // нажатый в это окно чип опустошал список — «ничего не найдено»
+          // читалось как ответ, хотя это просто отсутствие данных.
+          disabled={!healthLoaded}
+          title={
+            healthLoaded
+              ? 'Показать только воронки с проблемными ссылками'
+              : 'Состояние ссылок ещё не загружено'
+          }
+          className={[
+            'mb-3 inline-flex items-center gap-1.5 rounded-[8px] border px-2.5 py-1 text-[12px] transition',
+            problemsOnly
+              ? 'border-[#F3B8AD] bg-[#FBE3E3] text-[#A32020]'
+              : 'border-[var(--color-border-soft)] bg-white text-[var(--color-text-secondary)] hover:border-[var(--color-text-secondary)]',
+            'disabled:cursor-default disabled:opacity-50 disabled:hover:border-[var(--color-border-soft)]',
+          ].join(' ')}
+        >
+          <AlertCircle className="h-3.5 w-3.5" />
+          Только с проблемами
+        </button>
       )}
 
       {/* Grouping toggle + count */}

@@ -6,7 +6,7 @@ import Toast from '@/components/Toast';
 import MonitorSummary from '@/components/monitoring/MonitorSummary';
 import MonitorTable from '@/components/monitoring/MonitorTable';
 import MonitorEvents from '@/components/monitoring/MonitorEvents';
-import { MONITOR_STATUS_META } from '@/lib/monitor-status';
+import { MONITOR_STATUS_META, MAX_POLL_FAILURES, POLL_INTERVAL_MS } from '@/lib/monitor-status';
 import { sourceKindLabel, sourceKindTone } from '@/lib/monitor-kinds';
 import type {
   MonitorEventView,
@@ -14,6 +14,7 @@ import type {
   MonitorSummaryView,
   MonitorTargetView,
 } from '@/lib/monitor-view';
+import type { CanaryView } from '@/lib/monitor-canary';
 
 type StatusFilter = 'all' | 'down' | 'slow' | 'up';
 
@@ -28,6 +29,7 @@ interface DashboardData {
   summary: MonitorSummaryView;
   sourceKinds: MonitorSourceKindView[];
   targets: MonitorTargetView[];
+  roomCheck: CanaryView;
 }
 
 interface ToastState {
@@ -35,17 +37,6 @@ interface ToastState {
   variant: 'success' | 'error';
   key: number;
 }
-
-/** Период опроса, пока идёт цикл. Реже — кнопка «отвисает» заметно позже. */
-const POLL_INTERVAL_MS = 2_000;
-
-/**
- * Сколько неудачных попыток подряд опрос терпит, прежде чем сдаться.
- * Без этого пропавший сервер держал бы страницу в вечном опросе раз в 2 с за
- * баннером «не удалось загрузить», а тост «Проверка завершена» оставался бы
- * взведённым и выстрелил бы, как только сервер внезапно вернётся.
- */
-const MAX_POLL_FAILURES = 5;
 
 export default function MonitoringPage() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -235,7 +226,12 @@ export default function MonitoringPage() {
 
       {data && (
         <div className="mt-4 space-y-4">
-          <MonitorSummary summary={data.summary} running={running} onRun={runNow} />
+          <MonitorSummary
+            summary={data.summary}
+            running={running}
+            onRun={runNow}
+            roomCheck={data.roomCheck}
+          />
 
           <div>
             <p className="text-[12px] text-[var(--muted)]">

@@ -2,13 +2,15 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ChevronRight, Copy, MoreVertical, Trash2 } from 'lucide-react';
+import { ChevronRight, Copy, MoreVertical, RefreshCw, Trash2 } from 'lucide-react';
 import CodeChip from './CodeChip';
 import StatusPill from './StatusPill';
+import FunnelHealthPill from './FunnelHealthPill';
 import { useCanEdit } from './AuthProvider';
 import { FUNNEL_STATUSES, STATUS_ACTION_LABELS, type FunnelStatus } from '@/lib/status';
 import { DEFAULT_FUNNEL_TYPE } from '@/lib/funnel-type';
 import { funnelHref } from '@/lib/front-code';
+import type { FunnelHealth } from '@/lib/funnel-health';
 
 interface Funnel {
   id: number;
@@ -20,16 +22,24 @@ interface Funnel {
 
 interface FunnelCardProps {
   funnel: Funnel;
+  /** Состояние ссылок; null — не загружено или аноним. */
+  health?: FunnelHealth | null;
+  /** Идёт ручная проверка ссылок именно этой воронки. */
+  checking?: boolean;
   onSetStatus: (status: FunnelStatus) => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onCheck: () => void;
 }
 
 export default function FunnelCard({
   funnel,
+  health,
+  checking = false,
   onSetStatus,
   onDuplicate,
   onDelete,
+  onCheck,
 }: FunnelCardProps) {
   const canEdit = useCanEdit();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -66,6 +76,19 @@ export default function FunnelCard({
       {/* Status pill — wrapped so the span sizes to its text instead of
           stretching to fill the grid column (which left a big empty gap). */}
       <div className="flex min-w-0 flex-wrap items-center gap-1">
+        {/* Пока идёт проверка — видимый признак в строке: без него нажатие
+            «Проверить ссылки» не меняло на экране ничего, и понять, сработало
+            ли оно, можно было только перезагрузив страницу. */}
+        {checking && (
+          <span
+            className="inline-flex items-center gap-1 rounded bg-[#E8E4DA] px-1.5 py-0.5 text-[11px] text-[#5E5A52]"
+            title="Идёт проверка ссылок этой воронки"
+          >
+            <RefreshCw className="h-3 w-3 animate-spin" />
+            Проверяем…
+          </span>
+        )}
+        {health && <FunnelHealthPill health={health} href={`${href}#health`} />}
         <StatusPill status={funnel.status} />
         {/* Тип воронки показываем только когда он отличается от дефолтной
             «АВ Автоворонка» — иначе изменится 72 карточки из 72, хотя тип
@@ -126,6 +149,21 @@ export default function FunnelCard({
                     {STATUS_ACTION_LABELS[s]}
                   </button>
                 ))}
+                <div className="my-1 h-px bg-[var(--color-border-soft)]" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  // Пока проверка этой воронки идёт, повторный клик вернул бы
+                  // 409 — честнее не дать нажать.
+                  disabled={checking}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onCheck();
+                  }}
+                  className="flex w-full items-center px-3 py-1.5 text-left text-[12px] text-[#111111] transition hover:bg-[#F5F3EE] disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
+                >
+                  {checking ? 'Проверяем…' : 'Проверить ссылки'}
+                </button>
               </div>
             </>
           )}

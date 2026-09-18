@@ -52,6 +52,15 @@ function wipeFunnelUrls() {
 }
 
 /**
+ * Второй источник целей — сетка комнат (funnel_days). Тест, который хочет
+ * «вообще ни одного URL в воронках», обязан стереть и её: копия реальной БД
+ * несёт сотни строк комнат у активных воронок, и без этого «пусто» не пусто.
+ */
+function wipeRooms() {
+  sqlite.prepare(`DELETE FROM funnel_days`).run();
+}
+
+/**
  * Кладёт лендинг(и) воронки — то есть строки блока «Лендинги», единственного
  * места, где адрес посадочной живёт после Phase-10. Пустой список очищает блок.
  */
@@ -233,6 +242,10 @@ describe('syncMonitorTargets', () => {
   it('гасит все цели, когда нет ни одного URL в воронках', () => {
     clearMonitoringState();
     wipeFunnelUrls();
+    // Комнаты — второй источник целей (задача 2): копия реальной БД несёт
+    // сотни строк funnel_days у активных воронок, и без зачистки «ни одного
+    // URL в воронках» было бы неправдой.
+    wipeRooms();
     const [f1, f2] = funnelIds(2);
 
     // Первый синк: заводим 2 цели из разных источников
@@ -248,6 +261,7 @@ describe('syncMonitorTargets', () => {
 
     // Второй синк: стираем все URL и проверяем, что все цели гасятся
     wipeFunnelUrls();
+    wipeRooms();
     const secondStats = syncMonitorTargets(db);
 
     expect(secondStats.retired).toBe(2);
@@ -515,11 +529,12 @@ describe('manual_override: фиксируется только на отклон
  * что существовали на момент клика, и новая приходила выключенной навсегда.
  */
 /**
- * Проверяем только активные воронки. Страницы черновиков и архива могут лежать
- * на законных основаниях, и их падения — шум, из-за которого перестают смотреть
- * на настоящие.
+ * Проверяются (enabled) только страницы активных воронок — их падения не шум,
+ * а сигнал. Страницы черновиков и архива могут лежать на законных основаниях,
+ * поэтому с 18.09.2026 они тоже заводят цель и связь (см. collectTargets),
+ * просто без enabled: связь — «кто держит адрес», а не «кого проверяем».
  */
-describe('в мониторинг попадают только активные воронки', () => {
+describe('enabled только у активных воронок, цель и связь — у всех статусов', () => {
   function setStatus(funnelId: number, status: string) {
     sqlite.prepare(`UPDATE funnels SET status = ? WHERE id = ?`).run(status, funnelId);
   }
@@ -531,9 +546,12 @@ describe('в мониторинг попадают только активные
     sqlite.prepare(`INSERT INTO funnel_block_items (block_id, url) VALUES (?, ?)`).run(block, url);
   }
 
-  it('не заводит цели по блокам черновика и архива', () => {
+  it('заводит цели по блокам черновика и архива, но не включает их', () => {
     clearMonitoringState();
     wipeFunnelUrls();
+    // Комнаты (задача 2) — второй источник целей; без зачистки активные
+    // воронки в копии реальной БД принесли бы свои комнаты в подсчёт.
+    wipeRooms();
     const [f1, f2, f3] = funnelIds(3);
     setStatus(f1, 'active');
     setStatus(f2, 'draft');
@@ -544,13 +562,14 @@ describe('в мониторинг попадают только активные
 
     const stats = syncMonitorTargets(db);
 
-    expect(stats.total).toBe(1);
+    // Все три адреса заводят цель и связь — их держит воронка, статус не важен.
+    expect(stats.total).toBe(3);
     expect(targetRow('https://lp.example.ru/live')?.enabled).toBe(1);
-    expect(targetRow('https://lp.example.ru/draft')).toBeUndefined();
-    expect(targetRow('https://lp.example.ru/archived')).toBeUndefined();
+    expect(targetRow('https://lp.example.ru/draft')?.enabled).toBe(0);
+    expect(targetRow('https://lp.example.ru/archived')?.enabled).toBe(0);
   });
 
-  it('не берёт лендинг неактивной воронки', () => {
+  it('заводит цель за лендингом неактивной воронки, но выключенной', () => {
     clearMonitoringState();
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
@@ -559,7 +578,9 @@ describe('в мониторинг попадают только активные
 
     syncMonitorTargets(db);
 
-    expect(targetRow('https://lp.example.ru/archived-field')).toBeUndefined();
+    const row = targetRow('https://lp.example.ru/archived-field');
+    expect(row).toBeDefined();
+    expect(row?.enabled).toBe(0);
   });
 
   it('гасит цель, когда воронку убрали из активных, и оживляет при возврате', () => {
@@ -584,7 +605,7 @@ describe('в мониторинг попадают только активные
     expect(targetRow(url)?.enabled).toBe(1);
   });
 
-  it('оставляет под проверкой URL, который делят активная и архивная воронки', () => {
+  it('оставляет под проверкой URL, который делят активная и архивная воронки, и связывает с обеими', () => {
     clearMonitoringState();
     wipeFunnelUrls();
     const [f1, f2] = funnelIds(2);
@@ -598,11 +619,13 @@ describe('в мониторинг попадают только активные
 
     const target = targetRow(url)!;
     expect(target.enabled).toBe(1);
-    // В связях числится только активная — иначе чипы «Воронки» врали бы.
+    // Связь — «кто держит адрес», а не «кого проверяем»: числятся обе. Раньше
+    // в связях оставалась только активная, и это было прежним смыслом
+    // monitor_target_funnels — с 18.09.2026 он другой (см. collectTargets).
     const links = sqlite
-      .prepare(`SELECT funnel_id FROM monitor_target_funnels WHERE target_id = ?`)
+      .prepare(`SELECT funnel_id FROM monitor_target_funnels WHERE target_id = ? ORDER BY funnel_id`)
       .all(target.id) as { funnel_id: number }[];
-    expect(links.map((l) => l.funnel_id)).toEqual([f1]);
+    expect(links.map((l) => l.funnel_id)).toEqual([f1, f2].sort((a, b) => a - b));
   });
 });
 
@@ -690,7 +713,11 @@ describe('предпочтение группы наследуется новы�
     clearMonitoringState();
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
-    addUrl(makeBlock(f1, 'upsell'), 'https://med.example.ru/single');
+    // 'upsell' сюда не годится с 18.09.2026 — он теперь в DEFAULT_ENABLED_SOURCE_KINDS,
+    // и «включить» стало бы совпадением с дефолтом группы, а не отклонением от
+    // него (override тогда не ставился бы, и тест проверял бы не то). 'links' —
+    // служебная группа, остаётся выключенной по умолчанию, что и нужно тесту.
+    addUrl(makeBlock(f1, 'links'), 'https://med.example.ru/single');
 
     syncMonitorTargets(db);
     const target = targetRow('https://med.example.ru/single')!;
@@ -728,6 +755,125 @@ describe('setTargetEnabled', () => {
   });
 });
 
+describe('комнаты как цели', () => {
+  /** Кладёт одну строку сетки комнат. Все прочие колонки funnel_days — по умолчанию. */
+  function setRoom(funnelId: number, slot: '15' | '19', day: number,
+                   gc: string, web: string, replay = '') {
+    sqlite.prepare(`DELETE FROM funnel_days WHERE funnel_id = ? AND time_slot = ? AND day_num = ?`)
+      .run(funnelId, slot, day);
+    sqlite.prepare(
+      `INSERT INTO funnel_days (funnel_id, time_slot, day_num, gc_room, web_room, replay_url)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(funnelId, slot, day, gc, web, replay);
+  }
+
+  function wipeRooms() {
+    sqlite.prepare(`DELETE FROM funnel_days`).run();
+  }
+
+  function activeFunnelId(): number {
+    return (sqlite.prepare(`SELECT id FROM funnels WHERE status = 'active' LIMIT 1`)
+      .get() as { id: number }).id;
+  }
+
+  function kindOf(url: string): string | undefined {
+    return (sqlite.prepare(`SELECT source_kind FROM monitor_targets WHERE url = ?`)
+      .get(url) as { source_kind: string } | undefined)?.source_kind;
+  }
+
+  function enabledOf(url: string): number | undefined {
+    return (sqlite.prepare(`SELECT enabled FROM monitor_targets WHERE url = ?`)
+      .get(url) as { enabled: number } | undefined)?.enabled;
+  }
+
+  it('заводит цели трёх видов из сетки комнат', () => {
+    wipeFunnelUrls();
+    wipeRooms();
+    const id = activeFunnelId();
+    sqlite.prepare(`UPDATE funnels SET rooms_enabled = 1, rooms_replay_enabled = 1 WHERE id = ?`).run(id);
+    setRoom(id, '15', 1,
+      'https://gc.ksamata.ru/tst1-15', 'https://web.ksamatacenter.com/room/tst1-15',
+      'https://gc.ksamata.ru/tst1-15r');
+
+    syncMonitorTargets(db);
+
+    expect(kindOf('https://gc.ksamata.ru/tst1-15')).toBe('room_gc');
+    expect(kindOf('https://web.ksamatacenter.com/room/tst1-15')).toBe('room_web');
+    expect(kindOf('https://gc.ksamata.ru/tst1-15r')).toBe('room_replay');
+  });
+
+  it('комнаты проверяются по умолчанию', () => {
+    wipeFunnelUrls();
+    wipeRooms();
+    const id = activeFunnelId();
+    sqlite.prepare(`UPDATE funnels SET rooms_enabled = 1 WHERE id = ?`).run(id);
+    setRoom(id, '15', 1, 'https://gc.ksamata.ru/tst2-15', 'https://web.ksamatacenter.com/room/tst2-15');
+
+    syncMonitorTargets(db);
+
+    expect(enabledOf('https://web.ksamatacenter.com/room/tst2-15')).toBe(1);
+  });
+
+  it('воронка без эфиров комнат не отдаёт', () => {
+    wipeFunnelUrls();
+    wipeRooms();
+    const id = activeFunnelId();
+    sqlite.prepare(`UPDATE funnels SET rooms_enabled = 0 WHERE id = ?`).run(id);
+    setRoom(id, '15', 1, 'https://gc.ksamata.ru/tst3-15', 'https://web.ksamatacenter.com/room/tst3-15');
+
+    syncMonitorTargets(db);
+
+    expect(kindOf('https://gc.ksamata.ru/tst3-15')).toBeUndefined();
+  });
+
+  it('снятый повтор не отдаёт только повтор, комнаты остаются', () => {
+    wipeFunnelUrls();
+    wipeRooms();
+    const id = activeFunnelId();
+    sqlite.prepare(`UPDATE funnels SET rooms_enabled = 1, rooms_replay_enabled = 0 WHERE id = ?`).run(id);
+    setRoom(id, '15', 1,
+      'https://gc.ksamata.ru/tst4-15', 'https://web.ksamatacenter.com/room/tst4-15',
+      'https://gc.ksamata.ru/tst4-15r');
+
+    syncMonitorTargets(db);
+
+    expect(kindOf('https://gc.ksamata.ru/tst4-15')).toBe('room_gc');
+    expect(kindOf('https://gc.ksamata.ru/tst4-15r')).toBeUndefined();
+  });
+
+  it('продажные группы блоков тоже включены по умолчанию', () => {
+    wipeFunnelUrls();
+    wipeRooms();
+    const id = activeFunnelId();
+    const blockId = sqlite.prepare(
+      `INSERT INTO funnel_blocks (funnel_id, kind, enabled, mode) VALUES (?, 'tariffs', 1, 'common')`
+    ).run(id).lastInsertRowid as number;
+    sqlite.prepare(
+      `INSERT INTO funnel_block_items (block_id, slot, label, url, position) VALUES (?, NULL, '', ?, 0)`
+    ).run(blockId, 'https://t.ksamata.ru/tst-tariff');
+
+    syncMonitorTargets(db);
+
+    expect(enabledOf('https://t.ksamata.ru/tst-tariff')).toBe(1);
+  });
+
+  it('служебные «Ссылки» по умолчанию не проверяются', () => {
+    wipeFunnelUrls();
+    wipeRooms();
+    const id = activeFunnelId();
+    const blockId = sqlite.prepare(
+      `INSERT INTO funnel_blocks (funnel_id, kind, enabled, mode) VALUES (?, 'links', 1, 'common')`
+    ).run(id).lastInsertRowid as number;
+    sqlite.prepare(
+      `INSERT INTO funnel_block_items (block_id, slot, label, url, position) VALUES (?, NULL, 'Дашборд', ?, 0)`
+    ).run(blockId, 'https://gc.ksamata.ru/dash/tst');
+
+    syncMonitorTargets(db);
+
+    expect(enabledOf('https://gc.ksamata.ru/dash/tst')).toBe(0);
+  });
+});
+
 describe('счётчик retired', () => {
   it('считает списанные в этот прогон, а не все погашенные разом', () => {
     clearMonitoringState();
@@ -762,5 +908,152 @@ describe('счётчик retired', () => {
       .get(id) as { u: string };
     expect(after.u, 'штамп погашенной цели не должен обновляться каждым синком')
       .toBe('2020-01-01 00:00:00');
+  });
+});
+
+describe('связи и включённость разведены', () => {
+  function funnelsOf(url: string): number[] {
+    return (sqlite.prepare(
+      `SELECT f.funnel_id AS id FROM monitor_target_funnels f
+         JOIN monitor_targets t ON t.id = f.target_id WHERE t.url = ?`
+    ).all(url) as { id: number }[]).map((r) => r.id);
+  }
+
+  it('адрес черновика получает цель и связь, но не проверяется', () => {
+    wipeFunnelUrls();
+    // Черновик заводим сами: в репозиторной базе их ноль (59 active, 20 archive),
+    // и ждать его от живых данных значило бы опереть тест на изменяемое деловое
+    // значение — CLAUDE.md это прямо запрещает. Копия базы одноразовая.
+    const draftId = (sqlite.prepare(`SELECT id FROM funnels WHERE status = 'archive' LIMIT 1`)
+      .get() as { id: number }).id;
+    sqlite.prepare(`UPDATE funnels SET status = 'draft' WHERE id = ?`).run(draftId);
+    setLanding(draftId, 'https://lp.example.ru/draft-only');
+
+    syncMonitorTargets(db);
+
+    const row = sqlite.prepare(`SELECT enabled FROM monitor_targets WHERE url = ?`)
+      .get('https://lp.example.ru/draft-only') as { enabled: number } | undefined;
+    expect(row?.enabled).toBe(0);
+    expect(funnelsOf('https://lp.example.ru/draft-only')).toEqual([draftId]);
+    // Контроль: правило именно про статус, а не про то, что цель не завелась.
+    expect(row).toBeDefined();
+  });
+
+  it('адрес, который держат активная и архивная, проверяется и связан с обеими', () => {
+    wipeFunnelUrls();
+    const active = (sqlite.prepare(`SELECT id FROM funnels WHERE status = 'active' LIMIT 1`)
+      .get() as { id: number }).id;
+    const archived = (sqlite.prepare(`SELECT id FROM funnels WHERE status = 'archive' LIMIT 1`)
+      .get() as { id: number }).id;
+    setLanding(active, 'https://lp.example.ru/shared');
+    setLanding(archived, 'https://lp.example.ru/shared');
+
+    syncMonitorTargets(db);
+
+    const row = sqlite.prepare(`SELECT enabled FROM monitor_targets WHERE url = ?`)
+      .get('https://lp.example.ru/shared') as { enabled: number };
+    expect(row.enabled).toBe(1);
+    expect(funnelsOf('https://lp.example.ru/shared').sort()).toEqual([active, archived].sort());
+  });
+
+  it('адрес, которого нет уже ни у кого, отвязывается и гаснет', () => {
+    wipeFunnelUrls();
+    const active = (sqlite.prepare(`SELECT id FROM funnels WHERE status = 'active' LIMIT 1`)
+      .get() as { id: number }).id;
+    setLanding(active, 'https://lp.example.ru/will-vanish');
+    syncMonitorTargets(db);
+
+    setLanding(active);
+    syncMonitorTargets(db);
+
+    const row = sqlite.prepare(`SELECT enabled FROM monitor_targets WHERE url = ?`)
+      .get('https://lp.example.ru/will-vanish') as { enabled: number };
+    expect(row.enabled).toBe(0);
+    expect(funnelsOf('https://lp.example.ru/will-vanish')).toEqual([]);
+  });
+});
+
+/**
+ * Ревью задачи 3 (Important 2): setTargetEnabled сравнивал запрошенное
+ * состояние с голым дефолтом группы, не зная про hasActive. У цели, которую
+ * держит только черновик или архив, это совпадение было ложным: «включить»
+ * совпадало бы с дефолтом группы (обычно 1 у лендов), override не ставился
+ * бы, и ближайший синк (у которого для этой цели hasActive=false) тут же
+ * гасил бы её обратно — молча, через ближайший фоновый прогон.
+ */
+describe('manual_override у цели, которую держит только неактивная воронка', () => {
+  it('включили вручную адрес черновика — override ставится и переживает синк', () => {
+    wipeFunnelUrls();
+    const draftId = (sqlite.prepare(`SELECT id FROM funnels WHERE status = 'archive' LIMIT 1`)
+      .get() as { id: number }).id;
+    sqlite.prepare(`UPDATE funnels SET status = 'draft' WHERE id = ?`).run(draftId);
+    setLanding(draftId, 'https://lp.example.ru/draft-manual-on');
+
+    syncMonitorTargets(db);
+    const target = targetRow('https://lp.example.ru/draft-manual-on')!;
+    // landings — группа, включённая по умолчанию, но hasActive=false у
+    // черновика: цель заведена, но не проверяется.
+    expect(target.enabled).toBe(0);
+
+    expect(setTargetEnabled(db, target.id, true)).toBe(true);
+    expect(targetRow('https://lp.example.ru/draft-manual-on')?.manual_override,
+      'запрошенное состояние (1) отличается от ЭФФЕКТИВНОГО дефолта (0, из-за hasActive=false), override обязан встать')
+      .toBe(1);
+
+    syncMonitorTargets(db);
+
+    expect(targetRow('https://lp.example.ru/draft-manual-on')?.enabled,
+      'override должен пережить синк — решение человека не гасится молча')
+      .toBe(1);
+    expect(targetRow('https://lp.example.ru/draft-manual-on')?.manual_override).toBe(1);
+  });
+});
+
+/**
+ * Ревью задачи 3 (Fix 5): живая ветка синка писала updated_at безусловно на
+ * каждой цели каждым прогоном, даже когда ни source_kind, ни эффективный
+ * enabled не менялись. Те же грабли, что уже чинили в ветке ретайрмента —
+ * затираемый штамп не даёт понять, когда цель на самом деле поменялась.
+ */
+describe('updated_at живой цели', () => {
+  it('два синка подряд без правок данных не двигают updated_at', () => {
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    setLanding(f1, 'https://stable.example.ru/x');
+    syncMonitorTargets(db);
+
+    const id = targetRow('https://stable.example.ru/x')!.id;
+    sqlite.prepare(`UPDATE monitor_targets SET updated_at = '2020-01-01 00:00:00' WHERE id = ?`).run(id);
+
+    syncMonitorTargets(db);
+
+    const after = sqlite
+      .prepare(`SELECT updated_at AS u FROM monitor_targets WHERE id = ?`)
+      .get(id) as { u: string };
+    expect(after.u, 'штамп живой, неизменившейся цели не должен обновляться каждым синком')
+      .toBe('2020-01-01 00:00:00');
+  });
+
+  it('но двигает его, когда фактический enabled меняется (воронка ушла из активных)', () => {
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    sqlite.prepare(`UPDATE funnels SET status = 'active' WHERE id = ?`).run(f1);
+    setLanding(f1, 'https://changing.example.ru/x');
+    syncMonitorTargets(db);
+    expect(targetRow('https://changing.example.ru/x')?.enabled).toBe(1);
+
+    const id = targetRow('https://changing.example.ru/x')!.id;
+    sqlite.prepare(`UPDATE monitor_targets SET updated_at = '2020-01-01 00:00:00' WHERE id = ?`).run(id);
+
+    // hasActive этой цели переворачивается true → false — wanted меняется с 1 на 0.
+    sqlite.prepare(`UPDATE funnels SET status = 'archive' WHERE id = ?`).run(f1);
+    syncMonitorTargets(db);
+
+    expect(targetRow('https://changing.example.ru/x')?.enabled).toBe(0);
+    const after = sqlite
+      .prepare(`SELECT updated_at AS u FROM monitor_targets WHERE id = ?`)
+      .get(id) as { u: string };
+    expect(after.u, 'реальное изменение enabled обязано подвинуть штамп')
+      .not.toBe('2020-01-01 00:00:00');
   });
 });

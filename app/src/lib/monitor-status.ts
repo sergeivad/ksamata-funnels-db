@@ -1,3 +1,5 @@
+import type { CanaryVerdict } from './monitor-content';
+
 // Единый источник правды по статусам мониторинга. Значения совпадают с
 // CHECK-ограничением колонки monitor_state.status.
 export const MONITOR_STATUS_VALUES = ['up', 'slow', 'down', 'unknown'] as const;
@@ -19,15 +21,38 @@ export const MONITOR_STATUS_META: Record<
 };
 
 /**
- * «Сколько прошло» для времени из SQLite (`datetime('now')` → 'YYYY-MM-DD HH:MM:SS' в UTC,
- * без указания зоны). Пробел меняем на 'T' и дописываем 'Z', иначе движок трактует
- * строку как локальное время и сдвигает результат на часовой пояс.
+ * Период опроса, пока идёт проверка. Реже — кнопка «отвисает» заметно позже.
+ *
+ * Живёт здесь, потому что опрашивающих экрана три: дашборд `/monitoring`,
+ * секция «Проверка ссылок» на карточке и список воронок. Три копии одного
+ * числа в одном сервисе разъедутся — вопрос только в том, на какой правке.
  */
-export function formatAgo(iso: string | null, nowMs: number = Date.now()): string {
-  if (!iso) return 'никогда';
+export const POLL_INTERVAL_MS = 2_000;
+
+/**
+ * Сколько неудачных попыток подряд опрос терпит, прежде чем сдаться.
+ * Без этого пропавший сервер держал бы страницу в вечном опросе раз в 2 с за
+ * баннером «не удалось загрузить», а тост «Проверка завершена» оставался бы
+ * взведённым и выстрелил бы, как только сервер внезапно вернётся.
+ */
+export const MAX_POLL_FAILURES = 5;
+
+/**
+ * Время из SQLite (`datetime('now')` → 'YYYY-MM-DD HH:MM:SS' в UTC, без зоны)
+ * в миллисекунды. Пробел меняем на 'T' и дописываем 'Z': иначе движок сочтёт
+ * строку локальным временем и сдвинет результат на часовой пояс.
+ */
+export function parseSqliteUtc(iso: string | null): number | null {
+  if (!iso) return null;
   const normalized = iso.includes('T') ? iso : `${iso.replace(' ', 'T')}Z`;
   const then = Date.parse(normalized);
-  if (Number.isNaN(then)) return 'никогда';
+  return Number.isNaN(then) ? null : then;
+}
+
+/** «Сколько прошло» для времени из SQLite — см. parseSqliteUtc. */
+export function formatAgo(iso: string | null, nowMs: number = Date.now()): string {
+  const then = parseSqliteUtc(iso);
+  if (then === null) return 'никогда';
 
   const seconds = Math.max(0, Math.floor((nowMs - then) / 1000));
   if (seconds < 60) return 'только что';
@@ -51,4 +76,15 @@ export function telegramLabel(telegram: { configured: boolean; chats: number }):
   const teens = n % 100 >= 11 && n % 100 <= 14;
   const tail = !teens && ones === 1 ? 'чат' : !teens && ones >= 2 && ones <= 4 ? 'чата' : 'чатов';
   return `Telegram: ${n} ${tail}`;
+}
+
+/**
+ * Подпись состояния проверки комнат. Живёт здесь, рядом с telegramLabel, и по
+ * тому же доводу: monitor-canary тянет checkUrl, а тот — резолвер, и импорт из
+ * клиентского компонента утащил бы всё это в браузерный бандл.
+ */
+export function roomCheckLabel(verdict: CanaryVerdict): string {
+  if (verdict === 'ok') return 'Проверка комнат: действует';
+  if (verdict === 'broken') return 'Проверка комнат: НЕ действует';
+  return 'Проверка комнат: не удалось проверить';
 }
