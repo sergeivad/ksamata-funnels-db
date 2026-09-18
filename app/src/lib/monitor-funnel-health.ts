@@ -43,6 +43,14 @@ export function funnelHealthTone(h: FunnelHealth): FunnelHealthTone {
   return 'ok';
 }
 
+/** Подпись пилюли. Пустая строка — пилюли нет. */
+export function funnelHealthPillLabel(h: FunnelHealth): string {
+  const tone = funnelHealthTone(h);
+  if (tone === 'down') return `Проверить · ${h.down}`;
+  if (tone === 'unknown') return 'Не проверялось';
+  return '';
+}
+
 export interface FunnelProblem {
   url: string;
   origin: string;

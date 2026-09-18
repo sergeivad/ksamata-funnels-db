@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronRight, Download, X } from 'lucide-react';
+import { AlertCircle, ChevronRight, Download, X } from 'lucide-react';
 import FunnelCard from '@/components/FunnelCard';
 import Toast from '@/components/Toast';
 import GroupToggle from '@/components/GroupToggle';
@@ -30,9 +30,12 @@ import {
   countLabel,
   STATUS_TOAST,
 } from '@/lib/status';
+import { type FunnelHealth, funnelHealthTone } from '@/lib/monitor-funnel-health';
 
 const LS_KEY = 'funnels.groupBy';
 const LS_STATUS_KEY = 'funnels.statusFilter';
+
+const EMPTY_HEALTH: FunnelHealth = { down: 0, unknown: 0, enabled: 0, total: 0, lastCheckedAt: null };
 
 const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: 'Все' },
@@ -93,6 +96,24 @@ export default function HomePage() {
   // Фильтры осей живут только в состоянии страницы: сохранённый в localStorage
   // фильтр через неделю читается как «база усохла».
   const [filters, setFilters] = useState<AxisFilters>({});
+  const [health, setHealth] = useState<Record<number, FunnelHealth>>({});
+  const [problemsOnly, setProblemsOnly] = useState(false);
+
+  // Состояние мониторинга приходит вторым запросом и только редактору: роут
+  // закрыт requireEditor, анониму он ответит 401. Отказ гасим молча — список
+  // воронок обязан работать и без мониторинга.
+  useEffect(() => {
+    if (!canEdit) return;
+    let cancelled = false;
+    fetch('/api/monitoring/funnels')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.health) return;
+        setHealth(data.health);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [canEdit, reloadKey]);
 
   // Load groupBy / statusFilter from localStorage on mount (client-only)
   useEffect(() => {
@@ -267,6 +288,20 @@ export default function HomePage() {
     []
   );
 
+  const handleCheck = useCallback(async (funnel: FunnelListItem) => {
+    try {
+      const res = await fetch(`/api/monitoring/funnels/${funnel.id}/run`, { method: 'POST' });
+      if (res.status === 409) {
+        showToast('Проверка другой воронки уже идёт', 'error');
+        return;
+      }
+      if (!res.ok) throw new Error('Ошибка сервера');
+      showToast('Проверка запущена', 'success');
+    } catch {
+      showToast('Не удалось запустить проверку', 'error');
+    }
+  }, []);
+
   /**
    * Выдача считается в два шага, и это не лишний проход: счётчики в меню оси
    * берутся без её собственного фильтра, поэтому `FacetBar` нужен список,
@@ -275,8 +310,9 @@ export default function HomePage() {
   const searchedFunnels = useMemo(() => {
     return funnels
       .filter((f) => isFunnelVisible(f, statusFilter, search))
+      .filter((f) => !problemsOnly || funnelHealthTone(health[f.id] ?? EMPTY_HEALTH) !== 'ok')
       .sort(compareByFrontCodeDesc);
-  }, [funnels, statusFilter, search]);
+  }, [funnels, statusFilter, search, problemsOnly, health]);
 
   const visibleFunnels = useMemo(
     () => searchedFunnels.filter((f) => matchesFilters(f.axes, filters)),
@@ -319,9 +355,11 @@ export default function HomePage() {
           title: buildTitle(funnel),
           funnelType: funnel.funnelType,
         }}
+        health={health[funnel.id] ?? null}
         onSetStatus={(s) => handleSetStatus(funnel, s)}
         onDuplicate={() => handleDuplicate(funnel)}
         onDelete={() => handleDelete(funnel)}
+        onCheck={() => handleCheck(funnel)}
       />
     );
   }
@@ -426,6 +464,23 @@ export default function HomePage() {
           onClear={handleClearAxis}
           onClearAll={() => setFilters({})}
         />
+      )}
+
+      {!loading && canEdit && funnels.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setProblemsOnly((v) => !v)}
+          aria-pressed={problemsOnly}
+          className={[
+            'mb-3 inline-flex items-center gap-1.5 rounded-[8px] border px-2.5 py-1 text-[12px] transition',
+            problemsOnly
+              ? 'border-[#F3B8AD] bg-[#FBE3E3] text-[#A32020]'
+              : 'border-[var(--color-border-soft)] bg-white text-[var(--color-text-secondary)] hover:border-[var(--color-text-secondary)]',
+          ].join(' ')}
+        >
+          <AlertCircle className="h-3.5 w-3.5" />
+          Только с проблемами
+        </button>
       )}
 
       {/* Grouping toggle + count */}

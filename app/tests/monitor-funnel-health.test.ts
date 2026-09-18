@@ -15,6 +15,7 @@ import { copyDbForTest } from './helpers/db';
 import {
   getFunnelHealth,
   funnelHealthTone,
+  funnelHealthPillLabel,
   STALE_AFTER_DAYS,
 } from '../src/lib/monitor-funnel-health';
 
@@ -114,5 +115,26 @@ describe('состояние воронки', () => {
 
   it('пустой список воронок не строит запрос', () => {
     expect(getFunnelHealth(db, [], NOW).size).toBe(0);
+  });
+});
+
+describe('подпись пилюли', () => {
+  const h = (down: number, unknown: number) =>
+    ({ down, unknown, enabled: 5, total: 7, lastCheckedAt: null });
+
+  it('падения считает числом', () => {
+    expect(funnelHealthPillLabel(h(3, 0))).toBe('Проверить · 3');
+  });
+
+  it('одно падение — тоже с числом, чтобы подпись не прыгала', () => {
+    expect(funnelHealthPillLabel(h(1, 0))).toBe('Проверить · 1');
+  });
+
+  it('без падений, но без проверок — «Не проверялось»', () => {
+    expect(funnelHealthPillLabel(h(0, 2))).toBe('Не проверялось');
+  });
+
+  it('всё живо — пустая подпись', () => {
+    expect(funnelHealthPillLabel(h(0, 0))).toBe('');
   });
 });
