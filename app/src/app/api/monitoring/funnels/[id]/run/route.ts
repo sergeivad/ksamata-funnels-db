@@ -26,8 +26,17 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (numId === null) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
     if (!funnelExists(db, numId)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    if (runningFunnelCheckId() !== null) {
-      return NextResponse.json({ error: 'Проверка воронки уже идёт' }, { status: 409 });
+    // В отказе называем, ЧЬЯ проверка идёт. Флаг один на весь процесс, и
+    // 409 приходит в двух разных случаях: «уже проверяю эту же воронку»
+    // (человек нажал второй раз или открыл её в двух вкладках) и «занят
+    // другой». Без этого поля страница обязана была выбрать одну формулировку
+    // на оба случая — и в половине случаев врала.
+    const running = runningFunnelCheckId();
+    if (running !== null) {
+      return NextResponse.json(
+        { error: 'Проверка воронки уже идёт', checkingFunnelId: running },
+        { status: 409 },
+      );
     }
 
     // runFunnelCheck поднимает флаг синхронно, до первого await.

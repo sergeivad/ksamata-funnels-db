@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useCanEdit } from './AuthProvider';
-import { formatAgo } from '@/lib/monitor-status';
-import type { FunnelHealth, FunnelProblem } from '@/lib/monitor-funnel-health';
+import { formatAgo, MAX_POLL_FAILURES, POLL_INTERVAL_MS } from '@/lib/monitor-status';
+import type { FunnelHealth, FunnelProblem } from '@/lib/funnel-health';
 
 interface Props {
   funnelId: number;
@@ -15,10 +15,6 @@ interface Payload {
   problems: FunnelProblem[];
   checking: boolean;
 }
-
-/** Те же числа, что на /monitoring: два разных периода опроса разъедутся. */
-const POLL_INTERVAL_MS = 2_000;
-const MAX_POLL_FAILURES = 5;
 
 /**
  * Отображаемая длина адреса в разборе. В живой базе лежит адрес на 2019
@@ -33,10 +29,26 @@ function truncateUrl(url: string): string {
   return url.length > URL_DISPLAY_MAX ? `${url.slice(0, URL_DISPLAY_MAX)}…` : url;
 }
 
+/**
+ * Почему не удалось запустить проверку — человеческим текстом.
+ *
+ * Молчащая кнопка — дефект: 409 (занято) и 401 (сессия кончилась) выглядят
+ * одинаково — «нажал, ничего не произошло», — а делать надо разное.
+ * `checkingFunnelId` в теле 409 отличает «эту воронку уже проверяют» от
+ * «занято другой»: в первом случае ошибки нет вовсе, надо просто начать
+ * опрос, во втором — подождать чужую проверку.
+ */
+function runFailureMessage(status: number): string {
+  if (status === 409) return 'Идёт проверка другой воронки — попробуйте через минуту.';
+  if (status === 401 || status === 403) return 'Сессия закончилась — войдите заново.';
+  return `Не удалось запустить проверку (HTTP ${status}).`;
+}
+
 export default function FunnelHealthSection({ funnelId }: Props) {
   const canEdit = useCanEdit();
   const [data, setData] = useState<Payload | null>(null);
   const [polling, setPolling] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
   const load = useCallback(async (): Promise<Payload | null> => {
@@ -77,8 +89,31 @@ export default function FunnelHealthSection({ funnelId }: Props) {
   }, [polling, load]);
 
   async function run() {
-    const res = await fetch(`/api/monitoring/funnels/${funnelId}/run`, { method: 'POST' });
-    if (res.ok) setPolling(true);
+    setRunError(null);
+    let res: Response;
+    try {
+      res = await fetch(`/api/monitoring/funnels/${funnelId}/run`, { method: 'POST' });
+    } catch {
+      setRunError('Сервер не ответил — проверьте соединение.');
+      return;
+    }
+
+    if (res.ok) {
+      setPolling(true);
+      return;
+    }
+
+    // 409 по ЭТОЙ же воронке — не отказ: проверка идёт, показывать нечего,
+    // кроме прогресса. Тело разбираем мягко: отказ мог прийти и не от нашего
+    // обработчика (прокси, перезапуск), и JSON в нём не гарантирован.
+    if (res.status === 409) {
+      const body = (await res.json().catch(() => null)) as { checkingFunnelId?: number } | null;
+      if (body?.checkingFunnelId === funnelId) {
+        setPolling(true);
+        return;
+      }
+    }
+    setRunError(runFailureMessage(res.status));
   }
 
   // Анониму секции нет вовсе, а не readOnly: роут ответит ему 401, и пустая
@@ -105,6 +140,12 @@ export default function FunnelHealthSection({ funnelId }: Props) {
           {checking || polling ? 'Проверяем…' : 'Проверить сейчас'}
         </button>
       </div>
+
+      {runError && (
+        <p className="mb-2 text-[12px] text-[#B42318]" role="status">
+          {runError}
+        </p>
+      )}
 
       {problems.length === 0 ? (
         <p className="text-[12px] text-[var(--color-text-secondary)]">

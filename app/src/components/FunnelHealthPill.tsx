@@ -6,7 +6,7 @@ import {
   funnelHealthTone,
   funnelHealthPillLabel,
   type FunnelHealth,
-} from '@/lib/monitor-funnel-health';
+} from '@/lib/funnel-health';
 
 interface Props {
   health: FunnelHealth;

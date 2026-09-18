@@ -3,6 +3,10 @@
  *
  * Считается при чтении, а не хранится: новых таблиц у фичи нет, а связка
  * monitor_target_funnels → monitor_targets → monitor_state и есть ответ.
+ *
+ * Типы и подписи пилюли живут в чистом листе `funnel-health.ts` — этот модуль
+ * тянет `drizzle-orm` и `db/schema`, и импорт значения отсюда утаскивал их в
+ * клиентский бандл списка воронок (замер — в шапке того файла).
  */
 import { eq, inArray } from 'drizzle-orm';
 import { type AnyDB } from '../db/client';
@@ -14,9 +18,11 @@ import {
   monitorTargetFunnels,
   monitorTargets,
 } from '../db/schema';
-import { isMonitorStatus, parseSqliteUtc, type MonitorStatus } from './monitor-status';
+import { isMonitorStatus, parseSqliteUtc } from './monitor-status';
 import { sourceKindLabel } from './monitor-kinds';
+import { loadGroupDefaultCheck } from './monitor-targets';
 import { normalizeUrl } from './monitor-urls';
+import { type FunnelHealth, type FunnelProblem } from './funnel-health';
 
 /**
  * Насколько старое падение ещё зажигает пилюлю.
@@ -27,45 +33,11 @@ import { normalizeUrl } from './monitor-urls';
  */
 export const STALE_AFTER_DAYS = 7;
 
-export interface FunnelHealth {
-  down: number;
-  unknown: number;
-  enabled: number;
-  total: number;
-  lastCheckedAt: string | null;
-}
-
-export type FunnelHealthTone = 'down' | 'unknown' | 'ok';
-
-export function funnelHealthTone(h: FunnelHealth): FunnelHealthTone {
-  if (h.down > 0) return 'down';
-  if (h.unknown > 0) return 'unknown';
-  return 'ok';
-}
-
-/** Подпись пилюли. Пустая строка — пилюли нет. */
-export function funnelHealthPillLabel(h: FunnelHealth): string {
-  const tone = funnelHealthTone(h);
-  if (tone === 'down') return `Проверить · ${h.down}`;
-  if (tone === 'unknown') return 'Не проверялось';
-  return '';
-}
-
-export interface FunnelProblem {
-  url: string;
-  origin: string;
-  status: MonitorStatus;
-  httpStatus: number | null;
-  error: string;
-  since: string | null;
-  checkedAt: string | null;
-  enabled: boolean;
-}
-
 interface Row {
   funnelId: number;
   url: string;
   enabled: number;
+  sourceKind: string;
   status: string | null;
   httpStatus: number | null;
   error: string | null;
@@ -79,6 +51,7 @@ function rowsFor(db: AnyDB, funnelIds?: number[]): Row[] {
       funnelId: monitorTargetFunnels.funnelId,
       url: monitorTargets.url,
       enabled: monitorTargets.enabled,
+      sourceKind: monitorTargets.sourceKind,
       status: monitorState.status,
       httpStatus: monitorState.httpStatus,
       error: monitorState.error,
@@ -92,6 +65,22 @@ function rowsFor(db: AnyDB, funnelIds?: number[]): Row[] {
   return (
     funnelIds ? base.where(inArray(monitorTargetFunnels.funnelId, funnelIds)) : base
   ).all() as Row[];
+}
+
+/**
+ * Считает ли эта цель падением. Правило одно на двоих с охватом ручной
+ * проверки (`selectFunnelCheckTargets` в `monitor-targets.ts`): цель идёт в
+ * счёт, если она включена ИЛИ включён дефолт её группы.
+ *
+ * Без второго условия пилюля горела тем, что перепроверить нечем: кнопка
+ * «Проверить сейчас» цели выключенных человеком групп пропускает намеренно —
+ * админские страницы GetCourse в группе `links` отвечают 403 всегда, — и
+ * расхождение гасло само лишь через STALE_AFTER_DAYS, то есть неделю.
+ * Определение дефолта групп живёт только в `monitor-targets.ts`; второго
+ * здесь нет намеренно — разъехались бы молча, как уже разъезжались.
+ */
+function countsAsDown(row: Row, groupWants: (sourceKind: string) => boolean): boolean {
+  return row.enabled === 1 || groupWants(row.sourceKind);
 }
 
 /** Свежее ли падение: старше отсечки — уже не новость. */
@@ -110,6 +99,7 @@ export function getFunnelHealth(
   if (funnelIds && funnelIds.length === 0) return new Map();
 
   const staleBefore = nowMs - STALE_AFTER_DAYS * 86_400_000;
+  const groupWants = loadGroupDefaultCheck(db);
   const out = new Map<number, FunnelHealth>();
 
   for (const row of rowsFor(db, funnelIds)) {
@@ -119,7 +109,7 @@ export function getFunnelHealth(
 
     h.total += 1;
     if (row.enabled === 1) h.enabled += 1;
-    if (isFreshDown(row, staleBefore)) h.down += 1;
+    if (isFreshDown(row, staleBefore) && countsAsDown(row, groupWants)) h.down += 1;
     // Непроверенная ВЫКЛЮЧЕННАЯ цель пробелом не считается: её никто и не
     // обещал проверять, иначе у каждого архива висела бы серая пилюля.
     if (row.enabled === 1 && (row.status === null || row.status === 'unknown')) h.unknown += 1;
@@ -194,7 +184,17 @@ export function collectFunnelOrigins(db: AnyDB, funnelId: number): Map<string, s
   return out;
 }
 
-/** Проблемные адреса воронки, «Упало» первыми, затем непроверенные. */
+/**
+ * Проблемные адреса воронки, «Упало» первыми, затем непроверенные.
+ *
+ * Список шире пилюли намеренно: в счёт пилюли идут только цели, которые
+ * кнопка «Проверить сейчас» и правда перепроверит (`countsAsDown`), а разбор
+ * на карточке показывает и падение в выключенной группе — оно настоящее, и
+ * скрывать его значило бы врать. Такая строка помечена «вне постоянной
+ * проверки», а увести её из разбора можно только там, где она и появилась, —
+ * на `/monitoring`. Окно расхождения само закрывается за STALE_AFTER_DAYS:
+ * выключенную группу никто не проверяет, и её падение перестаёт быть свежим.
+ */
 export function listFunnelProblems(
   db: AnyDB,
   funnelId: number,

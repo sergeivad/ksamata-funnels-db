@@ -80,6 +80,27 @@ function groupDefault(prefs: Map<string, boolean>, sourceKind: string): 0 | 1 {
 }
 
 /**
+ * Предикат «эта группа проверяется по умолчанию», снятый одним запросом.
+ *
+ * Определение дефолта групп обязано быть одно на всех, и это не вкусовщина:
+ * им пользуются две стороны одной фичи — охват ручной проверки
+ * (`selectFunnelCheckTargets` ниже) и счёт падений в пилюле воронки
+ * (`getFunnelHealth`, `monitor-funnel-health.ts`). Пока определений было два,
+ * они разъехались молча: агрегат считал падением любую связанную цель, а
+ * кнопка «Проверить сейчас» цели выключенных групп пропускала — пилюля горела
+ * тем, чего нечем было перепроверить, и гасла сама только через
+ * `STALE_AFTER_DAYS` (семь дней).
+ *
+ * Отдаётся замыканием, а не разовой функцией `(db, kind)`: обе стороны
+ * спрашивают дефолт для десятков целей подряд, и поход в базу на каждую был бы
+ * расточительством — ровно тот же довод, что у `loadGroupPrefs`.
+ */
+export function loadGroupDefaultCheck(db: AnyDB): (sourceKind: string) => boolean {
+  const prefs = loadGroupPrefs(db);
+  return (sourceKind: string) => groupDefault(prefs, sourceKind) === 1;
+}
+
+/**
  * Чем меньше ранг, тем «главнее» источник. Один и тот же URL может прийти из
  * нескольких мест — цель заводится одна, вид источника берётся у главного.
  */
@@ -445,8 +466,8 @@ export interface FunnelCheckTarget {
  * Правило то же, что решает `enabled` в синке (`groupDefault` — предпочтение
  * человека по группе, а если его не было, `DEFAULT_ENABLED_SOURCE_KINDS`), но
  * применяется без оглядки на `hasActive`: `enabled = 1` ИЛИ дефолт группы
- * цели включён. Определение дефолта живёт только здесь и в `syncMonitorTargets`
- * (через общий `groupDefault`) — второго они не заводят.
+ * цели включён. Ровно это же правило считает падения в пилюле воронки, и
+ * определение у них одно на двоих — `loadGroupDefaultCheck` выше.
  *
  * Различие принципиальное, и оно есть в данных. У черновика все цели
  * `enabled = 0` — не потому, что группа выключена, а потому, что ни одна
@@ -465,7 +486,7 @@ export interface FunnelCheckTarget {
  * это решение сильнее.
  */
 export function selectFunnelCheckTargets(db: AnyDB, funnelId: number): FunnelCheckTarget[] {
-  const prefs = loadGroupPrefs(db);
+  const groupWants = loadGroupDefaultCheck(db);
 
   const rows = db
     .select({
@@ -480,7 +501,7 @@ export function selectFunnelCheckTargets(db: AnyDB, funnelId: number): FunnelChe
     .all() as { id: number; url: string; sourceKind: string; enabled: number }[];
 
   return rows
-    .filter((r) => r.enabled === 1 || groupDefault(prefs, r.sourceKind) === 1)
+    .filter((r) => r.enabled === 1 || groupWants(r.sourceKind))
     .map((r) => ({ id: r.id, url: r.url }));
 }
 

@@ -59,7 +59,13 @@ export interface MonitorTargetView {
   funnels: MonitorFunnelRef[];
   /** Кто держит URL — см. MonitorTargetUsage. */
   usage: MonitorTargetUsage;
-  /** Заполнен только для `usage === 'inactive'`: чьи это страницы теперь. */
+  /**
+   * Неактивные держатели URL — черновики и архив. Заполнен при ЛЮБОМ таком
+   * держателе, а не только при `usage === 'inactive'`: у цели активной
+   * воронки, чей адрес делит архивная, список тоже непуст. Показывает его
+   * `MonitorTable` только при `usage === 'inactive'` — там он и объясняет
+   * погашенную цель; у работающей объяснять нечего.
+   */
   inactiveFunnels: MonitorInactiveFunnelRef[];
 }
 

@@ -153,6 +153,10 @@ describe('POST /api/monitoring/funnels/[id]/run', () => {
         params: Promise.resolve({ id: String(funnelId) }),
       });
       expect(res.status).toBe(409);
+      // Кто занял флаг — в теле отказа: «эту воронку уже проверяют» и «занято
+      // другой» требуют разных слов, а одной формулировкой страница врала в
+      // половине случаев.
+      expect(await res.json()).toMatchObject({ checkingFunnelId: funnelId });
     } finally {
       globalThis.__ksamataMonitorRun = saved;
     }

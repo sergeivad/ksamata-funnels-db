@@ -12,12 +12,8 @@ import { runMigratePhase6 } from '../scripts/migrate-phase6';
 import * as schema from '../src/db/schema';
 import { clearMonitoringState } from './helpers/monitoring';
 import { copyDbForTest } from './helpers/db';
-import {
-  getFunnelHealth,
-  funnelHealthTone,
-  funnelHealthPillLabel,
-  STALE_AFTER_DAYS,
-} from '../src/lib/monitor-funnel-health';
+import { getFunnelHealth, STALE_AFTER_DAYS } from '../src/lib/monitor-funnel-health';
+import { funnelHealthTone, funnelHealthPillLabel } from '../src/lib/funnel-health';
 
 const REAL_DB = path.resolve(process.cwd(), '..', 'ksamata_funnels.db');
 const NOW = Date.parse('2026-09-18T12:00:00Z');
@@ -31,10 +27,16 @@ function sqliteTime(ms: number): string {
   return new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
 }
 
-function addTarget(url: string, enabled: 0 | 1, status: string | null, checkedAtMs: number | null) {
+function addTarget(
+  url: string,
+  enabled: 0 | 1,
+  status: string | null,
+  checkedAtMs: number | null,
+  sourceKind = 'landings',
+) {
   const id = sqlite.prepare(
-    `INSERT INTO monitor_targets (url, source_kind, enabled) VALUES (?, 'landings', ?)`
-  ).run(url, enabled).lastInsertRowid as number;
+    `INSERT INTO monitor_targets (url, source_kind, enabled) VALUES (?, ?, ?)`
+  ).run(url, sourceKind, enabled).lastInsertRowid as number;
   sqlite.prepare(`INSERT INTO monitor_target_funnels (target_id, funnel_id) VALUES (?, ?)`)
     .run(id, funnelId);
   if (status !== null) {
@@ -82,12 +84,44 @@ describe('состояние воронки', () => {
     expect(funnelHealthTone(h)).toBe('ok');
   });
 
-  it('выключенная цель в падении всё равно считается', () => {
+  it('выключенная цель включённой группы в падении всё равно считается', () => {
+    // Так выглядит черновик: дефолт группы включён, а enabled = 0 потому,
+    // что адрес не держит ни одна активная воронка. Ручная проверка такую
+    // цель берёт, значит и пилюля обязана её считать.
     addTarget('https://lp.example.ru/off', 0, 'down', NOW - 60_000);
 
     const h = getFunnelHealth(db, [funnelId], NOW).get(funnelId)!;
     expect(h.down).toBe(1);
     expect(h.enabled).toBe(0);
+  });
+
+  it('падение в выключенной по умолчанию группе пилюлю не зажигает', () => {
+    // `links` — админские страницы GetCourse, отвечающие 403 всегда; ручная
+    // проверка их пропускает, и гореть пилюле было бы нечем перепроверить.
+    addTarget('https://gc.example.ru/pl/user', 0, 'down', NOW - 60_000, 'links');
+
+    const h = getFunnelHealth(db, [funnelId], NOW).get(funnelId)!;
+    expect(h.down).toBe(0);
+    expect(h.total).toBe(1);
+    expect(funnelHealthTone(h)).toBe('ok');
+  });
+
+  it('включённая вручную цель выключенной группы считается', () => {
+    addTarget('https://gc.example.ru/pl/on', 1, 'down', NOW - 60_000, 'links');
+
+    const h = getFunnelHealth(db, [funnelId], NOW).get(funnelId)!;
+    expect(h.down).toBe(1);
+  });
+
+  it('группа, выключенная человеком, падений не даёт', () => {
+    // Решение по группе главнее дефолта — то же правило, что в синке.
+    sqlite.prepare(
+      `INSERT INTO monitor_source_kind_prefs (source_kind, enabled) VALUES ('landings', 0)`
+    ).run();
+    addTarget('https://lp.example.ru/muted', 0, 'down', NOW - 60_000);
+
+    const h = getFunnelHealth(db, [funnelId], NOW).get(funnelId)!;
+    expect(h.down).toBe(0);
   });
 
   it('выключенная непроверенная цель пробелом не считается', () => {

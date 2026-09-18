@@ -13,6 +13,7 @@ import { type AnyDB } from '../db/client';
 import { funnels, monitorEvents, monitorTargets, monitorTargetFunnels } from '../db/schema';
 import { funnelRefLabel } from './front-code';
 import { compareByFrontCodeAsc } from './funnel-sort';
+import { MONITORED_FUNNEL_STATUS } from './monitor-targets';
 
 /** Событие смены статуса, обогащённое кодами воронок, которые держат URL. */
 export interface NotifyEvent {
@@ -183,7 +184,17 @@ export async function sendTelegram(
   return sent;
 }
 
-/** Коды воронок по каждой цели — одним запросом, чтобы не плодить N+1. */
+/**
+ * Коды воронок по каждой цели — одним запросом, чтобы не плодить N+1.
+ *
+ * Только активные держатели, как в ленте инцидентов и в таблице целей
+ * (`listMonitorEvents` и `getMonitorDashboard` в `monitor-view.ts`). С
+ * 18.09.2026 связь `monitor_target_funnels` заводится по воронкам ВСЕХ
+ * статусов, и без фильтра рядом с настоящим виновником в сводку Telegram
+ * приезжали бы коды архивных и черновиковых воронок — тех, чьи страницы
+ * мониторинг не проверяет по решению самого же человека. Сводка читается
+ * как «идите чинить вот это», и лишний код в ней посылает не туда.
+ */
 function codesByTarget(db: AnyDB, targetIds: number[]): Map<number, string[]> {
   const map = new Map<number, string[]>();
   if (targetIds.length === 0) return map;
@@ -197,7 +208,12 @@ function codesByTarget(db: AnyDB, targetIds: number[]): Map<number, string[]> {
     })
     .from(monitorTargetFunnels)
     .innerJoin(funnels, eq(funnels.id, monitorTargetFunnels.funnelId))
-    .where(inArray(monitorTargetFunnels.targetId, targetIds))
+    .where(
+      and(
+        inArray(monitorTargetFunnels.targetId, targetIds),
+        eq(funnels.status, MONITORED_FUNNEL_STATUS),
+      ),
+    )
     .all()) as { targetId: number; id: number; num: number; frontCode: string }[];
 
   const grouped = new Map<number, typeof rows>();

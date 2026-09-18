@@ -273,10 +273,18 @@ describe('notifyMonitorEvents', () => {
     fs.rmSync(tmp, { force: true });
   });
 
+  /** Две воронки с кодом, чей статус задан тестом: живой статус базы изменчив. */
+  function twoFunnels(): { active: { id: number; front_code: string }; archived: { id: number; front_code: string } } {
+    const rows = sqlite
+      .prepare(`SELECT id, front_code FROM funnels WHERE front_code <> '' ORDER BY id LIMIT 2`)
+      .all() as { id: number; front_code: string }[];
+    sqlite.prepare(`UPDATE funnels SET status = 'active' WHERE id = ?`).run(rows[0].id);
+    sqlite.prepare(`UPDATE funnels SET status = 'archive' WHERE id = ?`).run(rows[1].id);
+    return { active: rows[0], archived: rows[1] };
+  }
+
   it('шлёт одну сводку с адресом и кодом воронки, которая держит страницу', async () => {
-    const funnel = sqlite
-      .prepare(`SELECT id, front_code FROM funnels WHERE front_code <> '' ORDER BY id LIMIT 1`)
-      .get() as { id: number; front_code: string };
+    const funnel = twoFunnels().active;
     const target = seedTarget('https://t.ksamata.ru/dbo1');
     sqlite
       .prepare(`INSERT INTO monitor_target_funnels (target_id, funnel_id) VALUES (?, ?)`)
@@ -291,6 +299,28 @@ describe('notifyMonitorEvents', () => {
     expect(texts[0]).toContain('https://t.ksamata.ru/dbo1');
     expect(texts[0]).toContain(funnel.front_code);
     expect(texts[0]).toContain('HTTP 502');
+  });
+
+  it('не называет архивных держателей адреса', async () => {
+    // Связь с 18.09.2026 хранит держателей всех статусов, а проверяются
+    // страницы только активных. Сводка читается как «идите чинить вот это»,
+    // и архивный код рядом с активным посылал бы не туда — лента инцидентов
+    // и таблица целей фильтруют ровно так же.
+    const { active, archived } = twoFunnels();
+    const target = seedTarget('https://t.ksamata.ru/shared');
+    const link = sqlite.prepare(
+      `INSERT INTO monitor_target_funnels (target_id, funnel_id) VALUES (?, ?)`,
+    );
+    link.run(target, active.id);
+    link.run(target, archived.id);
+    const since = maxEventId();
+    seedEvent(target, 'up', 'down', 'HTTP 502');
+
+    const { fakeFetch, texts } = recorder();
+    await notifyMonitorEvents(db, since, { env, fetchImpl: fakeFetch });
+
+    expect(texts[0]).toContain(active.front_code);
+    expect(texts[0]).not.toContain(archived.front_code);
   });
 
   it('молчит, когда цели только что завели и они поднялись', async () => {

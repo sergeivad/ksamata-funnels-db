@@ -432,6 +432,36 @@ describe('запись результата', () => {
     expect(txAt).toBeGreaterThanOrEqual(0);
     expect(selectAt).toBeGreaterThan(txAt);
   });
+
+  it('транзакция открывается как immediate', async () => {
+    // Граница транзакции сама по себе ничего не обещает: `db.transaction()`
+    // у better-sqlite3 — DEFERRED, и с SELECT-ом первой строкой транзакция
+    // начинается читающей. Второй писатель того же файла (разовый tsx,
+    // Python-инструмент) в этот момент даёт `SQLITE_BUSY_SNAPSHOT`, которую
+    // busy_timeout не переигрывает, — цель молча выпала бы из прогона.
+    // Гонку двух процессов тестом не поставить, а вот флаг, который её и
+    // закрывает, проверить можно ровно там, где он передаётся.
+    seedTarget();
+    const check = scriptedCheck([up]);
+    const configs: unknown[] = [];
+    const real = db.transaction.bind(db) as (fn: unknown, config?: unknown) => unknown;
+    const spy = new Proxy(db as object, {
+      get(target, prop) {
+        if (prop === 'transaction') {
+          return (fn: unknown, config?: unknown) => {
+            configs.push(config);
+            return real(fn, config);
+          };
+        }
+        const value = Reflect.get(target, prop, target) as unknown;
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    }) as unknown as AnyDB;
+
+    await runMonitorCycle(spy, { check: check.fn, sync: false, sleep: noSleep });
+
+    expect(configs).toEqual([{ behavior: 'immediate' }]);
+  });
 });
 
 describe('ручная проверка воронки', () => {
