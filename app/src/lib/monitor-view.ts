@@ -9,15 +9,10 @@ import {
 } from '../db/schema';
 import { MONITOR_STATUS_META, isMonitorStatus, type MonitorStatus } from './monitor-status';
 import { isCycleRunning } from './monitor-run';
-import { collectFunnelUrls, MONITORED_FUNNEL_STATUS } from './monitor-targets';
-import { FUNNEL_STATUS_VALUES, isFunnelStatus, type FunnelStatus } from './status';
+import { MONITORED_FUNNEL_STATUS } from './monitor-targets';
+import { isFunnelStatus, type FunnelStatus } from './status';
 import { compareByFrontCodeAsc } from './funnel-sort';
 import { readTelegramConfig } from './monitor-notify';
-
-/** Статусы воронки, страницы которых не проверяются (черновик, архив). */
-const INACTIVE_FUNNEL_STATUSES: readonly FunnelStatus[] = FUNNEL_STATUS_VALUES.filter(
-  (s) => s !== MONITORED_FUNNEL_STATUS,
-);
 
 /**
  * Кто держит цель — от этого зависит, считать ли её в группе.
@@ -111,16 +106,23 @@ export interface MonitorEventView {
 }
 
 /**
- * Номера воронок по каждой цели — одним запросом, чтобы не плодить N+1.
- * Без `targetIds` тянет связи по всем целям (нужно дашборду). С `targetIds` —
+ * Воронки по каждой цели — одним запросом, чтобы не плодить N+1. Без
+ * `targetIds` тянет связи по всем целям (нужно дашборду). С `targetIds` —
  * только по переданным целям, иначе постраничная выдача событий тянула бы
  * связи всей таблицы ради нескольких строк.
+ *
+ * Несёт статус держателя (`status`) в каждой записи — с 18.09.2026 связь
+ * заводится по всем статусам воронки разом (см. `collectTargets` в
+ * `monitor-targets.ts`), и дашборду больше не нужен отдельный проход по
+ * данным воронок, чтобы отличить активного держателя от черновика/архива:
+ * это теперь видно прямо здесь, без второго запроса (`collectFunnelUrls`,
+ * удалена вместе с этим обходным путём).
  *
  * Экспортирована, чтобы саму фильтрацию по `targetIds` можно было проверить
  * напрямую тестом — разница между «всё» (дашборд) и «только эта страница»
  * (список событий) и есть то, что стоит закрепить.
  */
-export function funnelsByTarget(db: AnyDB, targetIds?: number[]): Map<number, MonitorFunnelRef[]> {
+export function funnelsByTarget(db: AnyDB, targetIds?: number[]): Map<number, MonitorInactiveFunnelRef[]> {
   // IN () без аргументов — известная ловушка SQL; на пустой странице просто
   // отдаём пустую карту, не строя запрос.
   if (targetIds && targetIds.length === 0) return new Map();
@@ -131,6 +133,7 @@ export function funnelsByTarget(db: AnyDB, targetIds?: number[]): Map<number, Mo
       funnelId: funnels.id,
       num: funnels.num,
       frontCode: funnels.frontCode,
+      status: funnels.status,
     })
     .from(monitorTargetFunnels)
     .innerJoin(funnels, eq(funnels.id, monitorTargetFunnels.funnelId));
@@ -139,32 +142,18 @@ export function funnelsByTarget(db: AnyDB, targetIds?: number[]): Map<number, Mo
     targetIds ? query.where(inArray(monitorTargetFunnels.targetId, targetIds)) : query
   )
     .orderBy(asc(funnels.num))
-    .all() as { targetId: number; funnelId: number; num: number; frontCode: string | null }[];
+    .all() as { targetId: number; funnelId: number; num: number; frontCode: string | null; status: string }[];
 
-  const map = new Map<number, MonitorFunnelRef[]>();
+  const map = new Map<number, MonitorInactiveFunnelRef[]>();
   for (const row of rows) {
+    if (!isFunnelStatus(row.status)) continue;
     const list = map.get(row.targetId) ?? [];
-    list.push({ id: row.funnelId, num: row.num, frontCode: row.frontCode ?? '' });
+    list.push({ id: row.funnelId, num: row.num, frontCode: row.frontCode ?? '', status: row.status });
     map.set(row.targetId, list);
   }
   // Порядок — по F, как в списке воронок; бескодовые в конец, чтобы чипы
   // читались как один ряд номеров, а не как два перемешанных.
   for (const list of map.values()) list.sort(compareByFrontCodeAsc);
-  return map;
-}
-
-/** Код и статус воронки по id — одним запросом, для пометок «в архиве»/«в черновике». */
-function funnelRefsById(db: AnyDB): Map<number, MonitorInactiveFunnelRef> {
-  const rows = db
-    .select({ id: funnels.id, num: funnels.num, frontCode: funnels.frontCode, status: funnels.status })
-    .from(funnels)
-    .all() as { id: number; num: number; frontCode: string | null; status: string }[];
-
-  const map = new Map<number, MonitorInactiveFunnelRef>();
-  for (const row of rows) {
-    if (!isFunnelStatus(row.status)) continue;
-    map.set(row.id, { id: row.id, num: row.num, frontCode: row.frontCode ?? '', status: row.status });
-  }
   return map;
 }
 
@@ -211,19 +200,16 @@ export function getMonitorDashboard(
     }[];
 
   const links = funnelsByTarget(db);
-  // Погашенная цель бывает двух сортов, и различает их только сверка с данными
-  // воронок: URL, который ещё держит черновик или архив, и URL, которого нет
-  // уже нигде. Синк этого различия не хранит, поэтому считаем при чтении —
-  // неактивных воронок мало, и запрос дешёвый.
-  const inactiveUrls = collectFunnelUrls(db, INACTIVE_FUNNEL_STATUSES);
-  const funnelRefs =
-    inactiveUrls.size === 0 ? new Map<number, MonitorInactiveFunnelRef>() : funnelRefsById(db);
 
   const targets: MonitorTargetView[] = rows.map((r) => {
-    const funnelLinks = links.get(r.id) ?? [];
-    const heldBy = funnelLinks.length > 0 ? [] : (inactiveUrls.get(r.url) ?? []);
+    const linked = links.get(r.id) ?? [];
+    // «Кто держит адрес» теперь знает и статус держателя, поэтому пересобирать
+    // URL неактивных воронок больше не нужно — раньше это был обходной путь
+    // ровно потому, что связи хранились только для активных.
+    const activeFunnels = linked.filter((f) => f.status === MONITORED_FUNNEL_STATUS);
+    const heldBy = linked.filter((f) => f.status !== MONITORED_FUNNEL_STATUS);
     const usage: MonitorTargetUsage =
-      funnelLinks.length > 0 ? 'active' : heldBy.length > 0 ? 'inactive' : 'orphan';
+      activeFunnels.length > 0 ? 'active' : heldBy.length > 0 ? 'inactive' : 'orphan';
 
     return {
       id: r.id,
@@ -239,12 +225,11 @@ export function getMonitorDashboard(
       checkedAt: r.checkedAt,
       since: r.since,
       consecutiveFailures: r.consecutiveFailures ?? 0,
-      funnels: funnelLinks,
+      // eslint: деструктурированный `status` не используется — им и не нужно
+      // пользоваться, задача ровно в том, чтобы его отбросить.
+      funnels: activeFunnels.map(({ status: _status, ...ref }) => ref),
       usage,
-      inactiveFunnels: heldBy
-        .map((id) => funnelRefs.get(id))
-        .filter((f): f is MonitorInactiveFunnelRef => f !== undefined)
-        .sort(compareByFrontCodeAsc),
+      inactiveFunnels: heldBy,
     };
   });
 

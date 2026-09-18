@@ -529,11 +529,12 @@ describe('manual_override: фиксируется только на отклон
  * что существовали на момент клика, и новая приходила выключенной навсегда.
  */
 /**
- * Проверяем только активные воронки. Страницы черновиков и архива могут лежать
- * на законных основаниях, и их падения — шум, из-за которого перестают смотреть
- * на настоящие.
+ * Проверяются (enabled) только страницы активных воронок — их падения не шум,
+ * а сигнал. Страницы черновиков и архива могут лежать на законных основаниях,
+ * поэтому с 18.09.2026 они тоже заводят цель и связь (см. collectTargets),
+ * просто без enabled: связь — «кто держит адрес», а не «кого проверяем».
  */
-describe('в мониторинг попадают только активные воронки', () => {
+describe('enabled только у активных воронок, цель и связь — у всех статусов', () => {
   function setStatus(funnelId: number, status: string) {
     sqlite.prepare(`UPDATE funnels SET status = ? WHERE id = ?`).run(status, funnelId);
   }
@@ -545,7 +546,7 @@ describe('в мониторинг попадают только активные
     sqlite.prepare(`INSERT INTO funnel_block_items (block_id, url) VALUES (?, ?)`).run(block, url);
   }
 
-  it('не заводит цели по блокам черновика и архива', () => {
+  it('заводит цели по блокам черновика и архива, но не включает их', () => {
     clearMonitoringState();
     wipeFunnelUrls();
     // Комнаты (задача 2) — второй источник целей; без зачистки активные
@@ -561,13 +562,14 @@ describe('в мониторинг попадают только активные
 
     const stats = syncMonitorTargets(db);
 
-    expect(stats.total).toBe(1);
+    // Все три адреса заводят цель и связь — их держит воронка, статус не важен.
+    expect(stats.total).toBe(3);
     expect(targetRow('https://lp.example.ru/live')?.enabled).toBe(1);
-    expect(targetRow('https://lp.example.ru/draft')).toBeUndefined();
-    expect(targetRow('https://lp.example.ru/archived')).toBeUndefined();
+    expect(targetRow('https://lp.example.ru/draft')?.enabled).toBe(0);
+    expect(targetRow('https://lp.example.ru/archived')?.enabled).toBe(0);
   });
 
-  it('не берёт лендинг неактивной воронки', () => {
+  it('заводит цель за лендингом неактивной воронки, но выключенной', () => {
     clearMonitoringState();
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
@@ -576,7 +578,9 @@ describe('в мониторинг попадают только активные
 
     syncMonitorTargets(db);
 
-    expect(targetRow('https://lp.example.ru/archived-field')).toBeUndefined();
+    const row = targetRow('https://lp.example.ru/archived-field');
+    expect(row).toBeDefined();
+    expect(row?.enabled).toBe(0);
   });
 
   it('гасит цель, когда воронку убрали из активных, и оживляет при возврате', () => {
@@ -601,7 +605,7 @@ describe('в мониторинг попадают только активные
     expect(targetRow(url)?.enabled).toBe(1);
   });
 
-  it('оставляет под проверкой URL, который делят активная и архивная воронки', () => {
+  it('оставляет под проверкой URL, который делят активная и архивная воронки, и связывает с обеими', () => {
     clearMonitoringState();
     wipeFunnelUrls();
     const [f1, f2] = funnelIds(2);
@@ -615,11 +619,13 @@ describe('в мониторинг попадают только активные
 
     const target = targetRow(url)!;
     expect(target.enabled).toBe(1);
-    // В связях числится только активная — иначе чипы «Воронки» врали бы.
+    // Связь — «кто держит адрес», а не «кого проверяем»: числятся обе. Раньше
+    // в связях оставалась только активная, и это было прежним смыслом
+    // monitor_target_funnels — с 18.09.2026 он другой (см. collectTargets).
     const links = sqlite
-      .prepare(`SELECT funnel_id FROM monitor_target_funnels WHERE target_id = ?`)
+      .prepare(`SELECT funnel_id FROM monitor_target_funnels WHERE target_id = ? ORDER BY funnel_id`)
       .all(target.id) as { funnel_id: number }[];
-    expect(links.map((l) => l.funnel_id)).toEqual([f1]);
+    expect(links.map((l) => l.funnel_id)).toEqual([f1, f2].sort((a, b) => a - b));
   });
 });
 
@@ -902,5 +908,67 @@ describe('счётчик retired', () => {
       .get(id) as { u: string };
     expect(after.u, 'штамп погашенной цели не должен обновляться каждым синком')
       .toBe('2020-01-01 00:00:00');
+  });
+});
+
+describe('связи и включённость разведены', () => {
+  function funnelsOf(url: string): number[] {
+    return (sqlite.prepare(
+      `SELECT f.funnel_id AS id FROM monitor_target_funnels f
+         JOIN monitor_targets t ON t.id = f.target_id WHERE t.url = ?`
+    ).all(url) as { id: number }[]).map((r) => r.id);
+  }
+
+  it('адрес черновика получает цель и связь, но не проверяется', () => {
+    wipeFunnelUrls();
+    // Черновик заводим сами: в репозиторной базе их ноль (59 active, 20 archive),
+    // и ждать его от живых данных значило бы опереть тест на изменяемое деловое
+    // значение — CLAUDE.md это прямо запрещает. Копия базы одноразовая.
+    const draftId = (sqlite.prepare(`SELECT id FROM funnels WHERE status = 'archive' LIMIT 1`)
+      .get() as { id: number }).id;
+    sqlite.prepare(`UPDATE funnels SET status = 'draft' WHERE id = ?`).run(draftId);
+    setLanding(draftId, 'https://lp.example.ru/draft-only');
+
+    syncMonitorTargets(db);
+
+    const row = sqlite.prepare(`SELECT enabled FROM monitor_targets WHERE url = ?`)
+      .get('https://lp.example.ru/draft-only') as { enabled: number } | undefined;
+    expect(row?.enabled).toBe(0);
+    expect(funnelsOf('https://lp.example.ru/draft-only')).toEqual([draftId]);
+    // Контроль: правило именно про статус, а не про то, что цель не завелась.
+    expect(row).toBeDefined();
+  });
+
+  it('адрес, который держат активная и архивная, проверяется и связан с обеими', () => {
+    wipeFunnelUrls();
+    const active = (sqlite.prepare(`SELECT id FROM funnels WHERE status = 'active' LIMIT 1`)
+      .get() as { id: number }).id;
+    const archived = (sqlite.prepare(`SELECT id FROM funnels WHERE status = 'archive' LIMIT 1`)
+      .get() as { id: number }).id;
+    setLanding(active, 'https://lp.example.ru/shared');
+    setLanding(archived, 'https://lp.example.ru/shared');
+
+    syncMonitorTargets(db);
+
+    const row = sqlite.prepare(`SELECT enabled FROM monitor_targets WHERE url = ?`)
+      .get('https://lp.example.ru/shared') as { enabled: number };
+    expect(row.enabled).toBe(1);
+    expect(funnelsOf('https://lp.example.ru/shared').sort()).toEqual([active, archived].sort());
+  });
+
+  it('адрес, которого нет уже ни у кого, отвязывается и гаснет', () => {
+    wipeFunnelUrls();
+    const active = (sqlite.prepare(`SELECT id FROM funnels WHERE status = 'active' LIMIT 1`)
+      .get() as { id: number }).id;
+    setLanding(active, 'https://lp.example.ru/will-vanish');
+    syncMonitorTargets(db);
+
+    setLanding(active);
+    syncMonitorTargets(db);
+
+    const row = sqlite.prepare(`SELECT enabled FROM monitor_targets WHERE url = ?`)
+      .get('https://lp.example.ru/will-vanish') as { enabled: number };
+    expect(row.enabled).toBe(0);
+    expect(funnelsOf('https://lp.example.ru/will-vanish')).toEqual([]);
   });
 });

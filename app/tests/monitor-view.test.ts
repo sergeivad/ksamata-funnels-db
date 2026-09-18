@@ -91,6 +91,13 @@ function makeTarget(url: string, enabled: number, status: string, checkedAt: str
  *
  * Само разделение inactive/orphan сохраняется — но только чтобы в таблице
  * объяснить, почему строка выключена.
+ *
+ * С 18.09.2026 источник этого разделения — связь `monitor_target_funnels`,
+ * а не повторный обход блоков воронки (см. funnelsByTarget/collectTargets):
+ * `holdUrlByFunnel` по-прежнему кладёт адрес в блок «Лендинги», чтобы у
+ * воронки было что показать на карточке, но саму связь тесты ниже заводят
+ * явно через linkToFunnel — синк собрал бы её сам, здесь же это делается
+ * напрямую, чтобы не тащить syncMonitorTargets в тест дашборда.
  */
 describe('getMonitorDashboard · кто держит цель', () => {
   it('цель активной воронки — usage active и считается в группе', () => {
@@ -110,7 +117,8 @@ describe('getMonitorDashboard · кто держит цель', () => {
   it('URL за архивной воронкой выпадает из группы, но в таблице объяснён', () => {
     const url = 'https://archived.example.ru/';
     const f = holdUrlByFunnel('archive', url);
-    makeTarget(url, 0, 'up', '2026-07-24 10:00:00');
+    const id = makeTarget(url, 0, 'up', '2026-07-24 10:00:00');
+    linkToFunnel(id, f.id);
 
     const { targets, sourceKinds } = getMonitorDashboard(db);
     const row = targets.find((t) => t.url === url)!;
@@ -124,7 +132,8 @@ describe('getMonitorDashboard · кто держит цель', () => {
   it('URL за черновиком тоже не идёт в счёт группы', () => {
     const url = 'https://drafted.example.ru/';
     const f = holdUrlByFunnel('draft', url);
-    makeTarget(url, 0, 'unknown', null);
+    const id = makeTarget(url, 0, 'unknown', null);
+    linkToFunnel(id, f.id);
 
     const { targets, sourceKinds } = getMonitorDashboard(db);
     expect(targets.find((t) => t.url === url)!.inactiveFunnels).toEqual([
@@ -137,8 +146,9 @@ describe('getMonitorDashboard · кто держит цель', () => {
     // Иначе она попала бы в «Проверяем», но не в знаменатель, и чип показал бы
     // «1 из 0»: включённых не может быть больше, чем всего.
     const url = 'https://archived-but-on.example.ru/';
-    holdUrlByFunnel('archive', url);
-    makeTarget(url, 1, 'up', '2026-07-24 10:00:00');
+    const f = holdUrlByFunnel('archive', url);
+    const id = makeTarget(url, 1, 'up', '2026-07-24 10:00:00');
+    linkToFunnel(id, f.id);
 
     const kind = getMonitorDashboard(db).sourceKinds.find((s) => s.sourceKind === 'landings')!;
     expect(kind.total).toBe(1);
@@ -290,9 +300,11 @@ describe('funnelsByTarget', () => {
     const idA = makeTarget('https://a.ru/', 1, 'up', null);
     const idB = makeTarget('https://b.ru/', 1, 'up', null);
 
+    // status в выборке — с 18.09.2026 funnelsByTarget несёт статус держателя
+    // в каждой записи (см. её докстринг), поэтому и фикстура должна его знать.
     const funnelRows = sqlite
-      .prepare(`SELECT id, num, front_code AS frontCode FROM funnels ORDER BY num LIMIT 2`)
-      .all() as { id: number; num: number; frontCode: string }[];
+      .prepare(`SELECT id, num, front_code AS frontCode, status FROM funnels ORDER BY num LIMIT 2`)
+      .all() as { id: number; num: number; frontCode: string; status: string }[];
     const [funnelA, funnelB] = funnelRows;
 
     sqlite
@@ -311,8 +323,12 @@ describe('funnelsByTarget', () => {
     const map = funnelsByTarget(db);
 
     expect(map.size).toBe(2);
-    expect(map.get(idA)).toEqual([{ id: funnelA.id, num: funnelA.num, frontCode: funnelA.frontCode }]);
-    expect(map.get(idB)).toEqual([{ id: funnelB.id, num: funnelB.num, frontCode: funnelB.frontCode }]);
+    expect(map.get(idA)).toEqual([
+      { id: funnelA.id, num: funnelA.num, frontCode: funnelA.frontCode, status: funnelA.status },
+    ]);
+    expect(map.get(idB)).toEqual([
+      { id: funnelB.id, num: funnelB.num, frontCode: funnelB.frontCode, status: funnelB.status },
+    ]);
   });
 
   it('с targetIds отдаёт связи только по переданным целям', () => {
@@ -322,7 +338,9 @@ describe('funnelsByTarget', () => {
 
     expect(map.size).toBe(1);
     expect([...map.keys()]).toEqual([idA]);
-    expect(map.get(idA)).toEqual([{ id: funnelA.id, num: funnelA.num, frontCode: funnelA.frontCode }]);
+    expect(map.get(idA)).toEqual([
+      { id: funnelA.id, num: funnelA.num, frontCode: funnelA.frontCode, status: funnelA.status },
+    ]);
     expect(map.has(idB)).toBe(false);
   });
 
@@ -332,6 +350,37 @@ describe('funnelsByTarget', () => {
     const map = funnelsByTarget(db, []);
 
     expect(map.size).toBe(0);
+  });
+});
+
+describe('чей адрес — читается из связей', () => {
+  it('адрес только архивной воронки помечен как inactive и не идёт в счёт группы', () => {
+    // цель, связанная с архивной воронкой и погашенная синком
+    const archived = (sqlite.prepare(`SELECT id, front_code FROM funnels WHERE status = 'archive' LIMIT 1`)
+      .get() as { id: number; front_code: string });
+    const targetId = sqlite.prepare(
+      `INSERT INTO monitor_targets (url, source_kind, enabled) VALUES (?, 'landings', 0)`
+    ).run('https://lp.example.ru/archived').lastInsertRowid as number;
+    sqlite.prepare(`INSERT INTO monitor_target_funnels (target_id, funnel_id) VALUES (?, ?)`)
+      .run(targetId, archived.id);
+    sqlite.prepare(`INSERT INTO monitor_state (target_id, status) VALUES (?, 'unknown')`).run(targetId);
+
+    const { targets, sourceKinds } = getMonitorDashboard(db);
+    const t = targets.find((x) => x.url === 'https://lp.example.ru/archived')!;
+    expect(t.usage).toBe('inactive');
+    expect(t.funnels).toEqual([]);
+    expect(t.inactiveFunnels.map((f) => f.frontCode)).toEqual([archived.front_code]);
+    expect(sourceKinds.find((k) => k.sourceKind === 'landings')?.total ?? 0).toBe(0);
+  });
+
+  it('цель без единой связи — orphan', () => {
+    const targetId = sqlite.prepare(
+      `INSERT INTO monitor_targets (url, source_kind, enabled) VALUES (?, 'landings', 0)`
+    ).run('https://lp.example.ru/nobody').lastInsertRowid as number;
+    sqlite.prepare(`INSERT INTO monitor_state (target_id, status) VALUES (?, 'unknown')`).run(targetId);
+
+    const t = getMonitorDashboard(db).targets.find((x) => x.url === 'https://lp.example.ru/nobody')!;
+    expect(t.usage).toBe('orphan');
   });
 });
 

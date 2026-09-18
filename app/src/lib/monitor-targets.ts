@@ -11,10 +11,16 @@ import {
   monitorSourceKindPrefs,
 } from '../db/schema';
 import { normalizeUrl } from './monitor-urls';
+import { FUNNEL_STATUS_VALUES } from './status';
 
 /**
- * Мониторим только страницы воронок в этом статусе. Черновики и архив не
- * проверяем: их падения — шум, из-за которого перестают смотреть на настоящие.
+ * Единственный статус, чьи страницы реально проверяются. Определяет
+ * `hasActive` в `collectTargets` и, через него, `enabled` цели — а на
+ * дашборде решает, попадёт ли связь в `usage: 'active'`.
+ *
+ * Черновик и архив тоже получают цель и связь (см. `collectTargets`) —
+ * только выключенную: их падения были бы шумом, из-за которого перестают
+ * смотреть на настоящие.
  */
 export const MONITORED_FUNNEL_STATUS = 'active';
 
@@ -85,35 +91,47 @@ interface Collected {
   url: string;
   sourceKind: string;
   funnelIds: Set<number>;
+  /** Держит ли адрес хотя бы одна активная воронка — от этого зависит enabled. */
+  hasActive: boolean;
 }
 
 /**
- * Собирает URL из данных воронок. По умолчанию — только из **активных**: именно
- * этот набор синк держит под проверкой. Параметр `statuses` нужен дашборду,
- * чтобы тем же способом собрать URL неактивных воронок (см. collectFunnelUrls).
+ * Собирает URL из данных воронок — по умолчанию по **всем** статусам разом.
+ * Связь (`monitor_target_funnels`, записываемая синком из результата этой
+ * функции) хранит «кто держит адрес», любого статуса — а не только «кто его
+ * проверяет». Второе решает `hasActive`: адрес, который держит хотя бы одна
+ * активная воронка, проверяется; адрес одного черновика или архива — нет, но
+ * цель и связь всё равно заводятся.
  *
- * Черновик ещё не запущен, архив уже отработал: их страницы могут лежать на
- * законных основаниях, и падения по ним — шум, из-за которого перестают
- * смотреть на настоящие. URL, оставшийся только за неактивными воронками,
- * попадает в общий авто-ретайрмент: гаснет, отвязывается от воронок, но
- * сохраняет историю инцидентов и оживает сам, когда воронку вернут в активные.
+ * Так устроено ради ручной проверки черновика (задача 5): раньше синк отвязывал
+ * всё, чего нет у активных, и результат такой проверки гас бы на ближайшем
+ * фоновом прогоне без единого объяснения — черновик просто исчезал из связей.
+ * Теперь связь переживает синк, а видимость «проверяем ли» несёт `enabled`.
  *
- * URL, который делят активная и архивная воронки, остаётся под проверкой, но
- * в связях (и в чипах «Воронки») числится только за активной.
+ * URL, который делят активная и архивная воронки, остаётся под проверкой
+ * (`hasActive = true`) и в связях числится за обеими — в отличие от прежнего
+ * правила «в связях только активная», которое красиво выглядело в чипах, но
+ * прятало от синка держателя, чей статус ещё может измениться.
+ *
+ * Параметр `statuses` оставлен ради тестируемости: на практике синк всегда
+ * зовёт функцию с дефолтом. Раньше он был нужен и дашборду отдельным проходом
+ * (`collectFunnelUrls`, удалена) — но теперь дашборд читает статус держателя
+ * прямо из связи через `funnelsByTarget`, и второй проход не нужен.
  */
 function collectTargets(
   db: AnyDB,
-  statuses: readonly string[] = [MONITORED_FUNNEL_STATUS],
+  statuses: readonly string[] = FUNNEL_STATUS_VALUES,
 ): Map<string, Collected> {
   const out = new Map<string, Collected>();
 
-  const add = (url: string, sourceKind: string, funnelId: number) => {
+  const add = (url: string, sourceKind: string, funnelId: number, isActive: boolean) => {
     const existing = out.get(url);
     if (!existing) {
-      out.set(url, { url, sourceKind, funnelIds: new Set([funnelId]) });
+      out.set(url, { url, sourceKind, funnelIds: new Set([funnelId]), hasActive: isActive });
       return;
     }
     existing.funnelIds.add(funnelId);
+    if (isActive) existing.hasActive = true;
     if (sourceRank(sourceKind) < sourceRank(existing.sourceKind)) {
       existing.sourceKind = sourceKind;
     }
@@ -124,16 +142,17 @@ function collectTargets(
       url: funnelBlockItems.url,
       kind: funnelBlocks.kind,
       funnelId: funnelBlocks.funnelId,
+      status: funnels.status,
     })
     .from(funnelBlockItems)
     .innerJoin(funnelBlocks, eq(funnelBlocks.id, funnelBlockItems.blockId))
     .innerJoin(funnels, eq(funnels.id, funnelBlocks.funnelId))
     .where(inArray(funnels.status, [...statuses]))
-    .all() as { url: string; kind: string; funnelId: number }[];
+    .all() as { url: string; kind: string; funnelId: number; status: string }[];
 
   for (const row of items) {
     const url = normalizeUrl(row.url);
-    if (url) add(url, row.kind, row.funnelId);
+    if (url) add(url, row.kind, row.funnelId, row.status === MONITORED_FUNNEL_STATUS);
   }
 
   // Второй источник — сетка комнат. Комнаты живут не в блоках, а в funnel_days,
@@ -147,6 +166,7 @@ function collectTargets(
       replayUrl: funnelDays.replayUrl,
       roomsEnabled: funnels.roomsEnabled,
       replayEnabled: funnels.roomsReplayEnabled,
+      status: funnels.status,
     })
     .from(funnelDays)
     .innerJoin(funnels, eq(funnels.id, funnelDays.funnelId))
@@ -158,23 +178,25 @@ function collectTargets(
       replayUrl: string | null;
       roomsEnabled: number | null;
       replayEnabled: number | null;
+      status: string;
     }[];
 
-  const addRoom = (raw: string | null, kind: string, funnelId: number) => {
+  const addRoom = (raw: string | null, kind: string, funnelId: number, isActive: boolean) => {
     const url = normalizeUrl(raw ?? '');
-    if (url) add(url, kind, funnelId);
+    if (url) add(url, kind, funnelId, isActive);
   };
 
   for (const row of rooms) {
+    const isActive = row.status === MONITORED_FUNNEL_STATUS;
     // rooms_enabled = 0 — решение человека «здесь нет эфиров». Его уже уважают
     // карточка, компактный вид и buildExportRows; мониторинг обязан читать
     // данные так же, иначе он видит то, чего для сервиса не существует.
     if (row.roomsEnabled === 1) {
-      addRoom(row.gcRoom, 'room_gc', row.funnelId);
-      addRoom(row.webRoom, 'room_web', row.funnelId);
+      addRoom(row.gcRoom, 'room_gc', row.funnelId, isActive);
+      addRoom(row.webRoom, 'room_web', row.funnelId, isActive);
     }
     if (row.replayEnabled === 1) {
-      addRoom(row.replayUrl, 'room_replay', row.funnelId);
+      addRoom(row.replayUrl, 'room_replay', row.funnelId, isActive);
     }
   }
 
@@ -182,34 +204,25 @@ function collectTargets(
 }
 
 /**
- * URL, которые держат воронки перечисленных статусов: url → id воронок.
- *
- * Нужна дашборду, чтобы отличить два вида погашенных целей: URL, который ещё
- * лежит в блоке неактивной воронки (архив/черновик — вернут в активные, и цель
- * оживёт), от осиротевшего, который не держит уже никто. Нормализация та же, что
- * у синка, — иначе два места считали бы «тот же URL» по-разному.
- */
-export function collectFunnelUrls(db: AnyDB, statuses: readonly string[]): Map<string, number[]> {
-  const out = new Map<string, number[]>();
-  if (statuses.length === 0) return out;
-  for (const item of collectTargets(db, statuses).values()) {
-    out.set(item.url, [...item.funnelIds]);
-  }
-  return out;
-}
-
-/**
- * Приводит monitor_targets в соответствие с данными воронок.
- * Инварианты:
- *  - новая цель получает enabled по дефолту своей группы — поэтому ссылка,
- *    добавленная в блок уже включённой группы, начинает проверяться сама;
+ * Приводит monitor_targets и monitor_target_funnels в соответствие с данными
+ * воронок — по всем статусам разом (см. `collectTargets`). Инварианты:
+ *  - связь (`monitor_target_funnels`) хранит «кто держит адрес» — воронку
+ *    ЛЮБОГО статуса, а не только активную;
+ *  - новая цель получает enabled по дефолту своей группы, но только если адрес
+ *    держит хотя бы одна активная воронка (`item.hasActive`) — поэтому ссылка,
+ *    добавленная в блок уже включённой группы, начинает проверяться сама, а
+ *    адрес одного черновика или архива заводит цель и связь, но не проверяется;
  *  - у существующей цели с manual_override=1 enabled НЕ трогается —
  *    ручной тумблер переживает синк;
- *  - у существующей цели с manual_override=0 enabled пересчитывается из дефолта
- *    группы: ленд, пропавший из данных на один синк и вернувшийся, снова
- *    включается, а не остаётся навсегда погашённым;
- *  - исчезнувший URL не удаляется: гасится и отвязывается от воронок,
- *    чтобы не потерять историю инцидентов.
+ *  - у существующей цели с manual_override=0 enabled пересчитывается из
+ *    дефолта группы И `hasActive`: ленд, пропавший из данных на один синк и
+ *    вернувшийся, снова включается, а не остаётся навсегда погашённым;
+ *  - исчезнувший URL не удаляется: гасится и отвязывается от воронок — но
+ *    только когда его не держит уже НИ ОДНА воронка ни одного статуса. Пока
+ *    его держит хотя бы черновик или архив, он остаётся в связях (просто без
+ *    enabled) — это и есть разница с прежним правилом «отвязываем всё, чего
+ *    нет у активных», которое гасило бы результат ручной проверки черновика
+ *    на первом же фоновом прогоне.
  */
 export function syncMonitorTargets(db: AnyDB): { total: number; created: number; retired: number } {
   const collected = collectTargets(db);
@@ -219,6 +232,12 @@ export function syncMonitorTargets(db: AnyDB): { total: number; created: number;
 
   db.transaction((tx) => {
     for (const item of collected.values()) {
+      // Правило «мониторим только активные» не отменено — оно переехало со
+      // сбора на включение. Связь говорит «кто держит адрес», enabled —
+      // «проверяем ли». Иначе ручная проверка черновика гасла бы на ближайшем
+      // фоновом прогоне: синк отвязывал бы его цель.
+      const wanted: 0 | 1 = item.hasActive ? groupDefault(prefs, item.sourceKind) : 0;
+
       const existing = tx
         .select({ id: monitorTargets.id, manualOverride: monitorTargets.manualOverride })
         .from(monitorTargets)
@@ -231,11 +250,10 @@ export function syncMonitorTargets(db: AnyDB): { total: number; created: number;
           .set({
             sourceKind: item.sourceKind,
             // Ручной тумблер (manual_override=1) неприкосновенен. Без него
-            // enabled — производная от дефолта группы, поэтому пересчитываем:
-            // иначе цель, погашенная авто-ретайрментом, уже никогда не ожила бы.
-            ...(existing.manualOverride === 1
-              ? {}
-              : { enabled: groupDefault(prefs, item.sourceKind) }),
+            // enabled — производная от дефолта группы и hasActive, поэтому
+            // пересчитываем: иначе цель, погашенная авто-ретайрментом, уже
+            // никогда не ожила бы.
+            ...(existing.manualOverride === 1 ? {} : { enabled: wanted }),
             updatedAt: sql`(datetime('now'))`,
           })
           .where(eq(monitorTargets.id, existing.id))
@@ -247,7 +265,7 @@ export function syncMonitorTargets(db: AnyDB): { total: number; created: number;
           .values({
             url: item.url,
             sourceKind: item.sourceKind,
-            enabled: groupDefault(prefs, item.sourceKind),
+            enabled: wanted,
           })
           .returning({ id: monitorTargets.id })
           .get() as { id: number };
