@@ -52,6 +52,15 @@ function wipeFunnelUrls() {
 }
 
 /**
+ * Второй источник целей — сетка комнат (funnel_days). Тест, который хочет
+ * «вообще ни одного URL в воронках», обязан стереть и её: копия реальной БД
+ * несёт сотни строк комнат у активных воронок, и без этого «пусто» не пусто.
+ */
+function wipeRooms() {
+  sqlite.prepare(`DELETE FROM funnel_days`).run();
+}
+
+/**
  * Кладёт лендинг(и) воронки — то есть строки блока «Лендинги», единственного
  * места, где адрес посадочной живёт после Phase-10. Пустой список очищает блок.
  */
@@ -233,6 +242,10 @@ describe('syncMonitorTargets', () => {
   it('гасит все цели, когда нет ни одного URL в воронках', () => {
     clearMonitoringState();
     wipeFunnelUrls();
+    // Комнаты — второй источник целей (задача 2): копия реальной БД несёт
+    // сотни строк funnel_days у активных воронок, и без зачистки «ни одного
+    // URL в воронках» было бы неправдой.
+    wipeRooms();
     const [f1, f2] = funnelIds(2);
 
     // Первый синк: заводим 2 цели из разных источников
@@ -248,6 +261,7 @@ describe('syncMonitorTargets', () => {
 
     // Второй синк: стираем все URL и проверяем, что все цели гасятся
     wipeFunnelUrls();
+    wipeRooms();
     const secondStats = syncMonitorTargets(db);
 
     expect(secondStats.retired).toBe(2);
@@ -534,6 +548,9 @@ describe('в мониторинг попадают только активные
   it('не заводит цели по блокам черновика и архива', () => {
     clearMonitoringState();
     wipeFunnelUrls();
+    // Комнаты (задача 2) — второй источник целей; без зачистки активные
+    // воронки в копии реальной БД принесли бы свои комнаты в подсчёт.
+    wipeRooms();
     const [f1, f2, f3] = funnelIds(3);
     setStatus(f1, 'active');
     setStatus(f2, 'draft');
@@ -690,7 +707,11 @@ describe('предпочтение группы наследуется новы�
     clearMonitoringState();
     wipeFunnelUrls();
     const [f1] = funnelIds(1);
-    addUrl(makeBlock(f1, 'upsell'), 'https://med.example.ru/single');
+    // 'upsell' сюда не годится с 18.09.2026 — он теперь в DEFAULT_ENABLED_SOURCE_KINDS,
+    // и «включить» стало бы совпадением с дефолтом группы, а не отклонением от
+    // него (override тогда не ставился бы, и тест проверял бы не то). 'links' —
+    // служебная группа, остаётся выключенной по умолчанию, что и нужно тесту.
+    addUrl(makeBlock(f1, 'links'), 'https://med.example.ru/single');
 
     syncMonitorTargets(db);
     const target = targetRow('https://med.example.ru/single')!;
@@ -725,6 +746,125 @@ describe('setSourceKindEnabled', () => {
 describe('setTargetEnabled', () => {
   it('возвращает false для несуществующей цели', () => {
     expect(setTargetEnabled(db, 999999, true)).toBe(false);
+  });
+});
+
+describe('комнаты как цели', () => {
+  /** Кладёт одну строку сетки комнат. Все прочие колонки funnel_days — по умолчанию. */
+  function setRoom(funnelId: number, slot: '15' | '19', day: number,
+                   gc: string, web: string, replay = '') {
+    sqlite.prepare(`DELETE FROM funnel_days WHERE funnel_id = ? AND time_slot = ? AND day_num = ?`)
+      .run(funnelId, slot, day);
+    sqlite.prepare(
+      `INSERT INTO funnel_days (funnel_id, time_slot, day_num, gc_room, web_room, replay_url)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(funnelId, slot, day, gc, web, replay);
+  }
+
+  function wipeRooms() {
+    sqlite.prepare(`DELETE FROM funnel_days`).run();
+  }
+
+  function activeFunnelId(): number {
+    return (sqlite.prepare(`SELECT id FROM funnels WHERE status = 'active' LIMIT 1`)
+      .get() as { id: number }).id;
+  }
+
+  function kindOf(url: string): string | undefined {
+    return (sqlite.prepare(`SELECT source_kind FROM monitor_targets WHERE url = ?`)
+      .get(url) as { source_kind: string } | undefined)?.source_kind;
+  }
+
+  function enabledOf(url: string): number | undefined {
+    return (sqlite.prepare(`SELECT enabled FROM monitor_targets WHERE url = ?`)
+      .get(url) as { enabled: number } | undefined)?.enabled;
+  }
+
+  it('заводит цели трёх видов из сетки комнат', () => {
+    wipeFunnelUrls();
+    wipeRooms();
+    const id = activeFunnelId();
+    sqlite.prepare(`UPDATE funnels SET rooms_enabled = 1, rooms_replay_enabled = 1 WHERE id = ?`).run(id);
+    setRoom(id, '15', 1,
+      'https://gc.ksamata.ru/tst1-15', 'https://web.ksamatacenter.com/room/tst1-15',
+      'https://gc.ksamata.ru/tst1-15r');
+
+    syncMonitorTargets(db);
+
+    expect(kindOf('https://gc.ksamata.ru/tst1-15')).toBe('room_gc');
+    expect(kindOf('https://web.ksamatacenter.com/room/tst1-15')).toBe('room_web');
+    expect(kindOf('https://gc.ksamata.ru/tst1-15r')).toBe('room_replay');
+  });
+
+  it('комнаты проверяются по умолчанию', () => {
+    wipeFunnelUrls();
+    wipeRooms();
+    const id = activeFunnelId();
+    sqlite.prepare(`UPDATE funnels SET rooms_enabled = 1 WHERE id = ?`).run(id);
+    setRoom(id, '15', 1, 'https://gc.ksamata.ru/tst2-15', 'https://web.ksamatacenter.com/room/tst2-15');
+
+    syncMonitorTargets(db);
+
+    expect(enabledOf('https://web.ksamatacenter.com/room/tst2-15')).toBe(1);
+  });
+
+  it('воронка без эфиров комнат не отдаёт', () => {
+    wipeFunnelUrls();
+    wipeRooms();
+    const id = activeFunnelId();
+    sqlite.prepare(`UPDATE funnels SET rooms_enabled = 0 WHERE id = ?`).run(id);
+    setRoom(id, '15', 1, 'https://gc.ksamata.ru/tst3-15', 'https://web.ksamatacenter.com/room/tst3-15');
+
+    syncMonitorTargets(db);
+
+    expect(kindOf('https://gc.ksamata.ru/tst3-15')).toBeUndefined();
+  });
+
+  it('снятый повтор не отдаёт только повтор, комнаты остаются', () => {
+    wipeFunnelUrls();
+    wipeRooms();
+    const id = activeFunnelId();
+    sqlite.prepare(`UPDATE funnels SET rooms_enabled = 1, rooms_replay_enabled = 0 WHERE id = ?`).run(id);
+    setRoom(id, '15', 1,
+      'https://gc.ksamata.ru/tst4-15', 'https://web.ksamatacenter.com/room/tst4-15',
+      'https://gc.ksamata.ru/tst4-15r');
+
+    syncMonitorTargets(db);
+
+    expect(kindOf('https://gc.ksamata.ru/tst4-15')).toBe('room_gc');
+    expect(kindOf('https://gc.ksamata.ru/tst4-15r')).toBeUndefined();
+  });
+
+  it('продажные группы блоков тоже включены по умолчанию', () => {
+    wipeFunnelUrls();
+    wipeRooms();
+    const id = activeFunnelId();
+    const blockId = sqlite.prepare(
+      `INSERT INTO funnel_blocks (funnel_id, kind, enabled, mode) VALUES (?, 'tariffs', 1, 'common')`
+    ).run(id).lastInsertRowid as number;
+    sqlite.prepare(
+      `INSERT INTO funnel_block_items (block_id, slot, label, url, position) VALUES (?, NULL, '', ?, 0)`
+    ).run(blockId, 'https://t.ksamata.ru/tst-tariff');
+
+    syncMonitorTargets(db);
+
+    expect(enabledOf('https://t.ksamata.ru/tst-tariff')).toBe(1);
+  });
+
+  it('служебные «Ссылки» по умолчанию не проверяются', () => {
+    wipeFunnelUrls();
+    wipeRooms();
+    const id = activeFunnelId();
+    const blockId = sqlite.prepare(
+      `INSERT INTO funnel_blocks (funnel_id, kind, enabled, mode) VALUES (?, 'links', 1, 'common')`
+    ).run(id).lastInsertRowid as number;
+    sqlite.prepare(
+      `INSERT INTO funnel_block_items (block_id, slot, label, url, position) VALUES (?, NULL, 'Дашборд', ?, 0)`
+    ).run(blockId, 'https://gc.ksamata.ru/dash/tst');
+
+    syncMonitorTargets(db);
+
+    expect(enabledOf('https://gc.ksamata.ru/dash/tst')).toBe(0);
   });
 });
 

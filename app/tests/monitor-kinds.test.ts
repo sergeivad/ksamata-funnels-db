@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sourceKindLabel, sourceKindTone, isKnownSourceKind } from '../src/lib/monitor-kinds';
+import { sourceKindLabel, sourceKindTone, isKnownSourceKind, ROOM_SOURCE_KINDS } from '../src/lib/monitor-kinds';
 import { BLOCK_KINDS, getBlockDef } from '../src/lib/blocks';
 
 describe('sourceKindLabel', () => {
@@ -40,5 +40,23 @@ describe('sourceKindTone', () => {
 
   it('рассинхрон (включено больше, чем всего) — это «on», а не отдельное состояние', () => {
     expect(sourceKindTone(3, 2)).toBe('on');
+  });
+});
+
+describe('реестр видов источника', () => {
+  it('знает комнаты наравне с блоками', () => {
+    expect(isKnownSourceKind('landings')).toBe(true);
+    expect(ROOM_SOURCE_KINDS.every(isKnownSourceKind)).toBe(true);
+  });
+
+  it('подписывает комнаты по-русски', () => {
+    expect(sourceKindLabel('room_gc')).toBe('Комнаты ГК');
+    expect(sourceKindLabel('room_web')).toBe('Комнаты Web');
+    expect(sourceKindLabel('room_replay')).toBe('Повторы');
+  });
+
+  it('незнакомый вид отдаёт сам себя, а известным не считается', () => {
+    expect(sourceKindLabel('room_zzz')).toBe('room_zzz');
+    expect(isKnownSourceKind('room_zzz')).toBe(false);
   });
 });

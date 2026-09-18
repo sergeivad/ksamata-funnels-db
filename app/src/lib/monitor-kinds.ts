@@ -1,24 +1,38 @@
 import { BLOCK_KINDS } from './blocks';
 
 /**
- * Русские названия групп мониторинга.
- *
- * Виды блоков берём из BLOCK_KINDS, а не дублируем списком: на странице
- * мониторинга группа должна называться ровно так же, как блок в редакторе
- * воронки, иначе два списка неизбежно разъедутся.
+ * Виды комнат. Три, а не один: это три разных хоста и три разные причины
+ * падения, и только у room_web нужна проверка по содержимому. Слитая группа
+ * не выключалась бы по частям.
  */
-const BLOCK_TITLES = new Map<string, string>(BLOCK_KINDS.map((d) => [d.kind, d.title]));
+export const ROOM_SOURCE_KINDS = ['room_gc', 'room_web', 'room_replay'] as const;
+export type RoomSourceKind = (typeof ROOM_SOURCE_KINDS)[number];
+
+const ROOM_TITLES: Record<RoomSourceKind, string> = {
+  room_gc: 'Комнаты ГК',
+  room_web: 'Комнаты Web',
+  room_replay: 'Повторы',
+};
+
+/**
+ * Реестр видов источника: блоки ∪ комнаты. Раньше он выводился из одних только
+ * BLOCK_KINDS — «каждая проверяемая страница приходит из блока»; с комнатами
+ * это перестало быть правдой.
+ */
+const TITLES = new Map<string, string>([
+  ...BLOCK_KINDS.map((d) => [d.kind, d.title] as [string, string]),
+  ...ROOM_SOURCE_KINDS.map((k) => [k, ROOM_TITLES[k]] as [string, string]),
+]);
 
 /** Неизвестный вид отдаёт сам себя: UI не должен ломаться на данных из будущего. */
 export function sourceKindLabel(sourceKind: string): string {
-  return BLOCK_TITLES.get(sourceKind) ?? sourceKind;
+  return TITLES.get(sourceKind) ?? sourceKind;
 }
 
 /**
  * Виды источников, которые вообще могут появиться у цели.
  *
- * Ровно виды блоков, без добавок: каждая проверяемая страница приходит из
- * блока воронки. Отдельный вид `funnel_landing_url` (колонка landing_url) был
+ * Блоки ∪ комнаты. Отдельный вид `funnel_landing_url` (колонка landing_url) был
  * до Phase-9 — она свела его с «Лендингами» в одну группу, Phase-10 убрала и
  * саму колонку как место хранения.
  *
@@ -28,7 +42,7 @@ export function sourceKindLabel(sourceKind: string): string {
  * навсегда как предпочтение для группы, которой не существует.
  */
 export function isKnownSourceKind(sourceKind: string): boolean {
-  return BLOCK_TITLES.has(sourceKind);
+  return TITLES.has(sourceKind);
 }
 
 /**

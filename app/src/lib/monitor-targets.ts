@@ -4,6 +4,7 @@ import {
   funnels,
   funnelBlocks,
   funnelBlockItems,
+  funnelDays,
   monitorTargets,
   monitorTargetFunnels,
   monitorState,
@@ -40,8 +41,26 @@ function loadGroupPrefs(db: AnyDB): Map<string, boolean> {
 }
 
 /**
+ * Группы, которые проверяются, пока по ним не было решения человека.
+ *
+ * До 18.09.2026 здесь был один `landings`. Набор расширен до того, что видит
+ * клиент и что стоит денег, плюс комнаты: молчание пилюли воронки иначе
+ * означало бы «в проверяемом всё живо», а читалось бы как «всё живо».
+ * Служебные `links` и `processes` остаются выключенными — их включают руками.
+ */
+export const DEFAULT_ENABLED_SOURCE_KINDS: ReadonlySet<string> = new Set([
+  'landings',
+  'tariffs',
+  'applications',
+  'upsell',
+  'room_gc',
+  'room_web',
+  'room_replay',
+]);
+
+/**
  * Проверяется ли группа по умолчанию. Решение человека по группе, а если его
- * не было — прежнее правило: ленды да, остальное нет.
+ * не было — дефолт из DEFAULT_ENABLED_SOURCE_KINDS.
  *
  * Именно эта функция и делает «новая ссылка наследует группу»: цель заводится
  * с дефолтом своей группы, а не с захардкоженным списком лендов.
@@ -49,7 +68,7 @@ function loadGroupPrefs(db: AnyDB): Map<string, boolean> {
 function groupDefault(prefs: Map<string, boolean>, sourceKind: string): 0 | 1 {
   const pref = prefs.get(sourceKind);
   if (pref !== undefined) return pref ? 1 : 0;
-  return sourceKind === LANDING_SOURCE_KIND ? 1 : 0;
+  return DEFAULT_ENABLED_SOURCE_KINDS.has(sourceKind) ? 1 : 0;
 }
 
 /**
@@ -115,9 +134,48 @@ function collectTargets(
     if (url) add(url, row.kind, row.funnelId);
   }
 
-  // Второго источника нет: до Phase-10 адрес лендинга приходил ещё и из колонки
-  // funnels.landing_url, и одна и та же страница жила в двух местах сразу.
-  // Теперь у неё одно место — блок «Лендинги», колонка пуста и не читается.
+  // Второй источник — сетка комнат. Комнаты живут не в блоках, а в funnel_days,
+  // и до 18.09.2026 в мониторинг не попадали вовсе: у F101 из-за этого
+  // несуществующие комнаты были невидимы.
+  const rooms = db
+    .select({
+      funnelId: funnelDays.funnelId,
+      gcRoom: funnelDays.gcRoom,
+      webRoom: funnelDays.webRoom,
+      replayUrl: funnelDays.replayUrl,
+      roomsEnabled: funnels.roomsEnabled,
+      replayEnabled: funnels.roomsReplayEnabled,
+    })
+    .from(funnelDays)
+    .innerJoin(funnels, eq(funnels.id, funnelDays.funnelId))
+    .where(inArray(funnels.status, [...statuses]))
+    .all() as {
+      funnelId: number;
+      gcRoom: string | null;
+      webRoom: string | null;
+      replayUrl: string | null;
+      roomsEnabled: number | null;
+      replayEnabled: number | null;
+    }[];
+
+  const addRoom = (raw: string | null, kind: string, funnelId: number) => {
+    const url = normalizeUrl(raw ?? '');
+    if (url) add(url, kind, funnelId);
+  };
+
+  for (const row of rooms) {
+    // rooms_enabled = 0 — решение человека «здесь нет эфиров». Его уже уважают
+    // карточка, компактный вид и buildExportRows; мониторинг обязан читать
+    // данные так же, иначе он видит то, чего для сервиса не существует.
+    if (row.roomsEnabled === 1) {
+      addRoom(row.gcRoom, 'room_gc', row.funnelId);
+      addRoom(row.webRoom, 'room_web', row.funnelId);
+    }
+    if (row.replayEnabled === 1) {
+      addRoom(row.replayUrl, 'room_replay', row.funnelId);
+    }
+  }
+
   return out;
 }
 
