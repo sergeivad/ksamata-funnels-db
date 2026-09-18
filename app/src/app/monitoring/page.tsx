@@ -14,6 +14,7 @@ import type {
   MonitorSummaryView,
   MonitorTargetView,
 } from '@/lib/monitor-view';
+import type { CanaryView } from '@/lib/monitor-canary';
 
 type StatusFilter = 'all' | 'down' | 'slow' | 'up';
 
@@ -28,6 +29,7 @@ interface DashboardData {
   summary: MonitorSummaryView;
   sourceKinds: MonitorSourceKindView[];
   targets: MonitorTargetView[];
+  roomCheck: CanaryView;
 }
 
 interface ToastState {
@@ -235,7 +237,12 @@ export default function MonitoringPage() {
 
       {data && (
         <div className="mt-4 space-y-4">
-          <MonitorSummary summary={data.summary} running={running} onRun={runNow} />
+          <MonitorSummary
+            summary={data.summary}
+            running={running}
+            onRun={runNow}
+            roomCheck={data.roomCheck}
+          />
 
           <div>
             <p className="text-[12px] text-[var(--muted)]">

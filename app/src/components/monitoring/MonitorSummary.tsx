@@ -1,13 +1,15 @@
 'use client';
 
 import { RefreshCw } from 'lucide-react';
-import { formatAgo, telegramLabel } from '@/lib/monitor-status';
+import { formatAgo, telegramLabel, roomCheckLabel } from '@/lib/monitor-status';
 import type { MonitorSummaryView } from '@/lib/monitor-view';
+import type { CanaryView } from '@/lib/monitor-canary';
 
 interface Props {
   summary: MonitorSummaryView;
   running: boolean;
   onRun: () => void;
+  roomCheck: CanaryView;
 }
 
 const CELLS: { key: 'enabled' | 'up' | 'slow' | 'down'; label: string; className: string }[] = [
@@ -17,7 +19,7 @@ const CELLS: { key: 'enabled' | 'up' | 'slow' | 'down'; label: string; className
   { key: 'down', label: 'Упало', className: 'text-[#A32020]' },
 ];
 
-export default function MonitorSummary({ summary, running, onRun }: Props) {
+export default function MonitorSummary({ summary, running, onRun, roomCheck }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-4 rounded-[10px] border border-[var(--line-soft)] bg-[var(--card)] px-4 py-3">
       {CELLS.map((cell) => (
@@ -43,6 +45,21 @@ export default function MonitorSummary({ summary, running, onRun }: Props) {
           }
         >
           {telegramLabel(summary.telegram)}
+        </span>
+        {/* Признак «комнаты нет» отрицательный: протухни он — все комнаты стали
+            бы «Работает», и это прочлось бы как «расхождений нет». Канарейка
+            делает протухание громким. */}
+        <span
+          className={`text-[11px] ${
+            roomCheck.verdict === 'ok' ? 'text-[var(--muted)]' : 'text-[#8A6100]'
+          }`}
+          title={
+            roomCheck.verdict === 'ok'
+              ? 'Несуществующая веб-комната опознаётся как упавшая'
+              : 'Проверка «комнаты нет» не срабатывает — падения комнат могут выглядеть как «Работает»'
+          }
+        >
+          {roomCheckLabel(roomCheck.verdict)}
         </span>
         <span className="text-[11px] text-[var(--muted)]">
           Проверка: {formatAgo(summary.lastCheckedAt)}

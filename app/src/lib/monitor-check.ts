@@ -6,6 +6,11 @@
 import { resolveRedirectTarget } from './monitor-urls';
 import { isPrivateAddress, type LookupFn } from './monitor-dns';
 import { resolveHostAddresses } from './monitor-resolver';
+import {
+  hasSoftMissingRule,
+  softMissingReason,
+  SOFT_MISSING_MAX_BYTES,
+} from './monitor-content';
 
 export const CHECK_TIMEOUT_MS = 10_000;
 export const SLOW_THRESHOLD_MS = 5_000;
@@ -54,6 +59,40 @@ function describeFetchError(err: unknown, timeoutMs?: number): string {
   if (code === 'CERT_HAS_EXPIRED') return 'Истёк SSL-сертификат';
   if (code) return `Сетевая ошибка (${code})`;
   return err.message.slice(0, 200);
+}
+
+/**
+ * Первые maxBytes тела как текст; остаток потока рвём. Web-API, без node:*, —
+ * модуль лежит в edge-графе сборки.
+ */
+async function readHead(res: Response, maxBytes: number): Promise<string> {
+  const reader = res.body?.getReader();
+  if (!reader) return '';
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (size < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        chunks.push(value);
+        size += value.length;
+      }
+    }
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      // поток уже закрыт — не наша забота
+    }
+  }
+  const buf = new Uint8Array(size);
+  let offset = 0;
+  for (const c of chunks) {
+    buf.set(c, offset);
+    offset += c.length;
+  }
+  return new TextDecoder('utf-8').decode(buf.subarray(0, maxBytes));
 }
 
 export async function checkUrl(url: string, opts: CheckOptions = {}): Promise<CheckResult> {
@@ -119,16 +158,25 @@ export async function checkUrl(url: string, opts: CheckOptions = {}): Promise<Ch
       });
       const latencyMs = now() - started;
 
-      // Тело не нужно: рвём поток, чтобы не тянуть мегабайты HTML на каждый цикл.
-      try {
-        await res.body?.cancel();
-      } catch {
-        // поток уже закрыт — не наша забота
-      }
-
       const location = REDIRECT_STATUSES.has(res.status)
         ? res.headers?.get('location') ?? null
         : null;
+
+      // Тело читаем ТОЛЬКО там, где есть правило: у остальных хостов это были бы
+      // лишние мегабайты на каждом цикле, ради ничего.
+      const isFinalOk = location === null && res.status >= 200 && res.status < 300;
+      const host = new URL(current).hostname;
+      const wantsHead = isFinalOk && hasSoftMissingRule(host);
+      let head = '';
+      if (wantsHead) {
+        head = await readHead(res, SOFT_MISSING_MAX_BYTES);
+      } else {
+        try {
+          await res.body?.cancel();
+        } catch {
+          // поток уже закрыт — не наша забота
+        }
+      }
 
       if (location !== null) {
         if (hop >= MAX_REDIRECTS) {
@@ -151,6 +199,18 @@ export async function checkUrl(url: string, opts: CheckOptions = {}): Promise<Ch
       // валидный 204 или 206 попадал в down как «упавший лендинг».
       // Редиректы сюда не доходят: они разобраны выше.
       if (res.status >= 200 && res.status < 300) {
+        // Ответ 200 ещё не значит, что за ним что-то есть: страница
+        // несуществующей веб-комнаты отдаёт 200 и отличается только заголовком.
+        const missing = wantsHead ? softMissingReason(host, head) : null;
+        if (missing) {
+          return {
+            status: 'down',
+            httpStatus: res.status,
+            finalUrl: res.url || current,
+            latencyMs,
+            error: missing,
+          };
+        }
         return {
           status: latencyMs > slowMs ? 'slow' : 'up',
           httpStatus: res.status,

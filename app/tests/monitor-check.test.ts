@@ -319,3 +319,45 @@ describe('checkUrl', () => {
     expect(String((seenInit?.headers as Record<string, string>)['User-Agent'])).toContain('Ksamata');
   });
 });
+
+describe('признак пропавшей комнаты в checkUrl', () => {
+  const missing = '<html><head><title>Веб-комната не найдена</title></head><body></body></html>';
+  const live = '<html><head><title>СУСТАВЫ</title></head><body></body></html>';
+
+  function res(body: string) {
+    return new Response(body, { status: 200, headers: { 'content-type': 'text/html' } });
+  }
+
+  it('200 с признаком читается как упавшая цель', async () => {
+    const r = await checkUrl('https://web.ksamatacenter.com/room/zzz', {
+      fetchImpl: async () => res(missing),
+      lookupImpl: async () => ['93.184.216.34'],
+    });
+    expect(r.status).toBe('down');
+    expect(r.httpStatus).toBe(200);
+    expect(r.error).toBe('Веб-комната не найдена');
+  });
+
+  it('200 без признака остаётся живой целью', async () => {
+    const r = await checkUrl('https://web.ksamatacenter.com/room/boo1-kvch', {
+      fetchImpl: async () => res(live),
+      lookupImpl: async () => ['93.184.216.34'],
+    });
+    expect(r.status).toBe('up');
+    expect(r.error).toBe('');
+  });
+
+  it('у хоста без правила тело не читается вовсе', async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(c) { c.enqueue(new TextEncoder().encode(missing)); c.close(); },
+      cancel() { cancelled = true; },
+    });
+    const r = await checkUrl('https://gc.ksamata.ru/zzz', {
+      fetchImpl: async () => new Response(body, { status: 200 }),
+      lookupImpl: async () => ['93.184.216.34'],
+    });
+    expect(r.status).toBe('up');
+    expect(cancelled).toBe(true);
+  });
+});

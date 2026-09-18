@@ -1,3 +1,5 @@
+import type { CanaryVerdict } from './monitor-content';
+
 // Единый источник правды по статусам мониторинга. Значения совпадают с
 // CHECK-ограничением колонки monitor_state.status.
 export const MONITOR_STATUS_VALUES = ['up', 'slow', 'down', 'unknown'] as const;
@@ -51,4 +53,15 @@ export function telegramLabel(telegram: { configured: boolean; chats: number }):
   const teens = n % 100 >= 11 && n % 100 <= 14;
   const tail = !teens && ones === 1 ? 'чат' : !teens && ones >= 2 && ones <= 4 ? 'чата' : 'чатов';
   return `Telegram: ${n} ${tail}`;
+}
+
+/**
+ * Подпись состояния проверки комнат. Живёт здесь, рядом с telegramLabel, и по
+ * тому же доводу: monitor-canary тянет checkUrl, а тот — резолвер, и импорт из
+ * клиентского компонента утащил бы всё это в браузерный бандл.
+ */
+export function roomCheckLabel(verdict: CanaryVerdict): string {
+  if (verdict === 'ok') return 'Проверка комнат: действует';
+  if (verdict === 'broken') return 'Проверка комнат: НЕ действует';
+  return 'Проверка комнат: не удалось проверить';
 }

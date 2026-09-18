@@ -44,6 +44,11 @@ beforeEach(async () => {
   clearMonitoringState(sqlite);
   db = drizzle(sqlite, { schema });
   vi.doMock('@/db/client', () => ({ db }));
+  // Канарейка — сетевой вызов к Bizon; без подмены GET /api/monitoring тянул бы
+  // настоящую сеть при каждом прогоне тестов, как и остальной checkUrl здесь.
+  vi.doMock('@/lib/monitor-canary', () => ({
+    getCanaryState: async () => ({ verdict: 'unknown', checkedAt: new Date(0).toISOString() }),
+  }));
 
   GET = (await import('../src/app/api/monitoring/route')).GET;
   PATCH_ONE = (await import('../src/app/api/monitoring/targets/[id]/route')).PATCH;
@@ -85,6 +90,7 @@ describe('GET /api/monitoring', () => {
     expect(body.summary.enabled).toBe(1);
     expect(Array.isArray(body.targets)).toBe(true);
     expect(Array.isArray(body.sourceKinds)).toBe(true);
+    expect(body.roomCheck.verdict).toBe('unknown');
   });
 });
 
