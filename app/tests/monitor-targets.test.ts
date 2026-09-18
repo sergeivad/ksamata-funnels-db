@@ -972,3 +972,88 @@ describe('связи и включённость разведены', () => {
     expect(funnelsOf('https://lp.example.ru/will-vanish')).toEqual([]);
   });
 });
+
+/**
+ * Ревью задачи 3 (Important 2): setTargetEnabled сравнивал запрошенное
+ * состояние с голым дефолтом группы, не зная про hasActive. У цели, которую
+ * держит только черновик или архив, это совпадение было ложным: «включить»
+ * совпадало бы с дефолтом группы (обычно 1 у лендов), override не ставился
+ * бы, и ближайший синк (у которого для этой цели hasActive=false) тут же
+ * гасил бы её обратно — молча, через ближайший фоновый прогон.
+ */
+describe('manual_override у цели, которую держит только неактивная воронка', () => {
+  it('включили вручную адрес черновика — override ставится и переживает синк', () => {
+    wipeFunnelUrls();
+    const draftId = (sqlite.prepare(`SELECT id FROM funnels WHERE status = 'archive' LIMIT 1`)
+      .get() as { id: number }).id;
+    sqlite.prepare(`UPDATE funnels SET status = 'draft' WHERE id = ?`).run(draftId);
+    setLanding(draftId, 'https://lp.example.ru/draft-manual-on');
+
+    syncMonitorTargets(db);
+    const target = targetRow('https://lp.example.ru/draft-manual-on')!;
+    // landings — группа, включённая по умолчанию, но hasActive=false у
+    // черновика: цель заведена, но не проверяется.
+    expect(target.enabled).toBe(0);
+
+    expect(setTargetEnabled(db, target.id, true)).toBe(true);
+    expect(targetRow('https://lp.example.ru/draft-manual-on')?.manual_override,
+      'запрошенное состояние (1) отличается от ЭФФЕКТИВНОГО дефолта (0, из-за hasActive=false), override обязан встать')
+      .toBe(1);
+
+    syncMonitorTargets(db);
+
+    expect(targetRow('https://lp.example.ru/draft-manual-on')?.enabled,
+      'override должен пережить синк — решение человека не гасится молча')
+      .toBe(1);
+    expect(targetRow('https://lp.example.ru/draft-manual-on')?.manual_override).toBe(1);
+  });
+});
+
+/**
+ * Ревью задачи 3 (Fix 5): живая ветка синка писала updated_at безусловно на
+ * каждой цели каждым прогоном, даже когда ни source_kind, ни эффективный
+ * enabled не менялись. Те же грабли, что уже чинили в ветке ретайрмента —
+ * затираемый штамп не даёт понять, когда цель на самом деле поменялась.
+ */
+describe('updated_at живой цели', () => {
+  it('два синка подряд без правок данных не двигают updated_at', () => {
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    setLanding(f1, 'https://stable.example.ru/x');
+    syncMonitorTargets(db);
+
+    const id = targetRow('https://stable.example.ru/x')!.id;
+    sqlite.prepare(`UPDATE monitor_targets SET updated_at = '2020-01-01 00:00:00' WHERE id = ?`).run(id);
+
+    syncMonitorTargets(db);
+
+    const after = sqlite
+      .prepare(`SELECT updated_at AS u FROM monitor_targets WHERE id = ?`)
+      .get(id) as { u: string };
+    expect(after.u, 'штамп живой, неизменившейся цели не должен обновляться каждым синком')
+      .toBe('2020-01-01 00:00:00');
+  });
+
+  it('но двигает его, когда фактический enabled меняется (воронка ушла из активных)', () => {
+    wipeFunnelUrls();
+    const [f1] = funnelIds(1);
+    sqlite.prepare(`UPDATE funnels SET status = 'active' WHERE id = ?`).run(f1);
+    setLanding(f1, 'https://changing.example.ru/x');
+    syncMonitorTargets(db);
+    expect(targetRow('https://changing.example.ru/x')?.enabled).toBe(1);
+
+    const id = targetRow('https://changing.example.ru/x')!.id;
+    sqlite.prepare(`UPDATE monitor_targets SET updated_at = '2020-01-01 00:00:00' WHERE id = ?`).run(id);
+
+    // hasActive этой цели переворачивается true → false — wanted меняется с 1 на 0.
+    sqlite.prepare(`UPDATE funnels SET status = 'archive' WHERE id = ?`).run(f1);
+    syncMonitorTargets(db);
+
+    expect(targetRow('https://changing.example.ru/x')?.enabled).toBe(0);
+    const after = sqlite
+      .prepare(`SELECT updated_at AS u FROM monitor_targets WHERE id = ?`)
+      .get(id) as { u: string };
+    expect(after.u, 'реальное изменение enabled обязано подвинуть штамп')
+      .not.toBe('2020-01-01 00:00:00');
+  });
+});

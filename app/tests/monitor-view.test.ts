@@ -293,6 +293,27 @@ describe('listMonitorEvents', () => {
     expect(listMonitorEvents(db, 2, 4)).toHaveLength(1);
   });
 
+  /**
+   * Ревью задачи 3: `funnelsByTarget` с 18.09.2026 несёт держателей всех
+   * статусов, а лента инцидентов (в отличие от таблицы целей) фильтр не
+   * применяла — архивные/черновые коды тихо просачивались бы в события, а
+   * поле `status`, которого нет в объявленном типе MonitorFunnelRef, утекало
+   * бы наружу в ответ GET /api/monitoring/events.
+   */
+  it('событие по цели, которую держит только архив, отдаёт пустой funnels', () => {
+    const archived = (sqlite.prepare(`SELECT id FROM funnels WHERE status = 'archive' LIMIT 1`)
+      .get() as { id: number }).id;
+    const id = makeTarget('https://archived-event.example.ru/', 0, 'down', null);
+    sqlite.prepare(`INSERT INTO monitor_target_funnels (target_id, funnel_id) VALUES (?, ?)`)
+      .run(id, archived);
+    sqlite.prepare(
+      `INSERT INTO monitor_events (target_id, from_status, to_status) VALUES (?, 'up', 'down')`
+    ).run(id);
+
+    const rows = listMonitorEvents(db, 10, 0);
+    const row = rows.find((r) => r.url === 'https://archived-event.example.ru/')!;
+    expect(row.funnels).toEqual([]);
+  });
 });
 
 describe('funnelsByTarget', () => {
