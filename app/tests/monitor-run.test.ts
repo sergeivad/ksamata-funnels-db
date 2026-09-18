@@ -11,7 +11,7 @@ import path from 'path';
 import { runMigratePhase6 } from '../scripts/migrate-phase6';
 import * as schema from '../src/db/schema';
 import { clearMonitoringState } from './helpers/monitoring';
-import { runMonitorCycle, EVENT_RETENTION_DAYS, isCycleRunning } from '../src/lib/monitor-run';
+import { runMonitorCycle, runFunnelCheck, EVENT_RETENTION_DAYS, isCycleRunning } from '../src/lib/monitor-run';
 import type { CheckResult } from '../src/lib/monitor-check';
 import { copyDbForTest } from './helpers/db';
 
@@ -19,6 +19,7 @@ const REAL_DB = path.resolve(process.cwd(), '..', 'ksamata_funnels.db');
 let tmp: string;
 let sqlite: Database.Database;
 let db: ReturnType<typeof drizzle<typeof schema>>;
+let funnelId: number;
 
 const up: CheckResult = { status: 'up', httpStatus: 200, finalUrl: 'https://a.ru/', latencyMs: 120, error: '' };
 const down: CheckResult = { status: 'down', httpStatus: 503, finalUrl: 'https://a.ru/', latencyMs: 90, error: 'HTTP 503' };
@@ -45,6 +46,22 @@ function seedTarget(url = 'https://a.ru/'): number {
     .run(url).lastInsertRowid as number;
   sqlite.prepare(`INSERT INTO monitor_state (target_id, status) VALUES (?, 'unknown')`).run(id);
   return id;
+}
+
+/** Цель без привязки к воронке — по образцу seedTarget, но с явным enabled. */
+function addTarget(url: string, enabled: 0 | 1): number {
+  const id = sqlite
+    .prepare(`INSERT INTO monitor_targets (url, source_kind, enabled) VALUES (?, 'landings', ?)`)
+    .run(url, enabled).lastInsertRowid as number;
+  sqlite.prepare(`INSERT INTO monitor_state (target_id, status) VALUES (?, 'unknown')`).run(id);
+  return id;
+}
+
+/** Связывает цель с воронкой — как это делает синк, только вручную. */
+function linkTarget(targetId: number, fId: number): void {
+  sqlite
+    .prepare(`INSERT INTO monitor_target_funnels (target_id, funnel_id) VALUES (?, ?)`)
+    .run(targetId, fId);
 }
 
 function state(id: number) {
@@ -76,6 +93,8 @@ beforeEach(() => {
   // тесты ниже считают абсолютные числа, поэтому стартуем с нуля.
   clearMonitoringState(sqlite);
   db = drizzle(sqlite, { schema });
+  funnelId = (sqlite.prepare(`SELECT id FROM funnels WHERE status = 'active' LIMIT 1`)
+    .get() as { id: number }).id;
 });
 
 afterEach(() => {
@@ -385,5 +404,73 @@ describe('ретеншен истории инцидентов', () => {
     seedOldEvent(id, 1);
     await runMonitorCycle(db, { check: scriptedCheck([up]).fn, sync: false, sleep: noSleep });
     expect(events(id)).toHaveLength(2);
+  });
+});
+
+describe('запись результата', () => {
+  it('чтение прошлого статуса идёт внутри транзакции', () => {
+    // Транзакция better-sqlite3 синхронна: если SELECT внутри неё, весь
+    // persist виден снаружи как одна операция. Проверяем структурно —
+    // на исходнике, потому что гонку двух писателей тестом не поймать.
+    const src = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/lib/monitor-run.ts'), 'utf8',
+    );
+    const body = src.slice(src.indexOf('function persist('), src.indexOf('export async function runMonitorCycle'));
+    const txAt = body.indexOf('db.transaction(');
+    const selectAt = body.indexOf('.from(monitorState)');
+    expect(txAt).toBeGreaterThanOrEqual(0);
+    expect(selectAt).toBeGreaterThan(txAt);
+  });
+});
+
+describe('ручная проверка воронки', () => {
+  it('проверяет только адреса этой воронки, включая выключенные', async () => {
+    const mine = addTarget('https://lp.example.ru/mine', 0);   // выключенная цель воронки
+    const alien = addTarget('https://lp.example.ru/alien', 1); // чужая, включённая
+    linkTarget(mine, funnelId);
+
+    const asked: string[] = [];
+    const check = async (url: string) => {
+      asked.push(url);
+      return { status: 'up' as const, httpStatus: 200, finalUrl: url, latencyMs: 1, error: '' };
+    };
+
+    await runFunnelCheck(db, funnelId, { check, sync: false, notify: async () => undefined });
+
+    expect(asked).toEqual(['https://lp.example.ru/mine']);
+    expect(asked).not.toContain('https://lp.example.ru/alien');
+    expect(alien).toBeGreaterThan(0);
+  });
+
+  it('вторая проверка воронки подряд отказывается, пока идёт первая', async () => {
+    const t = addTarget('https://lp.example.ru/slow', 1);
+    linkTarget(t, funnelId);
+
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const check = async (url: string) => {
+      await gate;
+      return { status: 'up' as const, httpStatus: 200, finalUrl: url, latencyMs: 1, error: '' };
+    };
+
+    const first = runFunnelCheck(db, funnelId, { check, sync: false, notify: async () => undefined });
+    const second = await runFunnelCheck(db, funnelId, { check, sync: false, notify: async () => undefined });
+    expect(second).toBeNull();
+    release();
+    expect(await first).not.toBeNull();
+  });
+
+  it('общий цикл ручной проверке не мешает', async () => {
+    const t = addTarget('https://lp.example.ru/both', 1);
+    linkTarget(t, funnelId);
+    const check = async (url: string) => ({
+      status: 'up' as const, httpStatus: 200, finalUrl: url, latencyMs: 1, error: '',
+    });
+
+    // Флаг общего цикла поднят — ручная проверка всё равно проходит.
+    const cycle = runMonitorCycle(db, { check, sync: false, notify: async () => undefined });
+    const manual = await runFunnelCheck(db, funnelId, { check, sync: false, notify: async () => undefined });
+    expect(manual).not.toBeNull();
+    await cycle;
   });
 });

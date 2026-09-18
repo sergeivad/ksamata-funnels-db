@@ -1,8 +1,8 @@
 import { eq, sql } from 'drizzle-orm';
 import { type AnyDB } from '../db/client';
-import { monitorTargets, monitorState, monitorEvents } from '../db/schema';
+import { monitorTargets, monitorState, monitorEvents, monitorTargetFunnels } from '../db/schema';
 import { checkUrl, type CheckFn, type CheckResult } from './monitor-check';
-import { syncMonitorTargets } from './monitor-targets';
+import { syncFunnelTargets, syncMonitorTargets } from './monitor-targets';
 import { notifyMonitorEvents } from './monitor-notify';
 
 export const RETRY_DELAY_MS = 3_000;
@@ -118,21 +118,27 @@ function maxEventId(db: AnyDB): number {
   return row?.max ?? 0;
 }
 
+/**
+ * Чтение прошлого статуса стоит ВНУТРИ транзакции: SQLite сериализует пишущие
+ * транзакции, и «прочитали оба, записали оба» становится невозможным. Пока
+ * писатель был один, снаружи это не стреляло; ручная проверка воронки идёт
+ * параллельно общему циклу, и запрет пришлось заменить настоящей защитой.
+ */
 function persist(db: AnyDB, target: TargetRow, result: CheckResult): void {
-  const prev = db
-    .select({
-      status: monitorState.status,
-      consecutiveFailures: monitorState.consecutiveFailures,
-    })
-    .from(monitorState)
-    .where(eq(monitorState.targetId, target.id))
-    .get() as { status: string; consecutiveFailures: number } | undefined;
-
-  const prevStatus = prev?.status ?? 'unknown';
-  const failures = result.status === 'down' ? (prev?.consecutiveFailures ?? 0) + 1 : 0;
-  const changed = prevStatus !== result.status;
-
   db.transaction((tx) => {
+    const prev = tx
+      .select({
+        status: monitorState.status,
+        consecutiveFailures: monitorState.consecutiveFailures,
+      })
+      .from(monitorState)
+      .where(eq(monitorState.targetId, target.id))
+      .get() as { status: string; consecutiveFailures: number } | undefined;
+
+    const prevStatus = prev?.status ?? 'unknown';
+    const failures = result.status === 'down' ? (prev?.consecutiveFailures ?? 0) + 1 : 0;
+    const changed = prevStatus !== result.status;
+
     tx.insert(monitorState)
       .values({
         targetId: target.id,
@@ -259,5 +265,81 @@ export async function runMonitorCycle(
     // Снимаем флаг в том же слоте, из которого его читали — на случай, если
     // globalThis.__ksamataMonitorRun подменили между стартом и финишем.
     state.cycleRunning = false;
+  }
+}
+
+/**
+ * Прогон по целям одной воронки. Возвращает null, если ручная проверка уже идёт.
+ *
+ * Флаг свой, отдельный от общего цикла: общий идёт около трёх минут из каждых
+ * пятнадцати, и единый флаг давал бы отказ на каждом пятом клике по главной
+ * кнопке. Гонку за одну цель закрывает транзакция в persist, а не запрет.
+ *
+ * Проверяются ВСЕ адреса воронки, включая выключенные: у черновика все цели
+ * выключены по построению, и «только включённое» проверило бы ноль адресов и
+ * отчиталось бы об успехе.
+ *
+ * Telegram отсюда молчит: человек смотрит на экран, а сообщение на каждый клик
+ * превратило бы сводку о падениях в шум.
+ */
+export async function runFunnelCheck(
+  db: AnyDB,
+  funnelId: number,
+  opts: CycleOptions = {}
+): Promise<CycleResult | null> {
+  const state = runState();
+  if (state.funnelCheckId != null) return null;
+  state.funnelCheckId = funnelId;
+
+  const check: CheckFn = opts.check ?? ((url) => checkUrl(url));
+  const concurrency = opts.concurrency ?? CONCURRENCY;
+  const retryDelayMs = opts.retryDelayMs ?? RETRY_DELAY_MS;
+  const sleep = opts.sleep ?? defaultSleep;
+  const startedAt = new Date().toISOString();
+  const tally = { up: 0, slow: 0, down: 0 };
+
+  try {
+    if (opts.sync !== false) syncFunnelTargets(db, funnelId);
+
+    const targets = db
+      .select({ id: monitorTargets.id, url: monitorTargets.url })
+      .from(monitorTargets)
+      .innerJoin(monitorTargetFunnels, eq(monitorTargetFunnels.targetId, monitorTargets.id))
+      .where(eq(monitorTargetFunnels.funnelId, funnelId))
+      .all() as TargetRow[];
+
+    let cursor = 0;
+    let checked = 0;
+    const worker = async () => {
+      for (;;) {
+        const index = cursor;
+        cursor += 1;
+        if (index >= targets.length) return;
+        const target = targets[index];
+        try {
+          const result = await checkWithRetry(target.url, check, retryDelayMs, sleep);
+          persist(db, target, result);
+          tally[result.status] += 1;
+          checked += 1;
+        } catch (err) {
+          console.error(`monitor: цель ${target.url} упала с ошибкой`, err);
+        }
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, Math.max(targets.length, 1)) }, worker)
+    );
+
+    return {
+      checked,
+      up: tally.up,
+      slow: tally.slow,
+      down: tally.down,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+    };
+  } finally {
+    state.funnelCheckId = null;
   }
 }

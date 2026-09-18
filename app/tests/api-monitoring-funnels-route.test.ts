@@ -28,17 +28,18 @@ let funnelId: number;
 /* eslint-disable @typescript-eslint/consistent-type-imports */
 let GET: typeof import('../src/app/api/monitoring/funnels/route').GET;
 let GET_ONE: typeof import('../src/app/api/monitoring/funnels/[id]/route').GET;
+let RUN: typeof import('../src/app/api/monitoring/funnels/[id]/run/route').POST;
 /* eslint-enable @typescript-eslint/consistent-type-imports */
 
 const ADMIN = 'ed:s3cret';
 const AUTH_HEADER = `Basic ${Buffer.from(ADMIN).toString('base64')}`;
 
-function makeRequest(url: string): never {
-  return new Request(url) as never;
+function makeRequest(url: string, method = 'GET'): never {
+  return new Request(url, { method }) as never;
 }
 
-function editorRequest(url: string): never {
-  return new Request(url, { headers: { authorization: AUTH_HEADER } }) as never;
+function editorRequest(url: string, method = 'GET'): never {
+  return new Request(url, { method, headers: { authorization: AUTH_HEADER } }) as never;
 }
 
 beforeEach(async () => {
@@ -61,6 +62,7 @@ beforeEach(async () => {
 
   GET = (await import('../src/app/api/monitoring/funnels/route')).GET;
   GET_ONE = (await import('../src/app/api/monitoring/funnels/[id]/route')).GET;
+  RUN = (await import('../src/app/api/monitoring/funnels/[id]/run/route')).POST;
 });
 
 afterEach(() => {
@@ -115,5 +117,21 @@ describe('GET /api/monitoring/funnels/[id]', () => {
       params: Promise.resolve({ id: String(funnelId) }),
     });
     expect(res.status).toBe(401);
+  });
+});
+
+describe('POST /api/monitoring/funnels/[id]/run', () => {
+  it('анониму — 401', async () => {
+    const res = await RUN(makeRequest('http://localhost/api/monitoring/funnels/1/run', 'POST'), {
+      params: Promise.resolve({ id: '1' }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('несуществующая воронка — 404', async () => {
+    const res = await RUN(editorRequest('http://localhost/api/monitoring/funnels/999999/run', 'POST'), {
+      params: Promise.resolve({ id: '999999' }),
+    });
+    expect(res.status).toBe(404);
   });
 });
