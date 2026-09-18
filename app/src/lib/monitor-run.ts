@@ -47,6 +47,8 @@ export type NotifyFn = (db: AnyDB, sinceEventId: number) => Promise<unknown>;
 // наложения работала бы только в тестах, где инстанс модуля один.
 interface MonitorRunState {
   cycleRunning: boolean;
+  /** Воронка, которую проверяют вручную. null — ручной проверки нет. */
+  funnelCheckId?: number | null;
 }
 
 declare global {
@@ -64,6 +66,11 @@ function runState(): MonitorRunState {
 
 export function isCycleRunning(): boolean {
   return runState().cycleRunning;
+}
+
+/** id воронки, которую проверяют прямо сейчас, или null. Наполняется в runFunnelCheck. */
+export function runningFunnelCheckId(): number | null {
+  return runState().funnelCheckId ?? null;
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));

@@ -21,15 +21,21 @@ export const MONITOR_STATUS_META: Record<
 };
 
 /**
- * «Сколько прошло» для времени из SQLite (`datetime('now')` → 'YYYY-MM-DD HH:MM:SS' в UTC,
- * без указания зоны). Пробел меняем на 'T' и дописываем 'Z', иначе движок трактует
- * строку как локальное время и сдвигает результат на часовой пояс.
+ * Время из SQLite (`datetime('now')` → 'YYYY-MM-DD HH:MM:SS' в UTC, без зоны)
+ * в миллисекунды. Пробел меняем на 'T' и дописываем 'Z': иначе движок сочтёт
+ * строку локальным временем и сдвинет результат на часовой пояс.
  */
-export function formatAgo(iso: string | null, nowMs: number = Date.now()): string {
-  if (!iso) return 'никогда';
+export function parseSqliteUtc(iso: string | null): number | null {
+  if (!iso) return null;
   const normalized = iso.includes('T') ? iso : `${iso.replace(' ', 'T')}Z`;
   const then = Date.parse(normalized);
-  if (Number.isNaN(then)) return 'никогда';
+  return Number.isNaN(then) ? null : then;
+}
+
+/** «Сколько прошло» для времени из SQLite — см. parseSqliteUtc. */
+export function formatAgo(iso: string | null, nowMs: number = Date.now()): string {
+  const then = parseSqliteUtc(iso);
+  if (then === null) return 'никогда';
 
   const seconds = Math.max(0, Math.floor((nowMs - then) / 1000));
   if (seconds < 60) return 'только что';
