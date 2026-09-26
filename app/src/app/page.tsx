@@ -374,12 +374,18 @@ export default function HomePage() {
    * берутся без её собственного фильтра, поэтому `FacetBar` нужен список,
    * суженный вкладкой и поиском, но ещё не осями.
    */
+  /** Проблема — то же, что пилюля у строки: есть упавшие или непроверенные адреса. */
+  const hasProblem = useCallback(
+    (id: number) => funnelHealthTone(health[id] ?? EMPTY_HEALTH) !== 'ok',
+    [health]
+  );
+
   const searchedFunnels = useMemo(() => {
     return funnels
       .filter((f) => isFunnelVisible(f, statusFilter, search))
-      .filter((f) => !problemsOnly || funnelHealthTone(health[f.id] ?? EMPTY_HEALTH) !== 'ok')
+      .filter((f) => !problemsOnly || hasProblem(f.id))
       .sort(compareByFrontCodeDesc);
-  }, [funnels, statusFilter, search, problemsOnly, health]);
+  }, [funnels, statusFilter, search, problemsOnly, hasProblem]);
 
   const visibleFunnels = useMemo(
     () => searchedFunnels.filter((f) => matchesFilters(f.axes, filters)),
@@ -392,10 +398,26 @@ export default function HomePage() {
       countByStatus(
         funnels
           .filter((f) => isFunnelVisible(f, 'all', search))
-          .filter((f) => !problemsOnly || funnelHealthTone(health[f.id] ?? EMPTY_HEALTH) !== 'ok')
+          .filter((f) => !problemsOnly || hasProblem(f.id))
           .filter((f) => matchesFilters(f.axes, filters))
       ),
-    [funnels, search, problemsOnly, health, filters]
+    [funnels, search, problemsOnly, hasProblem, filters]
+  );
+
+  /**
+   * Число на чипе «С проблемами» — по тому же правилу, что числа вкладок:
+   * всё, кроме самого чипа (раздел, поиск, оси). Тогда нажатие показывает
+   * ровно столько воронок, сколько было написано на кнопке.
+   */
+  const problemsCount = useMemo(
+    () =>
+      funnels.filter(
+        (f) =>
+          isFunnelVisible(f, statusFilter, search) &&
+          matchesFilters(f.axes, filters) &&
+          hasProblem(f.id)
+      ).length,
+    [funnels, statusFilter, search, filters, hasProblem]
   );
 
   function handlePickAxis(axis: AxisKey, value: string) {
@@ -574,6 +596,18 @@ export default function HomePage() {
             >
               <AlertCircle className="h-3.5 w-3.5" />
               С проблемами
+              {/* Ноль не рисуем: пустой бейдж зовёт нажать туда, где пусто. */}
+              {healthLoaded && problemsCount > 0 && (
+                <span
+                  aria-label={`воронок с проблемами: ${problemsCount}`}
+                  className={[
+                    'min-w-[18px] rounded-full px-1.5 text-center text-[11px] font-semibold leading-[18px]',
+                    problemsOnly ? 'bg-white/70 text-[#A32020]' : 'bg-[#E5484D] text-white',
+                  ].join(' ')}
+                >
+                  {problemsCount}
+                </span>
+              )}
             </button>
           )}
         </div>
