@@ -177,4 +177,14 @@ if [ -n "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] Phase-17 migration done."
 fi
 
+# Apply Phase-18 migration (idempotent: колонка funnels.in_leak — заведена ли
+# воронка в ЛИК — и разовый бэкфилл по снимку реестра ЛИК). Бэкфилл идёт только
+# в прогон, заводящий колонку, чтобы не затирать галку человека; дальше фаза
+# ничего не делает, но из цепочки её не убираем, как и прочие.
+if [ -n "$FUNNELS_DB_PATH" ]; then
+  echo "[entrypoint] Running Phase-18 migration against $FUNNELS_DB_PATH"
+  node /app/migrate-phase18.cjs
+  echo "[entrypoint] Phase-18 migration done."
+fi
+
 exec node server.js

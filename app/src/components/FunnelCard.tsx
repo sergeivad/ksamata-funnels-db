@@ -6,9 +6,9 @@ import { ChevronRight, Copy, MoreVertical, RefreshCw, Trash2 } from 'lucide-reac
 import CodeChip from './CodeChip';
 import StatusPill from './StatusPill';
 import FunnelHealthPill from './FunnelHealthPill';
+import LeakPill from './LeakPill';
 import { useCanEdit } from './AuthProvider';
 import { FUNNEL_STATUSES, STATUS_ACTION_LABELS, type FunnelStatus } from '@/lib/status';
-import { DEFAULT_FUNNEL_TYPE } from '@/lib/funnel-type';
 import { funnelHref } from '@/lib/front-code';
 import type { FunnelHealth } from '@/lib/funnel-health';
 
@@ -17,7 +17,9 @@ interface Funnel {
   frontCode: string;
   status: FunnelStatus;
   title: string;
-  funnelType: string | null;
+  inLeak: boolean;
+  /** Все четыре оси пусты — пустой черновик. */
+  blank: boolean;
 }
 
 interface FunnelCardProps {
@@ -44,8 +46,8 @@ export default function FunnelCard({
   const canEdit = useCanEdit();
   const [menuOpen, setMenuOpen] = useState(false);
   const href = funnelHref(funnel);
-  // Вторая колонка была фиксированной 80px под один статус-пилл; с чипом типа
-  // воронки рядом контент мог не влезать и наезжать на кнопки действий, поэтому
+  // Вторая колонка была фиксированной 80px под один статус-пилл; с пилюлей
+  // ЛИК рядом контент мог не влезать и наезжать на кнопки действий, поэтому
   // 80px теперь только нижняя граница, а не потолок.
   //
   // В режиме просмотра колонка действий не просто пустеет, а исчезает из
@@ -90,18 +92,10 @@ export default function FunnelCard({
         )}
         {health && <FunnelHealthPill health={health} href={`${href}#health`} />}
         <StatusPill status={funnel.status} />
-        {/* Тип воронки показываем только когда он отличается от дефолтной
-            «АВ Автоворонка» — иначе изменится 72 карточки из 72, хотя тип
-            есть лишь у меньшинства. Префикс "АВ " срезаем только тут, для
-            компактности чипа; хранится и выпускается тег дословно. */}
-        {funnel.funnelType && funnel.funnelType !== DEFAULT_FUNNEL_TYPE && (
-          <span
-            className="rounded bg-[#F1E7D6] px-1.5 py-0.5 text-[11px] text-[#7A5B22]"
-            title="Тип воронки"
-          >
-            {funnel.funnelType.replace(/^АВ /, '')}
-          </span>
-        )}
+        {/* Чип типа воронки («Прямые», «Квиз») убран 26.09.2026 по просьбе
+            владельца: он ничего не сообщал. Тип остаётся в карточке и в
+            тегах. На его месте — пилюля ЛИК. */}
+        <LeakPill inLeak={funnel.inLeak} status={funnel.status} blank={funnel.blank} />
       </div>
 
       {/* Action buttons — только для редактора: анониму эти запросы вернёт 401 */}

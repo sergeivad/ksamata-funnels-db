@@ -35,6 +35,7 @@ type IdentitySnapshot = {
   tb: string;
   funnelType: string;
   hasPredspisok: boolean;
+  inLeak: boolean;
 };
 
 interface Props { funnel: FunnelDetail; onDirtyChange?: (dirty: boolean) => void }
@@ -64,6 +65,10 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   // а не только тег этапа, — оси и маркер типа оверрайдом не снимаются.
   const [hasPredspisok, setHasPredspisok] = useState(funnel.hasPredspisok);
 
+  // Заведена ли воронка в ЛИК (Phase 18). Синхронизации нет: завели воронку
+  // в ЛИК — ставят галку здесь, и пилюля «нет в ЛИК» в списке гаснет.
+  const [inLeak, setInLeak] = useState(funnel.inLeak);
+
   /**
    * Отражает ли рабочая копия оверрайдов предсписка то, что лежит на сервере.
    *
@@ -91,6 +96,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
     tb: funnel.timeLabelB,
     funnelType: funnel.funnelType ?? '',
     hasPredspisok: funnel.hasPredspisok,
+    inLeak: funnel.inLeak,
   });
 
   const dirty =
@@ -104,7 +110,8 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
     ta !== saved.ta ||
     tb !== saved.tb ||
     funnelType !== (saved.funnelType ?? '') ||
-    hasPredspisok !== saved.hasPredspisok;
+    hasPredspisok !== saved.hasPredspisok ||
+    inLeak !== saved.inLeak;
 
   const onDirtyChangeRef = useRef(onDirtyChange);
   onDirtyChangeRef.current = onDirtyChange;
@@ -283,7 +290,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
     const submitted: IdentitySnapshot = {
       frontCode, status,
       product: axes.product, contractor: axes.contractor, channel: axes.channel, direction: axes.direction,
-      comment, ta, tb, funnelType, hasPredspisok,
+      comment, ta, tb, funnelType, hasPredspisok, inLeak,
     };
     setSaving(true);
     setError(null);
@@ -297,6 +304,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
           comment: submitted.comment, timeLabelA: submitted.ta, timeLabelB: submitted.tb,
           funnelType: submitted.funnelType,
           hasPredspisok: submitted.hasPredspisok,
+          inLeak: submitted.inLeak,
         }),
       });
       const body = await res.json().catch(() => null);
@@ -374,7 +382,10 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
         <span className={`text-[16px] font-medium ${allEmpty ? 'text-[var(--faint)]' : ''}`}>
           {allEmpty ? 'Новая воронка — заполните продукт и подрядчика' : name}
         </span>
-        <span className="ml-auto">
+        <span className="ml-auto flex items-center gap-3">
+          <span title="Заведена ли воронка в ЛИК. Галку ставит человек, когда завёл воронку там: сверки с ЛИК у сервиса нет.">
+            <Switch checked={inLeak} onChange={setInLeak} label="есть в ЛИК" disabled={!canEdit} />
+          </span>
           <Segmented
             options={[
               { value: 'active', label: STATUS_META.active.label },

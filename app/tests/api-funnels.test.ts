@@ -32,6 +32,7 @@ import { runMigratePhase8 } from '../scripts/migrate-phase8';
 import { runMigratePhase12 } from '../scripts/migrate-phase12';
 import { runMigratePhase14 } from '../scripts/migrate-phase14';
 import { runMigratePhase16 } from '../scripts/migrate-phase16';
+import { runMigratePhase18 } from '../scripts/migrate-phase18';
 import { replaceDays, listDays } from '../src/lib/funnel-days';
 import { ConflictError } from '../src/lib/errors';
 import { replaceBlock, getBlock } from '../src/lib/funnel-blocks';
@@ -61,6 +62,7 @@ runMigratePhase14(sqlite);
 // зависели от того, прогнали ли миграцию на закоммиченном бинарнике базы
 // (а его, по предупреждению CLAUDE.md, rebase подменяет молча).
 runMigratePhase16(sqlite);
+runMigratePhase18(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => {
@@ -794,6 +796,43 @@ describe('признак предсписка (Phase 16)', () => {
     updateFunnel(testDb, created.id, { hasPredspisok: false });
     resyncAllFunnels(testDb);
     expect(rowsOf(created.id, 'predspisok')).toBe(0);
+  });
+});
+
+/** Номера 10101…: вне рядов соседних describe, по тому же доводу, что выше. */
+describe('признак «есть в ЛИК» (Phase 18)', () => {
+  it('новая воронка заводится без галки', () => {
+    const created = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 10101 });
+    expect(created.inLeak).toBe(false);
+    expect(getFunnel(testDb, created.id)!.inLeak).toBe(false);
+  });
+
+  it('галка ставится и снимается через updateFunnel и видна в списке', () => {
+    const created = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 10112 });
+    expect(updateFunnel(testDb, created.id, { inLeak: true })!.inLeak).toBe(true);
+    expect(listFunnels(testDb).find((f) => f.id === created.id)!.inLeak).toBe(true);
+    updateFunnel(testDb, created.id, { inLeak: false });
+    expect(getFunnel(testDb, created.id)!.inLeak).toBe(false);
+  });
+
+  it('галка не трогает теги', () => {
+    const created = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 10123 });
+    const before = getFunnel(testDb, created.id)!.tagSets;
+    updateFunnel(testDb, created.id, { inLeak: true });
+    expect(getFunnel(testDb, created.id)!.tagSets).toEqual(before);
+  });
+
+  it('дубликат галку не наследует: у копии новый F-код, в ЛИК его нет', () => {
+    const src = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 10134 });
+    updateFunnel(testDb, src.id, { inLeak: true });
+    const dup = duplicateFunnel(testDb, src.id)!;
+    expect(dup.inLeak).toBe(false);
+    expect(getFunnel(testDb, dup.id)!.inLeak).toBe(false);
+  });
+
+  it('черновик заводится без галки', () => {
+    const draft = createDraftFunnel(testDb);
+    expect(getFunnel(testDb, draft.id)!.inLeak).toBe(false);
   });
 });
 

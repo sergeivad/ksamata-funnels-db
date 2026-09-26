@@ -61,6 +61,7 @@ export const funnelCreateSchema = z.object({
   roomsReplayEnabled: z.boolean().optional(),
   roomsEnabled: z.boolean().optional(),
   hasPredspisok: z.boolean().optional(),
+  inLeak: z.boolean().optional(),
   // sourceName is optional — when absent, source is auto-derived as `${channel} ${contractor}`
   sourceName: z.string().max(REF_MAX).optional(),
 });
