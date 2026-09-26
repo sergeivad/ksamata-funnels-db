@@ -723,7 +723,7 @@ Components (`app/src/components/`): `AppHeader`, `FunnelCard`,
 `FunnelSections`: читают её, когда уже что-то заподозрили; анониму её нет
 вовсе, а не `readOnly`, — роут ответит ему 401, и пустая секция выглядела бы
 поломкой), plus UI primitives (`StatusPill`, `CodeChip`, `Segmented`, `Switch`,
-`GroupToggle`, `UrlInput`, `Toast` — у первых четырёх есть `disabled`/
+`GroupToggle` (группировка списка — меню «По продукту ▾», а не ряд кнопок), `StatusTabs` (вкладки статуса над списком с числами; числа считаются без самой вкладки, `countByStatus`, а счётчик «N из M» остаётся рядом — без него «Все 8» при фильтре читалось бы как размер базы), `UrlInput`, `Toast` — у первых четырёх есть `disabled`/
 `readOnly` для режима просмотра). `monitoring/` (`MonitorStatusPill`,
 `MonitorSummary`, `MonitorTable`, `MonitorEvents`) backs the monitoring page.
 

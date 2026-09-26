@@ -26,11 +26,11 @@ interface FacetBarProps {
 }
 
 /**
- * Строка фильтра по осям — четыре пилюли, всегда на экране.
+ * Фильтр по осям — четыре пилюли, всегда на экране (в одной строке с поиском).
  *
  * Видна она всегда именно потому, что иначе о фильтре нельзя догадаться:
  * клик по заголовку группы делает то же самое, но о нём надо знать заранее.
- * Пилюля показывает текущее значение оси («Продукт: все»), а её меню —
+ * Пилюля показывает имя оси, а выбрав значение — и его («Продукт: БОО»); меню —
  * значения со счётчиками, так что пустую комбинацию выбрать нельзя.
  */
 export default function FacetBar({ items, filters, onPick, onClear, onClearAll }: FacetBarProps) {
@@ -38,9 +38,7 @@ export default function FacetBar({ items, filters, onPick, onClear, onClearAll }
   const anyActive = AXIS_ORDER.some((axis) => hasAxisFilter(filters, axis));
 
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-2">
-      <span className="text-[11px] uppercase tracking-[0.04em] text-[var(--faint)]">Фильтр</span>
-
+    <div className="flex flex-wrap items-center gap-2">
       {AXIS_ORDER.map((axis) => (
         <AxisPill
           key={axis}
@@ -97,12 +95,12 @@ function AxisPill({ axis, items, filters, open, onToggle, onClose, onPick, onCle
 
   const shellClass = active
     ? 'border-[#FFD2B4] bg-[var(--orange-soft)]'
-    : 'border-[var(--color-border-soft)] bg-[rgba(255,255,255,0.38)]';
+    : 'border-[var(--color-border-soft)] bg-white';
 
   return (
     <span className="relative">
       <span
-        className={`inline-flex items-center gap-1.5 rounded-[7px] border py-[3px] pl-[9px] pr-1 text-[12px] ${shellClass}`}
+        className={`inline-flex h-8 items-center gap-1.5 rounded-[8px] border pl-[10px] pr-1.5 text-[13px] ${shellClass}`}
       >
         <button
           type="button"
@@ -110,18 +108,19 @@ function AxisPill({ axis, items, filters, open, onToggle, onClose, onPick, onCle
           aria-haspopup="menu"
           aria-expanded={open}
           title={`Фильтр по оси «${AXIS_LABEL[axis]}»`}
-          className="inline-flex items-center gap-1.5 text-[12px] text-[var(--color-text)]"
+          className="inline-flex items-center gap-1.5 text-[13px] text-[var(--color-text)]"
         >
-          <span className={active ? 'text-[#8A5A34]' : 'text-[var(--color-text-secondary)]'}>
-            {AXIS_LABEL[axis]}:
+          {/* Пустая пилюля — просто имя оси: «Продукт: все» на каждой из
+              четырёх повторяло одно и то же слово и шумело. */}
+          <span className={active ? 'text-[#8A5A34]' : 'text-[var(--color-text)]'}>
+            {AXIS_LABEL[axis]}
+            {active && ':'}
           </span>
-          <span
-            className={
-              active ? 'font-semibold text-[var(--color-text)]' : 'text-[var(--faint)]'
-            }
-          >
-            {active ? (current === '' ? 'без осей' : current) : 'все'}
-          </span>
+          {active && (
+            <span className="font-semibold text-[var(--color-text)]">
+              {current === '' ? 'без осей' : current}
+            </span>
+          )}
           <ChevronDown
             className={`h-3 w-3 ${active ? 'text-[#8A5A34]' : 'text-[var(--faint)]'}`}
             strokeWidth={3}
@@ -155,7 +154,7 @@ function AxisPill({ axis, items, filters, open, onToggle, onClose, onPick, onCle
             onKeyDown={(e) => {
               if (e.key === 'Escape') onClose();
             }}
-            className="absolute left-0 top-[30px] z-20 max-h-[260px] min-w-[190px] overflow-y-auto rounded-[8px] border border-[var(--color-border-soft)] bg-white p-1 shadow-lg"
+            className="absolute left-0 top-[36px] z-20 max-h-[260px] min-w-[190px] overflow-y-auto rounded-[8px] border border-[var(--color-border-soft)] bg-white p-1 shadow-lg"
           >
             <MenuRow
               label="Все"
