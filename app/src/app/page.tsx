@@ -7,7 +7,7 @@ import FunnelCard from '@/components/FunnelCard';
 import Toast from '@/components/Toast';
 import GroupToggle from '@/components/GroupToggle';
 import FacetBar from '@/components/FacetBar';
-import Segmented from '@/components/Segmented';
+import StatusTabs from '@/components/StatusTabs';
 import { confirmUnsavedNavigation } from '@/lib/useUnsavedGuard';
 import { useCanEdit } from '@/components/AuthProvider';
 import { compareByFrontCodeDesc } from '@/lib/funnel-sort';
@@ -28,6 +28,7 @@ import {
   type StatusFilter,
   isStatusFilter,
   countLabel,
+  countByStatus,
   STATUS_TOAST,
 } from '@/lib/status';
 import { type FunnelHealth, funnelHealthTone } from '@/lib/funnel-health';
@@ -385,6 +386,18 @@ export default function HomePage() {
     [searchedFunnels, filters]
   );
 
+  /** Числа на вкладках: всё, кроме самой вкладки (см. `countByStatus`). */
+  const statusCounts = useMemo(
+    () =>
+      countByStatus(
+        funnels
+          .filter((f) => isFunnelVisible(f, 'all', search))
+          .filter((f) => !problemsOnly || funnelHealthTone(health[f.id] ?? EMPTY_HEALTH) !== 'ok')
+          .filter((f) => matchesFilters(f.axes, filters))
+      ),
+    [funnels, search, problemsOnly, health, filters]
+  );
+
   function handlePickAxis(axis: AxisKey, value: string) {
     const step = drillInto(filters, groupBy, axis, value);
     setFilters(step.filters);
@@ -485,10 +498,26 @@ export default function HomePage() {
         </p>
       </div>
 
-      {/* Search + status filter */}
+      {/* Статус — разделы списка, первой строкой и с числами */}
       {!loading && funnels.length > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-3">
-          <div className="relative min-w-[220px] flex-1">
+        <div className="mb-4">
+          {/* Вкладка остаётся живой и во время поиска: начало запроса уже
+              перевело её на «Все», а дальше человек волен сузить выдачу до
+              раздела — и увидит на вкладке ровно то, что фильтрует. */}
+          <StatusTabs
+            options={STATUS_OPTIONS}
+            value={statusFilter}
+            counts={statusCounts}
+            onChange={handleStatusFilterChange}
+          />
+        </div>
+      )}
+
+      {/* Всё, что сужает список, — одной строкой: поиск, оси, «с проблемами».
+          Фильтр по осям всегда на экране: иначе о нём не догадаться. */}
+      {!loading && funnels.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[160px] flex-1">
             <input
               type="text"
               value={search}
@@ -497,7 +526,8 @@ export default function HomePage() {
                 if (e.key === 'Escape') setSearch('');
               }}
               placeholder="Поиск: имя или f№…"
-              className="w-full rounded-[8px] border border-[var(--color-border-soft)] bg-white px-3 py-1.5 pr-8 text-[13px] text-[var(--color-text)] placeholder:text-[var(--color-text-secondary)] focus:outline-none focus:ring-1 focus:ring-[var(--orange)]"
+              aria-label="Поиск воронок"
+              className="h-8 w-full rounded-[8px] border border-[var(--color-border-soft)] bg-white px-3 pr-8 text-[13px] text-[var(--color-text)] placeholder:text-[var(--color-text-secondary)] focus:outline-none focus:ring-1 focus:ring-[var(--orange)]"
             />
             {search && (
               <button
@@ -511,73 +541,66 @@ export default function HomePage() {
               </button>
             )}
           </div>
-          {/* Вкладка остаётся живой и во время поиска: начало запроса уже
-              перевело её на «Все», а дальше человек волен сузить выдачу до
-              раздела — и увидит на вкладке ровно то, что фильтрует. */}
-          <Segmented
-            options={STATUS_OPTIONS}
-            value={statusFilter}
-            onChange={handleStatusFilterChange}
+
+          <FacetBar
+            items={searchedFunnels}
+            filters={filters}
+            onPick={handlePickAxis}
+            onClear={handleClearAxis}
+            onClearAll={() => setFilters({})}
           />
+
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => setProblemsOnly((v) => !v)}
+              aria-pressed={problemsOnly}
+              // Пока состояние ссылок не пришло, у всех воронок тон 'ok', и
+              // нажатый в это окно чип опустошал список — «ничего не найдено»
+              // читалось как ответ, хотя это просто отсутствие данных.
+              disabled={!healthLoaded}
+              title={
+                healthLoaded
+                  ? 'Показать только воронки с проблемными ссылками'
+                  : 'Состояние ссылок ещё не загружено'
+              }
+              className={[
+                'inline-flex h-8 items-center gap-1.5 rounded-[8px] border px-2.5 text-[13px] transition',
+                problemsOnly
+                  ? 'border-[#F3B8AD] bg-[#FBE3E3] text-[#A32020]'
+                  : 'border-[var(--color-border-soft)] bg-white text-[var(--color-text)] hover:border-[var(--color-text-secondary)]',
+                'disabled:cursor-default disabled:opacity-50 disabled:hover:border-[var(--color-border-soft)]',
+              ].join(' ')}
+            >
+              <AlertCircle className="h-3.5 w-3.5" />
+              С проблемами
+            </button>
+          )}
         </div>
       )}
 
-      {/* Фильтр по осям — всегда на экране: иначе о нём не догадаться */}
+      {/* Вид списка: сколько показано, группировка, экспорт — тихой строкой */}
       {!loading && funnels.length > 0 && (
-        <FacetBar
-          items={searchedFunnels}
-          filters={filters}
-          onPick={handlePickAxis}
-          onClear={handleClearAxis}
-          onClearAll={() => setFilters({})}
-        />
-      )}
-
-      {!loading && canEdit && funnels.length > 0 && (
-        <button
-          type="button"
-          onClick={() => setProblemsOnly((v) => !v)}
-          aria-pressed={problemsOnly}
-          // Пока состояние ссылок не пришло, у всех воронок тон 'ok', и
-          // нажатый в это окно чип опустошал список — «ничего не найдено»
-          // читалось как ответ, хотя это просто отсутствие данных.
-          disabled={!healthLoaded}
-          title={
-            healthLoaded
-              ? 'Показать только воронки с проблемными ссылками'
-              : 'Состояние ссылок ещё не загружено'
-          }
-          className={[
-            'mb-3 inline-flex items-center gap-1.5 rounded-[8px] border px-2.5 py-1 text-[12px] transition',
-            problemsOnly
-              ? 'border-[#F3B8AD] bg-[#FBE3E3] text-[#A32020]'
-              : 'border-[var(--color-border-soft)] bg-white text-[var(--color-text-secondary)] hover:border-[var(--color-text-secondary)]',
-            'disabled:cursor-default disabled:opacity-50 disabled:hover:border-[var(--color-border-soft)]',
-          ].join(' ')}
-        >
-          <AlertCircle className="h-3.5 w-3.5" />
-          Только с проблемами
-        </button>
-      )}
-
-      {/* Grouping toggle + count */}
-      {!loading && funnels.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <GroupToggle value={groupBy} onChange={handleGroupByChange} />
-          <div className="flex items-center gap-3">
-            <span className="text-[12px] text-[var(--color-text-secondary)]">
-              {countLabel(visibleFunnels.length, funnels.length)}
-            </span>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          {/* Счётчик остаётся и при числах на вкладках: вкладки сужены
+              поиском и осями, и «Все 8» без «из 87» читалось бы как «в базе
+              восемь воронок» — ровно на этом владелец уже раз обжёгся. */}
+          <span className="text-[12px] text-[var(--color-text-secondary)]">
+            {countLabel(visibleFunnels.length, funnels.length)}
+          </span>
+          <div className="flex items-center gap-1">
+            <GroupToggle value={groupBy} onChange={handleGroupByChange} />
             {/* Экспорт отдаёт всю базу одним файлом — это ровно та ручка, ради
                 которой чтение и держат закрытым, поэтому она только редактору. */}
             {canEdit && (
               <a
                 href="/api/export"
                 download
-                className="flex items-center gap-1 text-[12px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"
+                aria-label="Экспорт CSV"
+                title="Экспорт CSV"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--color-text-secondary)] transition hover:bg-[var(--chip)] hover:text-[var(--color-text)]"
               >
-                <Download size={15} />
-                Экспорт CSV
+                <Download size={16} />
               </a>
             )}
           </div>

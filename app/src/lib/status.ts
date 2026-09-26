@@ -63,3 +63,18 @@ export const STATUS_TOAST: Record<FunnelStatus, string> = {
   draft: 'Воронка переведена в черновик',
   archive: 'Воронка перемещена в архив',
 };
+
+/**
+ * Числа на вкладках статуса. Считаются по списку, суженному всем, КРОМЕ
+ * самой вкладки (поиск, оси, «с проблемами»), — по тому же доводу, что
+ * счётчики в меню оси (`axisOptions`): иначе у соседних вкладок стояли бы
+ * нули, и было бы не видно, куда переключиться. «Все» — сумма трёх.
+ */
+export function countByStatus(items: readonly { status: string }[]): Record<StatusFilter, number> {
+  const counts: Record<StatusFilter, number> = { all: 0, active: 0, draft: 0, archive: 0 };
+  for (const f of items) {
+    counts.all += 1;
+    if (isFunnelStatus(f.status)) counts[f.status] += 1;
+  }
+  return counts;
+}

@@ -4,6 +4,7 @@ import {
   isStatusFilter,
   matchesStatusFilter,
   countLabel,
+  countByStatus,
   STATUS_META,
   STATUS_ACTION_LABELS,
   FUNNEL_STATUS_VALUES,
@@ -82,5 +83,22 @@ describe('countLabel', () => {
 
   test('пустая база остаётся «0 всего»', () => {
     expect(countLabel(0, 0)).toBe('0 всего');
+  });
+});
+
+describe('countByStatus', () => {
+  test('раскладывает по статусам, «Все» — сумма', () => {
+    const items = [{ status: 'active' }, { status: 'active' }, { status: 'draft' }, { status: 'archive' }];
+    expect(countByStatus(items)).toEqual({ all: 4, active: 2, draft: 1, archive: 1 });
+  });
+
+  // Незнакомый статус в колонке без CHECK всё равно воронка: во «Все» она
+  // видна (matchesStatusFilter), значит и в числе «Все» должна быть.
+  test('незнакомый статус считается только во «Все»', () => {
+    expect(countByStatus([{ status: 'weird' }])).toEqual({ all: 1, active: 0, draft: 0, archive: 0 });
+  });
+
+  test('пустой список — нули, а не пропуски', () => {
+    expect(countByStatus([])).toEqual({ all: 0, active: 0, draft: 0, archive: 0 });
   });
 });
