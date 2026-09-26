@@ -62,6 +62,12 @@ export type FunnelListItem = {
   // Пятая ось: null означает «тип не выбран», а не «неизвестно» — маркер
   // просто не выпускается в теги (см. FunnelTypeContext в ab-tags.ts).
   funnelType: string | null;
+  /**
+   * Заведена ли воронка в ЛИК (funnels.in_leak, Phase 18). Ставит человек:
+   * у ЛИК нет токена, и сервер не может сверяться с ним сам (см.
+   * docs/leak-engine.md). Список показывает по нему пилюлю «ЛИК».
+   */
+  inLeak: boolean;
 };
 
 export type FunnelDetail = FunnelListItem & {
@@ -290,6 +296,7 @@ export function listFunnels(db: DB): FunnelListItem[] {
       status: funnels.status,
       productName: funnels.productName,
       funnelType: funnelTypes.name, // NULL, если тип не выбран
+      inLeak: funnels.inLeak,
     })
     .from(funnels)
     .leftJoin(funnelTypes, eq(funnelTypes.id, funnels.funnelTypeId))
@@ -304,6 +311,7 @@ export function listFunnels(db: DB): FunnelListItem[] {
       status: f.status ?? 'active',
       productName: f.productName,
       funnelType: f.funnelType ?? null,
+      inLeak: f.inLeak === 1,
       name: funnelName(axes),
       axes,
     };
@@ -330,6 +338,7 @@ export function getFunnel(db: DB, id: number): FunnelDetail | null {
     status:       row.status       ?? 'active',
     productName:  row.productName,
     funnelType:   typeCtx.name,
+    inLeak:       row.inLeak === 1,
     name:         funnelName(axes),
     sourceId:     row.sourceId,
     productId:    row.productId,
@@ -425,6 +434,7 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
         roomsReplayEnabled: data.roomsReplayEnabled ? 1 : 0,
         roomsEnabled:       data.roomsEnabled === false ? 0 : 1,
         hasPredspisok:      data.hasPredspisok === false ? 0 : 1,
+        inLeak:             data.inLeak ? 1 : 0,
         funnelTypeId:       data.funnelType ? resolveFunnelTypeId(tx, data.funnelType) : null,
       })
       .returning()
@@ -445,6 +455,7 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
       status:      inserted.status ?? 'active',
       productName: inserted.productName,
       funnelType:  typeName,
+      inLeak:      inserted.inLeak === 1,
       name:        funnelName(axes),
       axes,
     };
@@ -521,6 +532,7 @@ export function createDraftFunnel(db: DB): FunnelListItem {
     // Черновик заводится без типа намеренно — так же, как и без осей
     // (см. комментарий выше): решение о типе принимается при заполнении.
     funnelType:  null,
+    inLeak:      false,
     name:        funnelName(emptyAxes),
     axes:        emptyAxes,
   };
@@ -582,6 +594,7 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
     if (data.roomsReplayEnabled !== undefined) scalarUpdate.roomsReplayEnabled = data.roomsReplayEnabled ? 1 : 0;
     if (data.roomsEnabled       !== undefined) scalarUpdate.roomsEnabled       = data.roomsEnabled ? 1 : 0;
     if (data.hasPredspisok      !== undefined) scalarUpdate.hasPredspisok      = data.hasPredspisok ? 1 : 0;
+    if (data.inLeak             !== undefined) scalarUpdate.inLeak             = data.inLeak ? 1 : 0;
     if (data.funnelType !== undefined) {
       scalarUpdate.funnelTypeId = data.funnelType ? resolveFunnelTypeId(tx, data.funnelType) : null;
     }
@@ -659,6 +672,7 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
       status:      finalRow.status ?? 'active',
       productName: finalRow.productName,
       funnelType:  finalTypeName,
+      inLeak:      finalRow.inLeak === 1,
       name:        funnelName(finalAxes),
       axes:        finalAxes,
     };
@@ -938,6 +952,10 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
         // дубликат обязан унаследовать тип, иначе «faithful copy» перестаёт
         // быть таковой и маркер тихо теряется на копии.
         funnelTypeId:       source.funnelTypeId ?? null,
+        // in_leak НЕ копируется: у копии свой, новый F-код, и в ЛИК под ним
+        // ещё ничего нет. Унаследованная галка спрятала бы ровно ту воронку,
+        // которую пора заводить.
+        inLeak:             0,
       })
       .returning()
       .get() as Funnel;
@@ -962,6 +980,7 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
       status:      'draft',
       productName: inserted.productName,
       funnelType:  typeName,
+      inLeak:      false,
       name:        funnelName(sourceAxes),
       axes:        sourceAxes,
     };

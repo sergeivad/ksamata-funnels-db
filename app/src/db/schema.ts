@@ -94,6 +94,10 @@ export const funnels = sqliteTable(
     // неудаляемы, см. computeTagSet). Умолчание 1: новая воронка — с
     // предпиской, решение владельца 02.09.2026.
     hasPredspisok:      integer('has_predspisok').default(1),
+    // Phase 18: заведена ли воронка в ЛИК. Ставит человек на карточке —
+    // синхронизации с ЛИК нет (у него нет токена). Умолчание 0: новая
+    // воронка заводится сначала здесь и лишь потом переносится в ЛИК.
+    inLeak:             integer('in_leak').default(0),
   },
   (t) => ({
     productIdx:    index('idx_funnels_product').on(t.productId),

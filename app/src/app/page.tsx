@@ -62,6 +62,7 @@ interface FunnelListItem {
   name: string;
   axes: FunnelAxes;
   funnelType: string | null;
+  inLeak: boolean;
 }
 
 interface ToastState {
@@ -439,10 +440,12 @@ export default function HomePage() {
     handleGroupByChange(step.group);
   }
 
+  function isBlank(f: FunnelListItem): boolean {
+    return !f.axes.product && !f.axes.contractor && !f.axes.channel && !f.axes.direction;
+  }
+
   function buildTitle(f: FunnelListItem): string {
-    const allEmpty =
-      !f.axes.product && !f.axes.contractor && !f.axes.channel && !f.axes.direction;
-    return allEmpty ? 'Новая воронка (черновик)' : f.name;
+    return isBlank(f) ? 'Новая воронка (черновик)' : f.name;
   }
 
   function renderCard(funnel: FunnelListItem) {
@@ -454,7 +457,8 @@ export default function HomePage() {
           frontCode: funnel.frontCode,
           status: funnel.status,
           title: buildTitle(funnel),
-          funnelType: funnel.funnelType,
+          inLeak: funnel.inLeak,
+          blank: isBlank(funnel),
         }}
         health={health[funnel.id] ?? null}
         checking={checkingId === funnel.id}
