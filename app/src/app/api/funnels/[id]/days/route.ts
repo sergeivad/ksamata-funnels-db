@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
-import { listDays, replaceDays, funnelExists, type DayCell } from '@/lib/funnel-days';
+import { listDays, replaceDays, funnelExists, REPLAY_FIELDS, type DayCell } from '@/lib/funnel-days';
 import { ValidationError } from '@/lib/errors';
 import { parseRouteId } from '@/lib/validation';
 import { internalError } from '@/lib/http';
@@ -69,17 +69,22 @@ export async function PUT(req: NextRequest, { params }: Params) {
       typeof cell.dayNum !== 'number' ||
       typeof cell.gcRoom !== 'string' ||
       typeof cell.webRoom !== 'string' ||
-      typeof cell.replayUrl !== 'string'
+      typeof cell.replayUrl !== 'string' ||
+      // Поля повторов (Phase 19) необязательны — см. DayCell, — но если
+      // присланы, то строкой.
+      REPLAY_FIELDS.some((f) => cell[f] !== undefined && typeof cell[f] !== 'string')
     ) {
       return NextResponse.json({ error: `cells[${i}] has invalid shape` }, { status: 400 });
     }
-    cells.push({
+    const out: DayCell = {
       timeSlot: cell.timeSlot,
       dayNum: cell.dayNum,
       gcRoom: cell.gcRoom,
       webRoom: cell.webRoom,
       replayUrl: cell.replayUrl,
-    });
+    };
+    for (const f of REPLAY_FIELDS) if (typeof cell[f] === 'string') out[f] = cell[f] as string;
+    cells.push(out);
   }
 
   try {

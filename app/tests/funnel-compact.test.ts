@@ -11,9 +11,17 @@ describe('groupDaysByDay', () => {
     ];
     const groups = groupDaysByDay(days);
     expect(groups.map((g) => g.dayNum)).toEqual([1, 2]);
-    expect(groups[0].slots['15']).toEqual({ gcRoom: 'gc1', webRoom: 'web1', replayUrl: '' });
+    expect(groups[0].slots['15']).toMatchObject({ gcRoom: 'gc1', webRoom: 'web1', replayUrl: '', replay2Url: '' });
     expect(groups[1].slots['15']).toBeUndefined();
-    expect(groups[1].slots['19']).toEqual({ gcRoom: 'gc2', webRoom: '', replayUrl: '' });
+    expect(groups[1].slots['19']).toMatchObject({ gcRoom: 'gc2', webRoom: '', replayUrl: '', replay2Url: '' });
+  });
+
+  test('день, где есть только второй повтор, не выпадает', () => {
+    const groups = groupDaysByDay([
+      { timeSlot: '15', dayNum: 3, gcRoom: '', webRoom: '', replayUrl: '', replay2Url: 'https://gc.ksamata.ru/cvc3rr-15-yan' },
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].slots['15']?.replay2Url).toBe('https://gc.ksamata.ru/cvc3rr-15-yan');
   });
 
   test('drops cells where every field is empty', () => {

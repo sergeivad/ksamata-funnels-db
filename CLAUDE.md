@@ -108,6 +108,13 @@ Drizzle SQLite. Core + lookup + content + tags tables:
   why only 240 of 508 rows still carry a value. Do not build on it, and do not
   "fix" it in isolation: the drift found in `f25`/`f26` on 2026-08-02 was two
   years stale and invisible to every consumer.
+  **Повторов у дня два** (Phase 19): первый — `replay_url` (GC) + `web_replay`
+  (Web), второй — `replay2_url` + `web_replay2`; время показа каждого —
+  `replay_time` / `replay2_time` («ЧЧ:ММ» по Москве, ставит поиск по Бизону).
+  `web_replay` до 29.09.2026 писал только Python-импорт, приложение его не
+  видело. В `DayCell` поля повторов **необязательны**, и `replaceDays` не
+  трогает отсутствующее поле при UPDATE: разовые скрипты и вкладка, открытая
+  до выката, шлют ячейку старой формы и иначе молча стёрли бы второй повтор.
 - **`funnel_blocks`** / **`funnel_block_items`** — structured content blocks
   (see block kinds below); a block has a `kind`, `enabled`, and `mode`
   (`common` / `by_time`); items carry `slot`, `label`, `url`, `position`.
@@ -321,7 +328,14 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   не размер набора: поправленный адрес обязан уходить из пометки и из сводки
   одновременно.
 - `room-urls.ts` — правила адресов вебинарных комнат: `webRoomFromGc`,
-  `mirrorDayUrl`, `mirrorSlotRoomUrl`. Слотовое зеркало знает **две** семьи
+  `mirrorDayUrl`, `mirrorSlotRoomUrl`, а с Phase 19 — **один слаг, три адреса**:
+  `roomSlugFromUrl` принимает `gc.ksamata.ru/<слаг>`,
+  `web.ksamatacenter.com/room/<слаг>` и `start.bizon365.ru/room/135662/<слаг>`,
+  `gcRoomUrl`/`webRoomUrl`/`bizonRoomUrl` собирают их обратно, `replaySlug`
+  строит кандидата в повтор (`r`/`rr` после цифры дня). Замер 29.09.2026: GC
+  отвечает 302 на Web, а Web и Бизон — одна комната под двумя доменами; во всех
+  584 днях слаги GC и Web совпадают. GC при этом не синоним — это страница
+  ГетКурса, которую надо завести, поэтому храним и проверяем обе. Слотовое зеркало знает **две** семьи
   слагов, и это не украшение: половина воронок несёт время в адресе
   (`dbo1-15-vks` ↔ `dbo1-19-vks`), у другой половины времени в адресе нет
   вовсе и второе время получается перестановкой цифры дня через первое слово
@@ -329,6 +343,16 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   случая нет. Не путать с `mirrorSlotUrl` из `block-fill.ts` — тот правит
   подписи и произвольные URL блоков заменой токена `15` и семьи B не знает;
   перестановка цифры дня в подписи блока дала бы мусор.
+- `bizon-room-page.ts` — чистый разбор страницы комнаты: «Веб-комната не
+  найдена» (признак берётся из `monitor-content.ts`) либо время ближайшего
+  показа из `closestDate` в скрипте страницы, по Москве.
+- `replay-finder.ts` — «Найти повторы» (`POST /api/funnels/[id]/replays/find`):
+  для каждого дня и повтора проверяет на Бизоне кандидата `r`/`rr` (или уже
+  вписанный повтор — чтобы узнать время). **Итогов три** — `found`, `missing`,
+  `error`: сбой сети не выдаётся за «повтора нет». Одна повторная попытка,
+  15 с на страницу, 4 параллельно. Хост зашит, в адрес попадает только слаг из
+  `[a-z0-9_-]`, поэтому защита `monitor-check.ts` здесь не нужна. Ничего не
+  пишет: найденное уходит в карточку подсвеченным, сохраняет человек.
 - `url-field.ts` — hygiene of a block item's URL field, shared by `BlockEditor`/
   `BlockListField` and the blocks `PUT` route. Two classes: **A** — a label glued
   into an http(s) URL (`…/a (ADS)`, a trailing quote) is rejected, because
@@ -426,6 +450,12 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   всегда — и пустая строка требовала второго клика по «Заполнить остальные».
   Остальную сетку `appendDay` не трогает: день, оставленный пустым, — решение
   человека, и добавление строки не повод его отменять.
+  **Повторы достройка с Phase 19 не трогает**: их выводит поиск по Бизону,
+  который каждый кандидат проверяет, а зеркало дней сочиняло бы повторы и тем
+  дням, где их нет (у F21 — пятый день). Поле повтора одно: в него вставляют
+  любой из трёх адресов или код комнаты (`withReplayLink`), сохраняются GC и
+  Web, а показывается код — от полного адреса в половине ширины видно только
+  «https://web.ksam».
 - `funnel-compact.ts` — grouping/visibility for the compact view.
 - `export.ts` — build export rows + CSV serialization. Fields starting with
   `=`, `+`, `-`, `@`, TAB or CR get a leading apostrophe: the route serves a BOM
@@ -487,7 +517,8 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   refused to re-check, and it took `STALE_AFTER_DAYS` (a week) to go dark.
 - `monitor-kinds.ts` — the registry of source kinds, `MONITOR_SOURCE_KINDS` =
   block kinds ∪ room kinds (`room_gc` «Комнаты ГК», `room_web` «Комнаты Web»,
-  `room_replay` «Повторы»), with their Russian labels. It used to be derived
+  `room_replay` «Повторы ГК», `room_replay_web` «Повторы Web» — оба повтора
+  дня, разделённые по хосту, как эфиры, с Phase 19), with their Russian labels. It used to be derived
   from `BLOCK_KINDS` alone — «every checked page comes from a block» — and that
   stopped being true when rooms became targets. Three room kinds and not one:
   three hosts, three reasons to fall, and only `room_web` needs the content
@@ -642,6 +673,9 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
 - `GET/PUT /api/funnels/[id]/days` — read/replace days. A true replace within the
   funnel: a day absent from the payload is deleted, so callers send the whole grid.
 - `GET/PUT /api/funnels/[id]/blocks/[kind]` — read/replace one block kind.
+- `POST /api/funnels/[id]/replays/find` — поиск повторов на Бизоне по
+  присланной сетке (включая несохранённое); ничего не пишет, см.
+  `replay-finder.ts`.
 - `PATCH /api/funnels/[id]/tags` — apply per-funnel tag overrides. Genuinely
   partial: a scenario the body omits keeps its stored overrides; clear one by
   naming it with empty `add`/`remove`.
@@ -729,6 +763,8 @@ Components (`app/src/components/`): `AppHeader`, `FunnelCard`,
 `FunnelSections`: читают её, когда уже что-то заподозрили; анониму её нет
 вовсе, а не `readOnly`, — роут ответит ему 401, и пустая секция выглядела бы
 поломкой), plus UI primitives (`StatusPill`, `CodeChip`, `Segmented`, `Switch`,
+`CopyChip` (кнопка «скопировать адрес» с подписью — GC / Web / Бизон у
+повторов, в редакторе и в просмотре),
 `GroupToggle` (группировка списка — меню «По продукту ▾», а не ряд кнопок), `StatusTabs` (вкладки статуса над списком с числами; числа считаются без самой вкладки, `countByStatus`, а счётчик «N из M» остаётся рядом — без него «Все 8» при фильтре читалось бы как размер базы), `UrlInput`, `Toast` — у первых четырёх есть `disabled`/
 `readOnly` для режима просмотра). `monitoring/` (`MonitorStatusPill`,
 `MonitorSummary`, `MonitorTable`, `MonitorEvents`) backs the monitoring page.
@@ -1048,9 +1084,16 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
   наследует — у копии новый F-код. Снимок держит f99–f105, которых в
   репозиторной базе нет: в ней фаза помечает 69 воронок, в проде — все 75.
 
+- **Phase 19** — второй повтор: колонки `funnel_days.replay2_url`,
+  `web_replay2`, `replay_time`, `replay2_time` (и `web_replay` — у базы,
+  собранной не Python-импортом, его может не быть). Только `ADD COLUMN`, данных
+  не переносит: первый повтор уже лежит в `replay_url`/`web_replay`. С сентября
+  2026 у каждого дня эфира два повтора (замер по Бизону 29.09: у эфира 15:00 —
+  19:00 и 9:00, у 19:00 — 9:00 и 12:00, в дни 1–4).
+
 **Docker runs, in order** (`app/docker-entrypoint.sh`): Phase 2 → 3 (+data) →
 4 → 5 → legacy-tag-override backfill → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14
-→ 15 → 16 → 17 → 18.
+→ 15 → 16 → 17 → 18 → 19.
 
 **A migration script must never run itself.** esbuild bundles the runner and the
 migration into one file, and inside that bundle `require.main === module` is

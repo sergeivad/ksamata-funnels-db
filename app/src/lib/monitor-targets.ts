@@ -64,6 +64,7 @@ export const DEFAULT_ENABLED_SOURCE_KINDS: ReadonlySet<string> = new Set([
   'room_gc',
   'room_web',
   'room_replay',
+  'room_replay_web',
 ]);
 
 /**
@@ -189,6 +190,9 @@ function collectTargets(
       gcRoom: funnelDays.gcRoom,
       webRoom: funnelDays.webRoom,
       replayUrl: funnelDays.replayUrl,
+      webReplay: funnelDays.webReplay,
+      replay2Url: funnelDays.replay2Url,
+      webReplay2: funnelDays.webReplay2,
       roomsEnabled: funnels.roomsEnabled,
       replayEnabled: funnels.roomsReplayEnabled,
       status: funnels.status,
@@ -201,6 +205,9 @@ function collectTargets(
       gcRoom: string | null;
       webRoom: string | null;
       replayUrl: string | null;
+      webReplay: string | null;
+      replay2Url: string | null;
+      webReplay2: string | null;
       roomsEnabled: number | null;
       replayEnabled: number | null;
       status: string;
@@ -222,6 +229,9 @@ function collectTargets(
     }
     if (row.replayEnabled === 1) {
       addRoom(row.replayUrl, 'room_replay', row.funnelId, isActive);
+      addRoom(row.replay2Url, 'room_replay', row.funnelId, isActive);
+      addRoom(row.webReplay, 'room_replay_web', row.funnelId, isActive);
+      addRoom(row.webReplay2, 'room_replay_web', row.funnelId, isActive);
     }
   }
 

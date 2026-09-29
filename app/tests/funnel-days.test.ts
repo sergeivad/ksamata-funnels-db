@@ -5,6 +5,9 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { listDays, replaceDays, type DayCell } from '../src/lib/funnel-days';
+
+/** Поля повторов (Phase 19), когда их никто не писал. */
+const NO_REPLAYS = { webReplay: '', replayTime: '', replay2Url: '', webReplay2: '', replay2Time: '' };
 import * as schema from '../src/db/schema';
 import { copyDbForTest } from './helpers/db';
 
@@ -36,8 +39,8 @@ describe('funnel-days (rooms)', () => {
     ];
     replaceDays(db, funnelId, cells);
     const got = listDays(db, funnelId);
-    expect(got).toContainEqual({ timeSlot: '15', dayNum: 1, gcRoom: 'g1', webRoom: 'w1', replayUrl: 'r1' });
-    expect(got).toContainEqual({ timeSlot: '19', dayNum: 1, gcRoom: 'g2', webRoom: 'w2', replayUrl: '' });
+    expect(got).toContainEqual({ timeSlot: '15', dayNum: 1, gcRoom: 'g1', webRoom: 'w1', replayUrl: 'r1', ...NO_REPLAYS });
+    expect(got).toContainEqual({ timeSlot: '19', dayNum: 1, gcRoom: 'g2', webRoom: 'w2', replayUrl: '', ...NO_REPLAYS });
   });
 
   it('empty cell deletes the row', () => {
@@ -69,8 +72,8 @@ describe('funnel-days (rooms)', () => {
     ]);
 
     expect(listDays(db, funnelId)).toEqual([
-      { timeSlot: '15', dayNum: 1, gcRoom: 'g1', webRoom: '', replayUrl: '' },
-      { timeSlot: '15', dayNum: 2, gcRoom: 'g3', webRoom: '', replayUrl: '' },
+      { timeSlot: '15', dayNum: 1, gcRoom: 'g1', webRoom: '', replayUrl: '', ...NO_REPLAYS },
+      { timeSlot: '15', dayNum: 2, gcRoom: 'g3', webRoom: '', replayUrl: '', ...NO_REPLAYS },
     ]);
   });
 
@@ -84,8 +87,53 @@ describe('funnel-days (rooms)', () => {
     replaceDays(db, funnelId, [{ timeSlot: '15', dayNum: 1, gcRoom: 'g', webRoom: '', replayUrl: '' }]);
 
     expect(listDays(db, other)).toEqual([
-      { timeSlot: '19', dayNum: 4, gcRoom: 'keep', webRoom: '', replayUrl: '' },
+      { timeSlot: '19', dayNum: 4, gcRoom: 'keep', webRoom: '', replayUrl: '', ...NO_REPLAYS },
     ]);
+  });
+
+  it('пишет и читает оба повтора со временем', () => {
+    replaceDays(db, funnelId, [{
+      timeSlot: '15', dayNum: 3, gcRoom: 'g', webRoom: 'w', replayUrl: 'gc-r',
+      webReplay: 'web-r', replayTime: '19:00', replay2Url: 'gc-rr', webReplay2: 'web-rr', replay2Time: '9:00',
+    }]);
+    expect(listDays(db, funnelId)).toEqual([{
+      timeSlot: '15', dayNum: 3, gcRoom: 'g', webRoom: 'w', replayUrl: 'gc-r',
+      webReplay: 'web-r', replayTime: '19:00', replay2Url: 'gc-rr', webReplay2: 'web-rr', replay2Time: '9:00',
+    }]);
+  });
+
+  // Разовые скрипты в scripts/ и вкладка со старым бандлом шлют ячейку без
+  // полей повторов. Такой вызов не должен стирать второй повтор.
+  it('ячейка без полей повторов их не стирает', () => {
+    replaceDays(db, funnelId, [{
+      timeSlot: '15', dayNum: 3, gcRoom: 'g', webRoom: 'w', replayUrl: 'gc-r',
+      webReplay: 'web-r', replayTime: '19:00', replay2Url: 'gc-rr', webReplay2: 'web-rr', replay2Time: '9:00',
+    }]);
+    replaceDays(db, funnelId, [{ timeSlot: '15', dayNum: 3, gcRoom: 'g2', webRoom: 'w', replayUrl: 'gc-r' }]);
+    const [row] = listDays(db, funnelId);
+    expect(row.gcRoom).toBe('g2');
+    expect(row).toMatchObject({ webReplay: 'web-r', replay2Url: 'gc-rr', webReplay2: 'web-rr', replay2Time: '9:00' });
+  });
+
+  it('ячейка без полей повторов не удаляет строку, где лежит только второй повтор', () => {
+    replaceDays(db, funnelId, [{ timeSlot: '15', dayNum: 3, gcRoom: '', webRoom: '', replayUrl: '', replay2Url: 'gc-rr' }]);
+    replaceDays(db, funnelId, [{ timeSlot: '15', dayNum: 3, gcRoom: '', webRoom: '', replayUrl: '' }]);
+    expect(listDays(db, funnelId)).toHaveLength(1);
+  });
+
+  it('строка с одним лишь временем повтора считается пустой', () => {
+    replaceDays(db, funnelId, [{ timeSlot: '15', dayNum: 3, gcRoom: 'g', webRoom: '', replayUrl: '' }]);
+    replaceDays(db, funnelId, [{
+      timeSlot: '15', dayNum: 3, gcRoom: '', webRoom: '', replayUrl: '',
+      webReplay: '', replayTime: '19:00', replay2Url: '', webReplay2: '', replay2Time: '',
+    }]);
+    expect(listDays(db, funnelId)).toHaveLength(0);
+  });
+
+  it('отвергает время повтора не в формате ЧЧ:ММ', () => {
+    expect(() => replaceDays(db, funnelId, [
+      { timeSlot: '15', dayNum: 1, gcRoom: 'g', webRoom: '', replayUrl: '', replayTime: 'утром' },
+    ])).toThrow();
   });
 
   it('rejects dayNum outside 1..5', () => {

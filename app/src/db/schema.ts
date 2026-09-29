@@ -137,6 +137,11 @@ export const funnelDays = sqliteTable(
     webRoom:     text('web_room').default(''),
     replayUrl:   text('replay_url').default(''),
     webReplay:   text('web_replay').default(''),
+    // Phase 19: время первого повтора и второй повтор целиком (GC, Web, время).
+    replayTime:  text('replay_time').default(''),
+    replay2Url:  text('replay2_url').default(''),
+    webReplay2:  text('web_replay2').default(''),
+    replay2Time: text('replay2_time').default(''),
     salesPage:   text('sales_page').default(''),
     salesNote:   text('sales_note').default(''),
     tariffs:     text('tariffs').default(''),

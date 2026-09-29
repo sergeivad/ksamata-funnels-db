@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { appendDay, buildGrid, cellsFromGrid, fillRoomGrid, gridKey } from '../src/lib/rooms-grid';
+import { appendDay, buildGrid, cellsFromGrid, emptyCell, fillRoomGrid, gridKey } from '../src/lib/rooms-grid';
 import type { DayCell } from '../src/lib/funnel-days';
 
 const days: DayCell[] = [
@@ -10,9 +10,9 @@ const days: DayCell[] = [
 describe('buildGrid', () => {
   it('places cells by slot/day and defaults the rest to empty strings', () => {
     const g = buildGrid(days, 3);
-    expect(g[gridKey('15', 1)]).toEqual({ gcRoom: 'https://gc.ksamata.ru/1dbo', webRoom: 'https://web.x/room/1dbo', replayUrl: 'https://gc.ksamata.ru/1dbo-p' });
+    expect(g[gridKey('15', 1)]).toEqual({ ...emptyCell(), gcRoom: 'https://gc.ksamata.ru/1dbo', webRoom: 'https://web.x/room/1dbo', replayUrl: 'https://gc.ksamata.ru/1dbo-p' });
     expect(g[gridKey('19', 2)].replayUrl).toBe('https://gc.ksamata.ru/2dbo-19-p');
-    expect(g[gridKey('19', 3)]).toEqual({ gcRoom: '', webRoom: '', replayUrl: '' });
+    expect(g[gridKey('19', 3)]).toEqual(emptyCell());
   });
 });
 
@@ -45,7 +45,7 @@ const WEB = 'https://web.ksamatacenter.com/room';
 describe('fillRoomGrid', () => {
   it('разворачивает одну GC-комнату семьи A во всю сетку 2×5', () => {
     const g = buildGrid([{ timeSlot: '15', dayNum: 1, gcRoom: `${GC}/dbo1-15-vks`, webRoom: '', replayUrl: '' }], 5);
-    const f = fillRoomGrid(g, 5, false);
+    const f = fillRoomGrid(g, 5);
     expect(f[gridKey('15', 3)].gcRoom).toBe(`${GC}/dbo3-15-vks`);
     expect(f[gridKey('19', 1)].gcRoom).toBe(`${GC}/dbo1-19-vks`);
     expect(f[gridKey('19', 5)].gcRoom).toBe(`${GC}/dbo5-19-vks`);
@@ -54,7 +54,7 @@ describe('fillRoomGrid', () => {
 
   it('разворачивает одну GC-комнату семьи B во всю сетку 2×5', () => {
     const g = buildGrid([{ timeSlot: '15', dayNum: 1, gcRoom: `${GC}/1dbo-bookv`, webRoom: '', replayUrl: '' }], 5);
-    const f = fillRoomGrid(g, 5, false);
+    const f = fillRoomGrid(g, 5);
     expect(f[gridKey('15', 2)].gcRoom).toBe(`${GC}/2dbo-bookv`);
     expect(f[gridKey('19', 1)].gcRoom).toBe(`${GC}/dbo1-bookv`);
     expect(f[gridKey('19', 4)].gcRoom).toBe(`${GC}/dbo4-bookv`);
@@ -63,7 +63,7 @@ describe('fillRoomGrid', () => {
 
   it('выводит и назад по дням — образцом может быть любая ячейка', () => {
     const g = buildGrid([{ timeSlot: '19', dayNum: 3, gcRoom: `${GC}/dbo3-19-vks`, webRoom: '', replayUrl: '' }], 3);
-    const f = fillRoomGrid(g, 3, false);
+    const f = fillRoomGrid(g, 3);
     expect(f[gridKey('19', 1)].gcRoom).toBe(`${GC}/dbo1-19-vks`);
     expect(f[gridKey('15', 1)].gcRoom).toBe(`${GC}/dbo1-15-vks`);
   });
@@ -73,57 +73,31 @@ describe('fillRoomGrid', () => {
       { timeSlot: '15', dayNum: 1, gcRoom: `${GC}/dbo1-15-vks`, webRoom: '', replayUrl: '' },
       { timeSlot: '15', dayNum: 2, gcRoom: `${GC}/ruchnoy-adres`, webRoom: '', replayUrl: '' },
     ], 2);
-    const f = fillRoomGrid(g, 2, false);
+    const f = fillRoomGrid(g, 2);
     expect(f[gridKey('15', 2)].gcRoom).toBe(`${GC}/ruchnoy-adres`);
   });
 
-  it('достраивает повтор по дням своего слота и не заносит его во второй слот', () => {
+  // С Phase 19 повторы выводит поиск по Бизону (replay-finder.ts): зеркало дней
+  // сочиняло бы повторы и тем дням, у которых их нет.
+  it('не достраивает повторы — их находит поиск по Бизону', () => {
     const g = buildGrid([
       { timeSlot: '15', dayNum: 4, gcRoom: `${GC}/4boo-kvspb`, webRoom: '', replayUrl: `${GC}/4rboo-kvspb` },
     ], 5);
-    const f = fillRoomGrid(g, 5, true);
-    expect(f[gridKey('15', 5)].replayUrl).toBe(`${GC}/5rboo-kvspb`);
-    expect(f[gridKey('19', 4)].replayUrl).toBe('');
-    expect(f[gridKey('19', 5)].replayUrl).toBe('');
-  });
-
-  it('не трогает повтор, когда колонка выключена', () => {
-    const g = buildGrid([
-      { timeSlot: '15', dayNum: 4, gcRoom: `${GC}/4boo-kvspb`, webRoom: '', replayUrl: `${GC}/4rboo-kvspb` },
-    ], 5);
-    const f = fillRoomGrid(g, 5, false);
-    expect(f[gridKey('15', 5)].replayUrl).toBe('');
+    const f = fillRoomGrid(g, 5);
+    for (const slot of ['15', '19']) for (let d = 1; d <= 5; d++) {
+      const c = f[gridKey(slot, d)];
+      expect(c.replay2Url).toBe('');
+      expect(c.webReplay).toBe('');
+      if (!(slot === '15' && d === 4)) expect(c.replayUrl).toBe('');
+    }
     expect(f[gridKey('15', 4)].replayUrl).toBe(`${GC}/4rboo-kvspb`);
-  });
-
-  it('повтор не достраивается назад: день 4 даёт день 5, но не дни 1–3', () => {
-    const g = buildGrid([
-      { timeSlot: '15', dayNum: 4, gcRoom: '', webRoom: '', replayUrl: `${GC}/4rboo-kvspb` },
-    ], 5);
-    const f = fillRoomGrid(g, 5, true);
-    expect(f[gridKey('15', 5)].replayUrl).toBe(`${GC}/5rboo-kvspb`);
-    expect(f[gridKey('15', 1)].replayUrl).toBe('');
-    expect(f[gridKey('15', 2)].replayUrl).toBe('');
-    expect(f[gridKey('15', 3)].replayUrl).toBe('');
-  });
-
-  it('посев повтором последнего дня не достраивает ничего — вперёд достраивать некуда', () => {
-    const g = buildGrid([
-      { timeSlot: '15', dayNum: 5, gcRoom: '', webRoom: '', replayUrl: `${GC}/5rboo-kvspb` },
-    ], 5);
-    const f = fillRoomGrid(g, 5, true);
-    expect(f[gridKey('15', 1)].replayUrl).toBe('');
-    expect(f[gridKey('15', 2)].replayUrl).toBe('');
-    expect(f[gridKey('15', 3)].replayUrl).toBe('');
-    expect(f[gridKey('15', 4)].replayUrl).toBe('');
-    expect(f[gridKey('15', 5)].replayUrl).toBe(`${GC}/5rboo-kvspb`);
   });
 
   it('gcRoom по-прежнему достраивается назад по дням — правка одностороннего повтора его не задела', () => {
     const g = buildGrid([
       { timeSlot: '15', dayNum: 4, gcRoom: `${GC}/dbo4-15-vks`, webRoom: '', replayUrl: '' },
     ], 5);
-    const f = fillRoomGrid(g, 5, false);
+    const f = fillRoomGrid(g, 5);
     expect(f[gridKey('15', 1)].gcRoom).toBe(`${GC}/dbo1-15-vks`);
   });
 
@@ -132,20 +106,20 @@ describe('fillRoomGrid', () => {
       { timeSlot: '19', dayNum: 1, gcRoom: `${GC}/dbo1-15-vks`, webRoom: '', replayUrl: '' },
       { timeSlot: '19', dayNum: 2, gcRoom: `${GC}/dbo2-19-vks`, webRoom: '', replayUrl: '' },
     ], 2);
-    const f = fillRoomGrid(g, 2, false);
+    const f = fillRoomGrid(g, 2);
     expect(f[gridKey('15', 1)].gcRoom).toBe(`${GC}/dbo1-15-vks`);
   });
 
   it('не выходит за dayCount', () => {
     const g = buildGrid([{ timeSlot: '15', dayNum: 1, gcRoom: `${GC}/1dbo-bookv`, webRoom: '', replayUrl: '' }], 3);
-    const f = fillRoomGrid(g, 3, false);
+    const f = fillRoomGrid(g, 3);
     expect(f[gridKey('15', 3)].gcRoom).toBe(`${GC}/3dbo-bookv`);
     expect(f[gridKey('15', 4)]).toBeUndefined();
   });
 
   it('оставляет пустым нераспознанный слаг и не размножает его по дням', () => {
     const g = buildGrid([{ timeSlot: '15', dayNum: 1, gcRoom: `${GC}/svs-yakvboo`, webRoom: '', replayUrl: '' }], 2);
-    const f = fillRoomGrid(g, 2, false);
+    const f = fillRoomGrid(g, 2);
     expect(f[gridKey('19', 1)].gcRoom).toBe(''); // слотового зеркала нет — ни одна семья не подошла
     expect(f[gridKey('15', 2)].gcRoom).toBe(''); // цифры дня в адресе нет — дневного зеркала тоже нет
     expect(f[gridKey('15', 1)].webRoom).toBe(`${WEB}/svs-yakvboo`); // Web из GC работает всегда
@@ -153,20 +127,20 @@ describe('fillRoomGrid', () => {
 
   it('идемпотентна: второй вызов ничего не меняет', () => {
     const g = buildGrid([{ timeSlot: '15', dayNum: 1, gcRoom: `${GC}/1dbo-bookv`, webRoom: '', replayUrl: '' }], 5);
-    const once = fillRoomGrid(g, 5, true);
-    expect(fillRoomGrid(once, 5, true)).toEqual(once);
+    const once = fillRoomGrid(g, 5);
+    expect(fillRoomGrid(once, 5)).toEqual(once);
   });
 
   it('не мутирует исходную сетку', () => {
     const g = buildGrid([{ timeSlot: '15', dayNum: 1, gcRoom: `${GC}/1dbo-bookv`, webRoom: '', replayUrl: '' }], 2);
     const before = JSON.parse(JSON.stringify(g));
-    fillRoomGrid(g, 2, false);
+    fillRoomGrid(g, 2);
     expect(g).toEqual(before);
   });
 
   it('на пустой сетке возвращает её же', () => {
     const g = buildGrid([], 3);
-    expect(fillRoomGrid(g, 3, true)).toEqual(g);
+    expect(fillRoomGrid(g, 3)).toEqual(g);
   });
 });
 
@@ -179,16 +153,16 @@ describe('appendDay', () => {
       { timeSlot: '15', dayNum: 1, gcRoom: 'https://gc.ksamata.ru/sst1-15-ht', webRoom: 'https://web.ksamatacenter.com/room/sst1-15-ht', replayUrl: '' },
       { timeSlot: '19', dayNum: 1, gcRoom: 'https://gc.ksamata.ru/sst1-19-ht', webRoom: 'https://web.ksamatacenter.com/room/sst1-19-ht', replayUrl: '' },
     ], 1);
-    const next = appendDay(g, 1, false);
+    const next = appendDay(g, 1);
     expect(next[gridKey('15', 2)].gcRoom).toBe('https://gc.ksamata.ru/sst2-15-ht');
     expect(next[gridKey('15', 2)].webRoom).toBe('https://web.ksamatacenter.com/room/sst2-15-ht');
     expect(next[gridKey('19', 2)].gcRoom).toBe('https://gc.ksamata.ru/sst2-19-ht');
   });
 
   it('adds an empty day when there is nothing to derive from', () => {
-    const next = appendDay(buildGrid([], 1), 1, false);
-    expect(next[gridKey('15', 2)]).toEqual({ gcRoom: '', webRoom: '', replayUrl: '' });
-    expect(next[gridKey('19', 2)]).toEqual({ gcRoom: '', webRoom: '', replayUrl: '' });
+    const next = appendDay(buildGrid([], 1), 1);
+    expect(next[gridKey('15', 2)]).toEqual(emptyCell());
+    expect(next[gridKey('19', 2)]).toEqual(emptyCell());
   });
 
   // Достройка нового дня — не повод трогать остальную сетку: день, который
@@ -198,9 +172,9 @@ describe('appendDay', () => {
     const g = buildGrid([
       { timeSlot: '15', dayNum: 1, gcRoom: 'https://gc.ksamata.ru/sst1-15-ht', webRoom: '', replayUrl: '' },
     ], 2);
-    const next = appendDay(g, 2, false);
-    expect(next[gridKey('15', 2)]).toEqual({ gcRoom: '', webRoom: '', replayUrl: '' });
-    expect(next[gridKey('19', 1)]).toEqual({ gcRoom: '', webRoom: '', replayUrl: '' });
+    const next = appendDay(g, 2);
+    expect(next[gridKey('15', 2)]).toEqual(emptyCell());
+    expect(next[gridKey('19', 1)]).toEqual(emptyCell());
     expect(next[gridKey('15', 3)].gcRoom).toBe('https://gc.ksamata.ru/sst3-15-ht');
   });
 });
