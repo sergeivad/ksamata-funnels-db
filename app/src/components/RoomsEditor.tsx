@@ -1,17 +1,18 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Tv, Plus, X, Wand2, RotateCcw, Search } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Tv, Plus, X, Wand2, RotateCcw } from 'lucide-react';
 import Switch from './Switch';
 import CopyChip from './CopyChip';
 import type { DayCell } from '@/lib/funnel-days';
 import { gcRoomUrl, roomSlugFromUrl, webRoomUrl } from '@/lib/room-urls';
 import {
-  SLOTS, appendDay, buildGrid, cellsFromGrid, commonReplayTime, fillRoomGrid, gridKey as key,
-  liveInputValue, replayInputValue, replayOf, withFoundReplay, withLiveLink, withReplayLink,
-  type ReplayN, type RoomCell as Cell, type RoomGrid as Grid,
+  MAX_DAYS, SLOTS, appendDay, applyRoomCheck, buildGrid, cellsFromGrid, commonReplayTime, gridKey as key,
+  initialDayCount, liveInputValue, liveMarkKey, replayInputValue, replayMarkKey as markKey, replayOf,
+  roomCheckSummary, withLiveLink, withReplayLink,
+  type CheckMark, type ReplayN, type RoomCell as Cell, type RoomGrid as Grid,
 } from '@/lib/rooms-grid';
-import type { FindResult } from '@/lib/replay-finder';
+import type { RoomCheckResult } from '@/lib/room-check';
 import { useCanEdit } from './AuthProvider';
 
 interface Props {
@@ -24,22 +25,12 @@ interface Props {
   onDirtyChange?: (dirty: boolean) => void;
 }
 
-const MAX_DAYS = 5;
-
 type SavedSnapshot = { enabled: boolean; replay: boolean; cells: DayCell[] };
 
-/**
- * Итог поиска повторов для одной ячейки: `new` — вписан поиском (подсветка до
- * сохранения), `missing` — комнаты на Бизоне нет, `error` — не дождались
- * ответа. Отметка живёт до правки ячейки или до следующего поиска.
- */
-type ReplayMark = 'new' | 'missing' | 'error';
-const markKey = (slot: string, day: number, n: ReplayN) => `${slot}-${day}-${n}`;
 
 export default function RoomsEditor({ funnelId, initialDays, enabled: enabledProp, replayEnabled, timeLabelA, timeLabelB, onDirtyChange }: Props) {
   const canEdit = useCanEdit();
-  const initialDayCount = Math.max(3, ...initialDays.map((d) => d.dayNum), 0) || 3;
-  const clampedInitialDayCount = Math.min(MAX_DAYS, initialDayCount);
+  const clampedInitialDayCount = initialDayCount(initialDays);
   const [dayCount, setDayCount] = useState(clampedInitialDayCount);
   const [enabled, setEnabled] = useState(enabledProp);
   const [replay, setReplay] = useState(replayEnabled);
@@ -67,88 +58,59 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
   onDirtyChangeRef.current = onDirtyChange;
   useEffect(() => { onDirtyChangeRef.current?.(dirty); }, [dirty]);
 
-  const [marks, setMarks] = useState<Record<string, ReplayMark>>({});
-  const [finding, setFinding] = useState(false);
-  const [findNote, setFindNote] = useState<string | null>(null);
+  // Пометки «Заполнить и проверить» (CheckMark): живут до правки ячейки,
+  // следующей проверки или удаления дня.
+  const [marks, setMarks] = useState<Record<string, CheckMark>>({});
+  const [checking, setChecking] = useState(false);
+  const [checkNote, setCheckNote] = useState<string | null>(null);
 
-  function setReplayLink(slot: string, day: number, n: ReplayN, value: string) {
-    setGrid((p) => ({ ...p, [key(slot, day)]: withReplayLink(p[key(slot, day)], n, value) }));
+  function dropMark(mk: string) {
     setMarks((m) => {
-      if (!(markKey(slot, day, n) in m)) return m;
+      if (!(mk in m)) return m;
       const next = { ...m };
-      delete next[markKey(slot, day, n)];
+      delete next[mk];
       return next;
     });
   }
 
-  // «Найти повторы»: сервер строит кандидатов по правилу r/rr, проверяет их на
-  // Бизоне и снимает время показа. Вписываются только найденные и только в
-  // пустые поля; ячейку, которую человек успел поменять, пока шёл поиск, не
-  // трогаем. Сохраняет человек.
-  async function findReplays() {
-    const cells = SLOTS.flatMap((slot) => Array.from({ length: dayCount }, (_, i) => {
-      const c = grid[key(slot, i + 1)];
-      return {
-        timeSlot: slot, dayNum: i + 1, liveUrl: c.webRoom || c.gcRoom,
-        replay1: replayInputValue(c, 1), replay2: replayInputValue(c, 2),
-      };
-    }));
-    setFinding(true);
-    setFindNote(null);
+  function setReplayLink(slot: string, day: number, n: ReplayN, value: string) {
+    setGrid((p) => ({ ...p, [key(slot, day)]: withReplayLink(p[key(slot, day)], n, value) }));
+    dropMark(markKey(slot, day, n));
+  }
+
+  // Кнопка есть, когда есть от чего строить: хотя бы одна комната эфира.
+  const hasLiveRoom = SLOTS.some((slot) => Array.from({ length: dayCount }, (_, i) => grid[key(slot, i + 1)])
+    .some((c) => (roomSlugFromUrl(c.webRoom) ?? roomSlugFromUrl(c.gcRoom)) !== null));
+
+  // «Заполнить и проверить»: сервер достраивает пустые эфиры по правилам
+  // room-urls.ts, проверяет на Бизоне и эфиры, и (при включённом «повторе»)
+  // кандидатов в повторы. Вписывается только найденное и только в пустые
+  // поля (applyRoomCheck). Сохраняет человек.
+  async function checkRooms() {
+    const withReplays = replay;
+    setChecking(true);
+    setCheckNote(null);
     setError(null);
     try {
-      const res = await fetch(`/api/funnels/${funnelId}/replays/find`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cells }),
+      const res = await fetch(`/api/funnels/${funnelId}/rooms/check`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cells: cellsFromGrid(grid, dayCount), replays: withReplays }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        throw new Error(body?.error ?? `Не удалось найти повторы (${res.status})`);
+        throw new Error(body?.error ?? `Не удалось проверить комнаты (${res.status})`);
       }
-      const { results } = (await res.json()) as { results: FindResult[] };
-      const nextMarks: Record<string, ReplayMark> = {};
-      let added = 0, missing = 0, failed = 0;
-      // Считаем от свежей сетки (gridRef), а не из апдейтера setGrid: апдейтер
-      // React вправе вызвать дважды, и счётчики сводки удвоились бы.
-      {
-        const g = { ...gridRef.current };
-        for (const r of results) {
-          const k = key(r.timeSlot, r.dayNum);
-          const c = g[k];
-          if (!c || !r.slug) continue;
-          const cur = replayOf(c, r.n);
-          const curSlug = roomSlugFromUrl(cur.web) ?? roomSlugFromUrl(cur.gc);
-          const mk = markKey(r.timeSlot, r.dayNum, r.n);
-          if (r.outcome === 'found') {
-            if (!r.wasFilled && !cur.gc && !cur.web) {
-              g[k] = withFoundReplay(c, r.n, r.slug, r.time);
-              nextMarks[mk] = 'new';
-              added++;
-            } else if (r.wasFilled && curSlug === r.slug && r.time && cur.time !== r.time) {
-              g[k] = withFoundReplay(c, r.n, r.slug, r.time);
-            }
-          } else if (r.outcome === 'missing') {
-            // Кандидат, которого нет, — норма (у F21 нет повторов пятого дня);
-            // считаем в сводке только уже вписанный повтор, которого нет.
-            if (r.wasFilled) { nextMarks[mk] = 'missing'; missing++; }
-          } else if (r.outcome === 'error') {
-            nextMarks[mk] = 'error';
-            failed++;
-          }
-        }
-        setGrid(g);
-      }
-      const empty = results.filter((r) => !r.wasFilled && r.outcome === 'missing').length;
-      setMarks(nextMarks);
-      setFindNote([
-        added > 0 ? `Найдено новых повторов: ${added}. Они подсвечены, проверьте и сохраните.` : 'Новых повторов не найдено.',
-        empty > 0 ? `На Бизоне нет ещё ${empty}, эти поля остались пустыми.` : '',
-        missing > 0 ? `Вписанных повторов, которых нет на Бизоне: ${missing}.` : '',
-        failed > 0 ? `Не удалось проверить: ${failed}, попробуйте ещё раз.` : '',
-      ].filter(Boolean).join(' '));
+      const result = (await res.json()) as RoomCheckResult;
+      // От свежей сетки (gridRef), а не из апдейтера setGrid: апдейтер React
+      // вправе вызвать дважды, и счётчики сводки удвоились бы.
+      const applied = applyRoomCheck(gridRef.current, result);
+      setGrid(applied.grid);
+      setMarks(applied.marks);
+      setCheckNote(roomCheckSummary(applied.counts, withReplays));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Не удалось найти повторы');
+      setError(e instanceof Error ? e.message : 'Не удалось проверить комнаты');
     } finally {
-      setFinding(false);
+      setChecking(false);
     }
   }
 
@@ -157,19 +119,11 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
   // незачем.
   function setLiveLink(slot: string, day: number, value: string) {
     setGrid((p) => ({ ...p, [key(slot, day)]: withLiveLink(p[key(slot, day)], value) }));
+    dropMark(liveMarkKey(slot, day));
   }
 
-  // Сетка, достроенная по уже заполненным ячейкам. Кнопка предлагается ровно
-  // тогда, когда достройка что-то меняет — отдельной эвристики «есть ли что
-  // заполнить» нет, иначе она разъедется с самой достройкой.
-  const filled = useMemo(() => fillRoomGrid(grid, dayCount), [grid, dayCount]);
-  const canFill =
-    JSON.stringify(cellsFromGrid(filled, dayCount)) !== JSON.stringify(cellsFromGrid(grid, dayCount));
-
-  // Новый день сразу достраивается по уже заполненным — правило то же, что у
-  // «Заполнить остальные», и применяется только к добавленной паре ячеек
-  // (см. appendDay). Сетка открывается на трёх днях, а пятидневных воронок
-  // 53 из 62, так что этот клик делают почти всегда.
+  // Новый день добавляется пустым: вписывать можно только комнаты, которые
+  // есть на Бизоне, а проверяет их «Заполнить и проверить» (см. appendDay).
   function addDay() {
     if (dayCount >= MAX_DAYS) return;
     setGrid((p) => appendDay(p, dayCount));
@@ -247,9 +201,9 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
         throw new Error(body?.error ?? `Не удалось сохранить настройку повтора (${flagRes.status})`);
       }
       setSaved({ enabled: submittedEnabled, replay: submittedReplay, cells });
-      // Подсветка «вписано поиском» значит «ещё не сохранено» — после
+      // Подсветка «вписано кнопкой» значит «ещё не сохранено» — после
       // сохранения она врала бы. Отметки о мёртвых и непроверенных остаются.
-      setMarks((m) => Object.fromEntries(Object.entries(m).filter(([, v]) => v !== 'new')));
+      setMarks((m) => Object.fromEntries(Object.entries(m).filter(([, v]) => v.kind !== 'new')));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось сохранить');
     } finally { setSaving(false); }
@@ -291,6 +245,7 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
             <div className="grid items-center gap-x-1.5 gap-y-1" style={{ gridTemplateColumns: '22px minmax(0,1fr) auto' }}>
               {Array.from({ length: dayCount }, (_, idx) => idx + 1).map((day) => (
                 <LiveRow key={day} day={day} cell={grid[key(slot, day)]} canEdit={canEdit}
+                  mark={marks[liveMarkKey(slot, day)]}
                   canRemove={canEdit && dayCount > 1}
                   onRemove={() => removeDay(day)}
                   onChange={(v) => setLiveLink(slot, day, v)} />
@@ -307,16 +262,6 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
             Повторы
             <span className="h-px flex-1 bg-[#DDD2F7]" />
           </div>
-          {canEdit && (
-            <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-              <button type="button" onClick={findReplays} disabled={finding}
-                title="Проверить на Бизоне, какие повторы у дней есть, и вписать найденные вместе со временем показа"
-                className="flex items-center gap-1 rounded-[7px] border border-[#6B4FBB] bg-white px-2.5 py-1 text-[12px] font-semibold text-[#6B4FBB] disabled:opacity-60">
-                <Search size={13} /> {finding ? 'Ищу на Бизоне…' : 'Найти повторы'}
-              </button>
-              {findNote && <span className="text-[11px] text-[var(--muted)]">{findNote}</span>}
-            </div>
-          )}
           <div className="flex flex-col gap-4 sm:flex-row sm:gap-2.5">
             {SLOTS.map((slot) => (
               <div key={slot} className="min-w-0 flex-1">
@@ -346,19 +291,23 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
       )}
 
       {canEdit && (
-      <div className="mt-2 flex items-center justify-between">
+      <>
+      {checkNote && (
+        <div role="status" className="mt-2 rounded-[6px] bg-[var(--card)] px-2 py-1.5 text-[11px] text-[var(--muted)]">{checkNote}</div>
+      )}
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-4">
           <button type="button" onClick={addDay} disabled={dayCount >= MAX_DAYS}
             className="flex items-center gap-1 text-[12px] font-semibold text-[var(--orange)] disabled:opacity-40">
             <Plus size={13} /> добавить день
           </button>
-          {canFill && (
-            <button type="button" onClick={() => setGrid(filled)}
-              title="Достроить пустые ячейки эфиров по образцу заполненных: другой день, второе время"
-              className="flex items-center gap-1 text-[12px] font-semibold text-[var(--orange)]">
-              <Wand2 size={13} /> Заполнить остальные
-            </button>
-          )}
+          <button type="button" onClick={checkRooms} disabled={checking || !hasLiveRoom}
+            title={hasLiveRoom
+              ? `Достроить пустые дни и второе время по введённой комнате, проверить все комнаты на Бизоне${replay ? ' и найти повторы' : ''}. Вписываются только существующие комнаты и только в пустые поля.`
+              : 'Сначала впишите хотя бы одну комнату эфира'}
+            className="flex items-center gap-1 rounded-[7px] border border-[var(--orange)] bg-white px-2.5 py-1 text-[12px] font-semibold text-[var(--orange)] disabled:opacity-50">
+            <Wand2 size={13} /> {checking ? 'Проверяю на Бизоне…' : 'Заполнить и проверить'}
+          </button>
         </div>
         <div className="flex items-center gap-3">
           {error && <span role="alert" className="text-[11px] font-medium text-[#B42318]">{error}</span>}
@@ -374,6 +323,7 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
           </button>
         </div>
       </div>
+      </>
       )}
     </div>
   );
@@ -393,7 +343,7 @@ const REPLAY_INPUT = 'h-7 w-full min-w-0 rounded-[5px] border border-[#DDD2F7] b
 function ReplayRow({ day, cell, canEdit, showTime, mark, onChange }: {
   day: number; cell: Cell; canEdit: boolean;
   showTime: (n: ReplayN) => boolean;
-  mark: (n: ReplayN) => ReplayMark | undefined;
+  mark: (n: ReplayN) => CheckMark | undefined;
   onChange: (n: ReplayN, value: string) => void;
 }) {
   return (
@@ -413,13 +363,13 @@ function ReplayRow({ day, cell, canEdit, showTime, mark, onChange }: {
  * рассылке нужен то один, то другой.
  */
 function ReplayField({ cell, n, canEdit, showTime, mark, onChange }: {
-  cell: Cell; n: ReplayN; canEdit: boolean; showTime: boolean; mark: ReplayMark | undefined;
+  cell: Cell; n: ReplayN; canEdit: boolean; showTime: boolean; mark: CheckMark | undefined;
   onChange: (value: string) => void;
 }) {
   const value = replayInputValue(cell, n);
   const r = replayOf(cell, n);
   const slug = roomSlugFromUrl(r.web) ?? roomSlugFromUrl(r.gc);
-  const ring = mark === 'new' ? ' outline outline-2 outline-[#B9A5EE]' : '';
+  const ring = mark?.kind === 'new' ? ' outline outline-2 outline-[#B9A5EE]' : '';
   return (
     <div className="flex min-w-0 flex-col gap-1">
       {/* Обычное поле, не UrlInput: его значок копирования скопировал бы код
@@ -427,7 +377,7 @@ function ReplayField({ cell, n, canEdit, showTime, mark, onChange }: {
       <input className={REPLAY_INPUT + ring} value={value} placeholder="ссылка или код" readOnly={!canEdit}
         title={r.web || r.gc || undefined} spellCheck={false}
         onChange={(e) => onChange(e.target.value)} />
-      {(slug || (showTime && r.time) || mark === 'missing' || mark === 'error') && (
+      {(slug || (showTime && r.time) || mark?.kind === 'missing' || mark?.kind === 'error') && (
         <div className="flex flex-wrap items-center gap-1">
           {showTime && r.time && <TimeChip time={r.time} />}
           {slug && (
@@ -436,8 +386,7 @@ function ReplayField({ cell, n, canEdit, showTime, mark, onChange }: {
               <CopyChip label="Бизон" url={r.web || webRoomUrl(slug)} />
             </>
           )}
-          {mark === 'missing' && <span className="text-[10px] font-medium text-[#B42318]">нет на Бизоне</span>}
-          {mark === 'error' && <span className="text-[10px] font-medium text-[#B54708]">не проверено</span>}
+          <MarkNote mark={mark} />
         </div>
       )}
     </div>
@@ -448,8 +397,8 @@ function ReplayField({ cell, n, canEdit, showTime, mark, onChange }: {
  * Строка дня в сетке эфиров: номер дня (с крестиком удаления), одно поле с
  * кодом комнаты и кнопки копирования полных ссылок.
  */
-function LiveRow({ day, cell, canEdit, canRemove, onRemove, onChange }: {
-  day: number; cell: Cell;
+function LiveRow({ day, cell, canEdit, mark, canRemove, onRemove, onChange }: {
+  day: number; cell: Cell; mark: CheckMark | undefined;
   canEdit: boolean; canRemove: boolean; onRemove: () => void;
   onChange: (value: string) => void;
 }) {
@@ -472,10 +421,19 @@ function LiveRow({ day, cell, canEdit, canRemove, onRemove, onChange }: {
       </span>
       {/* Обычное поле, не UrlInput — по доводу ReplayField: в поле код, а
           ссылки копируют кнопки рядом. */}
-      <input className={LIVE_INPUT} value={liveInputValue(cell)} placeholder="ссылка или код" readOnly={!canEdit}
-        title={cell.webRoom || cell.gcRoom || undefined} spellCheck={false}
-        onChange={(e) => onChange(e.target.value)} />
-      <span className="flex gap-1">
+      {/* Подпись итога проверки — внутри поля у правого края, а не в колонке
+          кнопок: там она расширяла колонку, и поля одного эфира становились
+          уже полей другого. */}
+      <div className="relative min-w-0">
+        <input className={LIVE_INPUT + (mark && mark.kind !== 'new' ? ' pr-[92px]' : '') + (mark?.kind === 'new' ? ' outline outline-2 outline-[#F7B58A]' : mark?.kind === 'missing' ? ' !border-[#F2B8B5] !bg-[#FFF6F5]' : '')}
+          value={liveInputValue(cell)} placeholder={mark && mark.kind !== 'new' ? '' : 'ссылка или код'} readOnly={!canEdit}
+          title={cell.webRoom || cell.gcRoom || undefined} spellCheck={false}
+          onChange={(e) => onChange(e.target.value)} />
+        {mark && mark.kind !== 'new' && (
+          <span className="absolute right-2 top-1/2 -translate-y-1/2"><MarkNote mark={mark} /></span>
+        )}
+      </div>
+      <span className="flex items-center gap-1">
         {slug && (
           <>
             <CopyChip label="GC" url={cell.gcRoom || gcRoomUrl(slug)} />
@@ -485,6 +443,22 @@ function LiveRow({ day, cell, canEdit, canRemove, onRemove, onChange }: {
       </span>
     </>
   );
+}
+
+/**
+ * Подпись итога проверки у ячейки. Код проверенной комнаты — во всплывающей
+ * подсказке: у пустого поля («нет на Бизоне», серое) только так видно, что
+ * именно искали.
+ */
+function MarkNote({ mark }: { mark: CheckMark | undefined }) {
+  if (!mark || mark.kind === 'new') return null;
+  if (mark.kind === 'missing') {
+    return <span title={`Бизон: «Веб-комната не найдена» (${mark.slug})`} className="whitespace-nowrap text-[10px] font-medium text-[#B42318]">нет на Бизоне</span>;
+  }
+  if (mark.kind === 'absent') {
+    return <span title={`Искали по правилу: ${mark.slug} — такой комнаты нет`} className="whitespace-nowrap text-[10px] text-[var(--faint)]">нет на Бизоне</span>;
+  }
+  return <span title={`${mark.slug}: Бизон не ответил, попробуйте ещё раз`} className="whitespace-nowrap text-[10px] font-medium text-[#B54708]">не проверено</span>;
 }
 
 const LIVE_INPUT = 'h-7 w-full min-w-0 rounded-[5px] border border-[var(--line-soft)] bg-white px-2 font-mono text-[12px] text-[var(--ink)]';

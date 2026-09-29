@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { appendDay, buildGrid, cellsFromGrid, emptyCell, fillRoomGrid, gridKey } from '../src/lib/rooms-grid';
+import { appendDay, buildGrid, cellsFromGrid, emptyCell, fillRoomGrid, gridKey, initialDayCount } from '../src/lib/rooms-grid';
 import type { DayCell } from '../src/lib/funnel-days';
 
 const days: DayCell[] = [
@@ -77,7 +77,7 @@ describe('fillRoomGrid', () => {
     expect(f[gridKey('15', 2)].gcRoom).toBe(`${GC}/ruchnoy-adres`);
   });
 
-  // С Phase 19 повторы выводит поиск по Бизону (replay-finder.ts): зеркало дней
+  // С Phase 19 повторы выводит поиск по Бизону (room-check.ts): зеркало дней
   // сочиняло бы повторы и тем дням, у которых их нет.
   it('не достраивает повторы — их находит поиск по Бизону', () => {
     const g = buildGrid([
@@ -145,36 +145,38 @@ describe('fillRoomGrid', () => {
 });
 
 describe('appendDay', () => {
-  // 53 воронки из 62 с комнатами — пятидневные, а сетка открывается на трёх.
-  // Значит «добавить день» жмут почти всегда, и пустая строка после него
-  // требовала второго клика по «Заполнить остальные».
-  it('derives the new day from the days already filled', () => {
+  // С 29.09.2026 вписывать можно только комнаты, которые есть на Бизоне, —
+  // новый день добавляется пустым, заполняет его «Заполнить и проверить».
+  it('добавляет пустой день, даже когда есть из чего вывести', () => {
     const g = buildGrid([
       { timeSlot: '15', dayNum: 1, gcRoom: 'https://gc.ksamata.ru/sst1-15-ht', webRoom: 'https://web.ksamatacenter.com/room/sst1-15-ht', replayUrl: '' },
-      { timeSlot: '19', dayNum: 1, gcRoom: 'https://gc.ksamata.ru/sst1-19-ht', webRoom: 'https://web.ksamatacenter.com/room/sst1-19-ht', replayUrl: '' },
     ], 1);
     const next = appendDay(g, 1);
-    expect(next[gridKey('15', 2)].gcRoom).toBe('https://gc.ksamata.ru/sst2-15-ht');
-    expect(next[gridKey('15', 2)].webRoom).toBe('https://web.ksamatacenter.com/room/sst2-15-ht');
-    expect(next[gridKey('19', 2)].gcRoom).toBe('https://gc.ksamata.ru/sst2-19-ht');
-  });
-
-  it('adds an empty day when there is nothing to derive from', () => {
-    const next = appendDay(buildGrid([], 1), 1);
     expect(next[gridKey('15', 2)]).toEqual(emptyCell());
     expect(next[gridKey('19', 2)]).toEqual(emptyCell());
+    expect(next[gridKey('15', 1)]).toEqual(g[gridKey('15', 1)]);
+  });
+});
+
+describe('initialDayCount', () => {
+  const room = (dayNum: number, gcRoom = 'https://gc.ksamata.ru/x') =>
+    ({ timeSlot: '15' as const, dayNum, gcRoom, webRoom: '', replayUrl: '' });
+
+  it('пустая сетка открывается сразу на пяти днях', () => {
+    expect(initialDayCount([])).toBe(5);
   });
 
-  // Достройка нового дня — не повод трогать остальную сетку: день, который
-  // человек оставил пустым, остаётся пустым, пока он сам не нажмёт
-  // «Заполнить остальные».
-  it('leaves the existing days untouched, empty ones included', () => {
-    const g = buildGrid([
-      { timeSlot: '15', dayNum: 1, gcRoom: 'https://gc.ksamata.ru/sst1-15-ht', webRoom: '', replayUrl: '' },
-    ], 2);
-    const next = appendDay(g, 2);
-    expect(next[gridKey('15', 2)]).toEqual(emptyCell());
-    expect(next[gridKey('19', 1)]).toEqual(emptyCell());
-    expect(next[gridKey('15', 3)].gcRoom).toBe('https://gc.ksamata.ru/sst3-15-ht');
+  it('строки без единой ссылки данными не считаются', () => {
+    expect(initialDayCount([room(1, ''), room(2, ''), room(3, '')])).toBe(5);
+  });
+
+  it('сетка с данными — по своим дням, но не меньше трёх', () => {
+    expect(initialDayCount([room(1)])).toBe(3);
+    expect(initialDayCount([room(1), room(4)])).toBe(4);
+    expect(initialDayCount([room(5)])).toBe(5);
+  });
+
+  it('данными считается и один повтор', () => {
+    expect(initialDayCount([{ ...room(2, ''), webReplay2: 'https://web.ksamatacenter.com/room/a2rr' }])).toBe(3);
   });
 });

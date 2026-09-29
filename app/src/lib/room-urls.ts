@@ -71,7 +71,7 @@ export const webRoomUrl = (slug: string) => `https://web.ksamatacenter.com/room/
  * времени 15/19 не сошли за день 1. Null — цифры дня в слаге нет.
  *
  * Это кандидат, а не ответ: правило сходится с 38 из 44 старых повторов базы,
- * поэтому поиск повторов (replay-finder.ts) каждый кандидат проверяет на Бизоне.
+ * поэтому поиск повторов (room-check.ts) каждый кандидат проверяет на Бизоне.
  */
 export function replaySlug(liveSlug: string, dayNum: number, n: 1 | 2): string | null {
   const re = new RegExp(`(?<!\\d)${dayNum}(?!\\d)`);
