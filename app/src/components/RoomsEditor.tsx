@@ -6,7 +6,7 @@ import Switch from './Switch';
 import UrlInput from './UrlInput';
 import CopyChip from './CopyChip';
 import type { DayCell } from '@/lib/funnel-days';
-import { bizonRoomUrl, gcRoomUrl, roomSlugFromUrl, webRoomFromGc, webRoomUrl } from '@/lib/room-urls';
+import { gcRoomUrl, roomSlugFromUrl, webRoomFromGc, webRoomUrl } from '@/lib/room-urls';
 import {
   SLOTS, appendDay, buildGrid, cellsFromGrid, commonReplayTime, fillRoomGrid, gridKey as key,
   replayInputValue, replayOf, withFoundReplay, withReplayLink,
@@ -424,8 +424,8 @@ function ReplayRow({ day, cell, canEdit, showTime, mark, onChange }: {
 
 /**
  * Одно поле на повтор: сюда вставляют любой из трёх адресов комнаты, а
- * сохраняются GC и Web (withReplayLink). Под полем — копирование каждого из
- * трёх адресов: в рассылке нужен то один, то другой.
+ * сохраняются GC и Web (withReplayLink). Под полем — копирование GC и Web: в
+ * рассылке нужен то один, то другой.
  */
 function ReplayField({ cell, n, canEdit, showTime, mark, onChange }: {
   cell: Cell; n: ReplayN; canEdit: boolean; showTime: boolean; mark: ReplayMark | undefined;
@@ -449,7 +449,6 @@ function ReplayField({ cell, n, canEdit, showTime, mark, onChange }: {
             <>
               <CopyChip label="GC" url={r.gc || gcRoomUrl(slug)} />
               <CopyChip label="Web" url={r.web || webRoomUrl(slug)} />
-              <CopyChip label="Бизон" url={bizonRoomUrl(slug)} />
             </>
           )}
           {mark === 'missing' && <span className="text-[10px] font-medium text-[#B42318]">нет на Бизоне</span>}

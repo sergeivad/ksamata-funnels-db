@@ -32,9 +32,6 @@ export function webRoomFromGc(gc: string): string {
 // завести. Не заведена — 404, хотя комната жива. Поэтому храним и GC, и Web, и
 // мониторинг проверяет их по отдельности.
 
-/** Аккаунт Бизона, под которым живут комнаты. Только для ссылки «Бизон». */
-export const BIZON_ACCOUNT_ID = '135662';
-
 const ROOM_HOST_RES: RegExp[] = [
   /^https?:\/\/gc\.ksamata\.ru\/([^\s/?#]+)\/?(?:[?#].*)?$/i,
   /^https?:\/\/web\.ksamatacenter\.com\/room\/([^\s/?#]+)\/?(?:[?#].*)?$/i,
@@ -66,7 +63,6 @@ export function roomSlugFromUrl(url: string): string | null {
 
 export const gcRoomUrl = (slug: string) => `https://gc.ksamata.ru/${slug}`;
 export const webRoomUrl = (slug: string) => `https://web.ksamatacenter.com/room/${slug}`;
-export const bizonRoomUrl = (slug: string) => `https://start.bizon365.ru/room/${BIZON_ACCOUNT_ID}/${slug}`;
 
 /**
  * Слаг повтора из слага эфира: `r` (повтор 1) или `rr` (повтор 2) сразу после

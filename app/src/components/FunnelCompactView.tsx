@@ -8,7 +8,7 @@ import type { DayCell } from '@/lib/funnel-days';
 import type { BlockState } from '@/lib/funnel-blocks';
 import { getBlockDef } from '@/lib/blocks';
 import { groupDaysByDay, visibleBlocks, blockHasLabels, isOpenableUrl, type RoomSlotData } from '@/lib/funnel-compact';
-import { bizonRoomUrl, gcRoomUrl, roomSlugFromUrl, webRoomUrl } from '@/lib/room-urls';
+import { gcRoomUrl, roomSlugFromUrl, webRoomUrl } from '@/lib/room-urls';
 import { scenarioViews, joinTagsForCopy } from '@/lib/tag-scenarios';
 import StatusPill from './StatusPill';
 import CopyChip from './CopyChip';
@@ -232,9 +232,9 @@ function RoomSlotCell({
 }
 
 /**
- * Повтор в просмотре: подпись со временем показа и три кнопки — один и тот же
- * повтор живёт под тремя адресами (room-urls.ts), и в рассылку нужен то один,
- * то другой. Не комнатный адрес показывается обычной строкой ссылки.
+ * Повтор в просмотре: подпись со временем показа и кнопки GC / Web — у повтора,
+ * как у эфира, два адреса (room-urls.ts), и в рассылку нужен то один, то
+ * другой. Не комнатный адрес показывается обычной строкой ссылки.
  */
 function ReplayCopyRow({ n, gc, web, time }: { n: 1 | 2; gc: string; web: string; time: string }) {
   if (!gc.trim() && !web.trim()) return null;
@@ -247,7 +247,6 @@ function ReplayCopyRow({ n, gc, web, time }: { n: 1 | 2; gc: string; web: string
       <div className="flex flex-wrap gap-1">
         <CopyChip label="GC" url={gc || gcRoomUrl(slug)} />
         <CopyChip label="Web" url={web || webRoomUrl(slug)} />
-        <CopyChip label="Бизон" url={bizonRoomUrl(slug)} />
       </div>
     </div>
   );

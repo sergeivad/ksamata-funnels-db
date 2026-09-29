@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  bizonRoomUrl, gcRoomUrl, isRoomSlug, replaySlug, roomSlugFromUrl, webRoomUrl,
+  gcRoomUrl, isRoomSlug, replaySlug, roomSlugFromUrl, webRoomUrl,
 } from '../src/lib/room-urls';
 import { parseBizonRoomPage } from '../src/lib/bizon-room-page';
 import { findReplays, type FetchFn } from '../src/lib/replay-finder';
@@ -37,10 +37,9 @@ describe('адреса комнаты', () => {
     expect(roomSlugFromUrl('сайты')).toBeNull();
   });
 
-  it('собирает три адреса из слага', () => {
+  it('собирает адреса GC и Web из слага', () => {
     expect(gcRoomUrl('cvc3r-15-yan')).toBe('https://gc.ksamata.ru/cvc3r-15-yan');
     expect(webRoomUrl('cvc3r-15-yan')).toBe('https://web.ksamatacenter.com/room/cvc3r-15-yan');
-    expect(bizonRoomUrl('cvc3r-15-yan')).toBe('https://start.bizon365.ru/room/135662/cvc3r-15-yan');
   });
 
   it('слаг комнаты — только буквы, цифры, дефис и подчёркивание', () => {
