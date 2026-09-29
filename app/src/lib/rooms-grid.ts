@@ -102,6 +102,30 @@ export function withReplayLink(cell: RoomCell, n: ReplayN, raw: string): RoomCel
   return next;
 }
 
+// ── Эфир ─────────────────────────────────────────────────────────────────────
+//
+// Поле эфира устроено так же, как поле повтора: одно на комнату, показывает
+// код, хранит пару GC + Бизон. До 29.09.2026 у эфира было два поля, и Бизон
+// выводился из GC на выходе из поля; с одним полем выводить нечего — пара
+// пишется сразу. Разойтись паре негде: во всех 584 днях живой базы слаги GC и
+// Бизона совпадают (замер 29.09), так что код в поле однозначен.
+
+/** Что показывать в поле эфира: код комнаты, а не комнатный адрес — как есть. */
+export function liveInputValue(cell: RoomCell): string {
+  return roomSlugFromUrl(cell.webRoom) ?? roomSlugFromUrl(cell.gcRoom) ?? (cell.webRoom || cell.gcRoom);
+}
+
+/**
+ * Записать вставленное в поле эфира: любой из трёх адресов комнаты или код →
+ * пара GC + Бизон; прочее — в GC как есть, Бизон пуст (как у повтора).
+ */
+export function withLiveLink(cell: RoomCell, raw: string): RoomCell {
+  const slug = slugFromInput(raw);
+  return slug
+    ? { ...cell, gcRoom: gcRoomUrl(slug), webRoom: webRoomUrl(slug) }
+    : { ...cell, gcRoom: raw, webRoom: '' };
+}
+
 /** Повтор, найденный на Бизоне: ссылка по слагу и время со страницы. */
 export function withFoundReplay(cell: RoomCell, n: ReplayN, slug: string, time: string | null): RoomCell {
   const k = REPLAY_KEYS[n];

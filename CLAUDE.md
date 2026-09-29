@@ -456,6 +456,11 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   любой из трёх адресов или код комнаты (`withReplayLink`), сохраняются GC и
   Web, а показывается код — от полного адреса в половине ширины видно только
   «https://web.ksam».
+  **Поле эфира с 29.09.2026 устроено так же** (`withLiveLink`,
+  `liveInputValue`): одно на комнату, код в поле, кнопки «GC» / «Бизон» в той
+  же строке. Прежние два поля с выводом Бизона из GC на выходе из поля ушли:
+  во всех 584 днях слаги GC и Бизона совпадают, и второе поле ничего не
+  добавляло. Не комнатный адрес ложится в `gc_room` как есть, `web_room` пуст.
 - `funnel-compact.ts` — grouping/visibility for the compact view.
 - `export.ts` — build export rows + CSV serialization. Fields starting with
   `=`, `+`, `-`, `@`, TAB or CR get a leading apostrophe: the route serves a BOM
