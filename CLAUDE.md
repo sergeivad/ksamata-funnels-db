@@ -331,7 +331,7 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   `mirrorDayUrl`, `mirrorSlotRoomUrl`, а с Phase 19 — **один слаг, три адреса**:
   `roomSlugFromUrl` принимает `gc.ksamata.ru/<слаг>`,
   `web.ksamatacenter.com/room/<слаг>` и `start.bizon365.ru/room/135662/<слаг>`,
-  `gcRoomUrl`/`webRoomUrl` собирают GC и Web (адрес Бизона принимается на вход, но не выдаётся: та же комната, что Web, и отдельная кнопка путала), `replaySlug`
+  `gcRoomUrl`/`webRoomUrl` собирают GC и Бизон (адрес `start.bizon365.ru` принимается на вход, но не выдаётся: та же комната, что `web.ksamatacenter.com`, и отдельная кнопка путала), `replaySlug`
   строит кандидата в повтор (`r`/`rr` после цифры дня). Замер 29.09.2026: GC
   отвечает 302 на Web, а Web и Бизон — одна комната под двумя доменами; во всех
   584 днях слаги GC и Web совпадают. GC при этом не синоним — это страница
@@ -516,8 +516,8 @@ source of truth. **Always mutate tags through `createFunnel`/`updateFunnel`
   definitions they diverged silently — the pill lit up for a target the button
   refused to re-check, and it took `STALE_AFTER_DAYS` (a week) to go dark.
 - `monitor-kinds.ts` — the registry of source kinds, `MONITOR_SOURCE_KINDS` =
-  block kinds ∪ room kinds (`room_gc` «Комнаты ГК», `room_web` «Комнаты Web»,
-  `room_replay` «Повторы ГК», `room_replay_web` «Повторы Web» — оба повтора
+  block kinds ∪ room kinds (`room_gc` «Комнаты ГК», `room_web` «Комнаты Бизон»,
+  `room_replay` «Повторы ГК», `room_replay_web` «Повторы Бизон» — оба повтора
   дня, разделённые по хосту, как эфиры, с Phase 19), with their Russian labels. It used to be derived
   from `BLOCK_KINDS` alone — «every checked page comes from a block» — and that
   stopped being true when rooms became targets. Three room kinds and not one:
@@ -763,7 +763,7 @@ Components (`app/src/components/`): `AppHeader`, `FunnelCard`,
 `FunnelSections`: читают её, когда уже что-то заподозрили; анониму её нет
 вовсе, а не `readOnly`, — роут ответит ему 401, и пустая секция выглядела бы
 поломкой), plus UI primitives (`StatusPill`, `CodeChip`, `Segmented`, `Switch`,
-`CopyChip` (кнопка «скопировать адрес» с подписью — GC / Web у
+`CopyChip` (кнопка «скопировать адрес» с подписью — GC / Бизон у
 повторов, в редакторе и в просмотре),
 `GroupToggle` (группировка списка — меню «По продукту ▾», а не ряд кнопок), `StatusTabs` (вкладки статуса над списком с числами; числа считаются без самой вкладки, `countByStatus`, а счётчик «N из M» остаётся рядом — без него «Все 8» при фильтре читалось бы как размер базы), `UrlInput`, `Toast` — у первых четырёх есть `disabled`/
 `readOnly` для режима просмотра). `monitoring/` (`MonitorStatusPill`,

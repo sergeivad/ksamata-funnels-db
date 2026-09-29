@@ -62,8 +62,8 @@ export const EXPORT_HEADERS = [
  *     the blocks.ts catalog; slot '15'/'19' resolves to the funnel's own
  *     timeLabelA/timeLabelB, 'common'-mode items leave Время empty).
  *   - one row per non-empty gcRoom / webRoom in funnel_days ("Комнаты (GC)" /
- *     "Комнаты (Web)"), День = dayNum; plus, when the «повтор» toggle is on,
- *     one row per non-empty replay link ("Повторы (GC)" / "Повторы (Web)",
+ *     "Комнаты (Бизон)"), День = dayNum; plus, when the «повтор» toggle is on,
+ *     one row per non-empty replay link ("Повторы (GC)" / "Повторы (Бизон)",
  *     Описание = «Повтор N · время»).
  * A funnel with zero links still gets exactly one row (empty Раздел/Ссылка) so
  * the funnel list in the export is complete.
@@ -130,7 +130,7 @@ export function buildExportRows(db: DB): ExportRow[] {
       if (cell.webRoom.trim()) {
         rows.push({
           ...base,
-          section: 'Комнаты (Web)',
+          section: 'Комнаты (Бизон)',
           time,
           day: String(cell.dayNum),
           description: '',
@@ -146,7 +146,7 @@ export function buildExportRows(db: DB): ExportRow[] {
         [2, cell.replay2Url, cell.webReplay2, cell.replay2Time],
       ] as const) {
         const description = at ? `Повтор ${n} · ${at}` : `Повтор ${n}`;
-        for (const [section, url] of [['Повторы (GC)', gc], ['Повторы (Web)', web]] as const) {
+        for (const [section, url] of [['Повторы (GC)', gc], ['Повторы (Бизон)', web]] as const) {
           if (!url.trim()) continue;
           rows.push({ ...base, section, time, day: String(cell.dayNum), description, url });
           rowCount++;

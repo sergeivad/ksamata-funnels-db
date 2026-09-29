@@ -220,7 +220,7 @@ function RoomSlotCell({
           covers it from sm up. */}
       <span className="text-[10px] uppercase tracking-wide text-[var(--faint)] sm:hidden">{timeLabel}</span>
       {slot.gcRoom.trim() !== '' && <CopyableUrlRow label="GC" url={slot.gcRoom} narrowLabel wrap />}
-      {slot.webRoom.trim() !== '' && <CopyableUrlRow label="Web" url={slot.webRoom} narrowLabel wrap />}
+      {slot.webRoom.trim() !== '' && <CopyableUrlRow label="Бизон" url={slot.webRoom} narrowLabel wrap />}
       {replayEnabled && (
         <>
           <ReplayCopyRow n={1} gc={slot.replayUrl} web={slot.webReplay} time={slot.replayTime} />
@@ -232,7 +232,7 @@ function RoomSlotCell({
 }
 
 /**
- * Повтор в просмотре: подпись со временем показа и кнопки GC / Web — у повтора,
+ * Повтор в просмотре: подпись со временем показа и кнопки GC / Бизон — у повтора,
  * как у эфира, два адреса (room-urls.ts), и в рассылку нужен то один, то
  * другой. Не комнатный адрес показывается обычной строкой ссылки.
  */
@@ -246,7 +246,7 @@ function ReplayCopyRow({ n, gc, web, time }: { n: 1 | 2; gc: string; web: string
       <span className="w-[48px] shrink-0 text-[10px] text-[#6B4FBB]">{label}</span>
       <div className="flex flex-wrap gap-1">
         <CopyChip label="GC" url={gc || gcRoomUrl(slug)} />
-        <CopyChip label="Web" url={web || webRoomUrl(slug)} />
+        <CopyChip label="Бизон" url={web || webRoomUrl(slug)} />
       </div>
     </div>
   );
