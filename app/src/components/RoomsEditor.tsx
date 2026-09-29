@@ -299,7 +299,7 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
             <div className="mb-1 text-[11px] font-medium text-[var(--muted)]">{labels[slot]}</div>
             <div className="grid items-center gap-x-1.5 gap-y-1" style={{ gridTemplateColumns: gtc }}>
               <span /><span className="text-[10px] text-[var(--faint)]">GC</span>
-              <span className="text-[10px] text-[var(--faint)]">Web</span>
+              <span className="text-[10px] text-[var(--faint)]">Бизон</span>
               {Array.from({ length: dayCount }, (_, idx) => idx + 1).map((day) => {
                 const c = grid[key(slot, day)];
                 return (
@@ -369,7 +369,7 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
           </button>
           {canFill && (
             <button type="button" onClick={() => setGrid(filled)}
-              title="Достроить пустые ячейки по образцу заполненных: другой день, второе время, Web из GC"
+              title="Достроить пустые ячейки по образцу заполненных: другой день, второе время, Бизон из GC"
               className="flex items-center gap-1 text-[12px] font-semibold text-[var(--orange)]">
               <Wand2 size={13} /> Заполнить остальные
             </button>
@@ -424,7 +424,7 @@ function ReplayRow({ day, cell, canEdit, showTime, mark, onChange }: {
 
 /**
  * Одно поле на повтор: сюда вставляют любой из трёх адресов комнаты, а
- * сохраняются GC и Web (withReplayLink). Под полем — копирование GC и Web: в
+ * сохраняются GC и Бизон (withReplayLink). Под полем — копирование GC и Бизон: в
  * рассылке нужен то один, то другой.
  */
 function ReplayField({ cell, n, canEdit, showTime, mark, onChange }: {
@@ -448,7 +448,7 @@ function ReplayField({ cell, n, canEdit, showTime, mark, onChange }: {
           {slug && (
             <>
               <CopyChip label="GC" url={r.gc || gcRoomUrl(slug)} />
-              <CopyChip label="Web" url={r.web || webRoomUrl(slug)} />
+              <CopyChip label="Бизон" url={r.web || webRoomUrl(slug)} />
             </>
           )}
           {mark === 'missing' && <span className="text-[10px] font-medium text-[#B42318]">нет на Бизоне</span>}
@@ -492,7 +492,7 @@ function FragmentRow({ day, cell, canEdit, canRemove, onRemove, onChange, onGcBl
           if (gcOnFocus.current !== cell.gcRoom) onGcBlur();
           gcOnFocus.current = null;
         }} />
-      <UrlInput className={inp} value={cell.webRoom} placeholder="web…" readOnly={!canEdit} onChange={(v) => onChange('webRoom', v)} />
+      <UrlInput className={inp} value={cell.webRoom} placeholder="бизон…" readOnly={!canEdit} onChange={(v) => onChange('webRoom', v)} />
     </>
   );
 }

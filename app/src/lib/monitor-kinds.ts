@@ -2,18 +2,18 @@ import { BLOCK_KINDS } from './blocks';
 
 /**
  * Виды комнат. Не один: это разные хосты и разные причины падения, и только
- * у Web нужна проверка по содержимому. Слитая группа не выключалась бы по
+ * у Бизона нужна проверка по содержимому. Слитая группа не выключалась бы по
  * частям. Повторы с Phase 19 разделены так же, как эфиры: `room_replay` —
- * страницы ГетКурса обоих повторов, `room_replay_web` — их комнаты Web.
+ * страницы ГетКурса обоих повторов, `room_replay_web` — их комнаты Бизона.
  */
 export const ROOM_SOURCE_KINDS = ['room_gc', 'room_web', 'room_replay', 'room_replay_web'] as const;
 export type RoomSourceKind = (typeof ROOM_SOURCE_KINDS)[number];
 
 const ROOM_TITLES: Record<RoomSourceKind, string> = {
   room_gc: 'Комнаты ГК',
-  room_web: 'Комнаты Web',
+  room_web: 'Комнаты Бизон',
   room_replay: 'Повторы ГК',
-  room_replay_web: 'Повторы Web',
+  room_replay_web: 'Повторы Бизон',
 };
 
 /**
