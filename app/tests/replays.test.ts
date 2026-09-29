@@ -11,7 +11,7 @@ import {
 import { parseBizonRoomPage } from '../src/lib/bizon-room-page';
 import { findReplays, type FetchFn } from '../src/lib/replay-finder';
 import {
-  buildGrid, commonReplayTime, emptyCell, gridKey, replayInputValue, withFoundReplay, withReplayLink,
+  buildGrid, commonReplayTime, emptyCell, gridKey, liveInputValue, replayInputValue, withFoundReplay, withLiveLink, withReplayLink,
 } from '../src/lib/rooms-grid';
 
 const ALIVE = (ms: number) =>
@@ -206,5 +206,41 @@ describe('поле повтора в сетке', () => {
     g = { ...g, [gridKey('15', 3)]: withFoundReplay(g[gridKey('15', 3)], 1, 'cvc3r-15-yan', '20:00') };
     expect(commonReplayTime(g, '15', 1, 3)).toBeNull();
     expect(commonReplayTime(g, '15', 2, 3)).toBeNull();
+  });
+});
+
+describe('поле эфира в сетке', () => {
+  it('любой из трёх адресов или код раскладывается в пару GC + Бизон', () => {
+    for (const raw of [
+      'https://gc.ksamata.ru/cvc3-15-yan',
+      'https://web.ksamatacenter.com/room/cvc3-15-yan',
+      'https://start.bizon365.ru/room/135662/cvc3-15-yan',
+      'cvc3-15-yan',
+    ]) {
+      const c = withLiveLink(emptyCell(), raw);
+      expect(c.gcRoom).toBe('https://gc.ksamata.ru/cvc3-15-yan');
+      expect(c.webRoom).toBe('https://web.ksamatacenter.com/room/cvc3-15-yan');
+      expect(liveInputValue(c)).toBe('cvc3-15-yan');
+    }
+  });
+
+  it('не комнатный текст ложится в GC как есть, Бизон пуст', () => {
+    const c = withLiveLink(emptyCell(), 'https://gc.ksamata.ru/svs/bonus1');
+    expect(c.gcRoom).toBe('https://gc.ksamata.ru/svs/bonus1');
+    expect(c.webRoom).toBe('');
+    expect(liveInputValue(c)).toBe('https://gc.ksamata.ru/svs/bonus1');
+  });
+
+  it('повторы при правке эфира не трогаются', () => {
+    const withReplay = withFoundReplay(emptyCell(), 1, 'cvc3r-15-yan', '19:00');
+    const c = withLiveLink(withReplay, 'cvc3-15-yan');
+    expect(c.replayUrl).toBe('https://gc.ksamata.ru/cvc3r-15-yan');
+    expect(c.replayTime).toBe('19:00');
+  });
+
+  it('очистка поля очищает обе ссылки', () => {
+    const c = withLiveLink(withLiveLink(emptyCell(), 'cvc3-15-yan'), '');
+    expect(c.gcRoom).toBe('');
+    expect(c.webRoom).toBe('');
   });
 });

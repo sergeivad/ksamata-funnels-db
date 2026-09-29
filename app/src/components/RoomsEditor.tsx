@@ -3,13 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Tv, Plus, X, Wand2, RotateCcw, Search } from 'lucide-react';
 import Switch from './Switch';
-import UrlInput from './UrlInput';
 import CopyChip from './CopyChip';
 import type { DayCell } from '@/lib/funnel-days';
-import { gcRoomUrl, roomSlugFromUrl, webRoomFromGc, webRoomUrl } from '@/lib/room-urls';
+import { gcRoomUrl, roomSlugFromUrl, webRoomUrl } from '@/lib/room-urls';
 import {
   SLOTS, appendDay, buildGrid, cellsFromGrid, commonReplayTime, fillRoomGrid, gridKey as key,
-  replayInputValue, replayOf, withFoundReplay, withReplayLink,
+  liveInputValue, replayInputValue, replayOf, withFoundReplay, withLiveLink, withReplayLink,
   type ReplayN, type RoomCell as Cell, type RoomGrid as Grid,
 } from '@/lib/rooms-grid';
 import type { FindResult } from '@/lib/replay-finder';
@@ -67,10 +66,6 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
   const onDirtyChangeRef = useRef(onDirtyChange);
   onDirtyChangeRef.current = onDirtyChange;
   useEffect(() => { onDirtyChangeRef.current?.(dirty); }, [dirty]);
-
-  function set(slot: string, day: number, field: keyof Cell, value: string) {
-    setGrid((p) => ({ ...p, [key(slot, day)]: { ...p[key(slot, day)], [field]: value } }));
-  }
 
   const [marks, setMarks] = useState<Record<string, ReplayMark>>({});
   const [finding, setFinding] = useState(false);
@@ -157,16 +152,11 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
     }
   }
 
-  // When the GC field is filled and Web left empty, derive Web from the GC
-  // slug on blur (the slug is shared between the two platforms).
-  function autofillWeb(slot: string, day: number) {
-    setGrid((p) => {
-      const c = p[key(slot, day)];
-      if (c.webRoom.trim() !== '') return p;
-      const web = webRoomFromGc(c.gcRoom);
-      if (!web) return p;
-      return { ...p, [key(slot, day)]: { ...c, webRoom: web } };
-    });
+  // Поле эфира одно: вставленное раскладывается в пару GC + Бизон сразу
+  // (withLiveLink), поэтому выводить Бизон из GC на выходе из поля больше
+  // незачем.
+  function setLiveLink(slot: string, day: number, value: string) {
+    setGrid((p) => ({ ...p, [key(slot, day)]: withLiveLink(p[key(slot, day)], value) }));
   }
 
   // Сетка, достроенная по уже заполненным ячейкам. Кнопка предлагается ровно
@@ -291,25 +281,20 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
         </span>
       </div>
 
-      {/* Two slot columns side by side; stacked on narrow screens where a
-          half-width column leaves each URL input only ~55px. */}
+      {/* Two slot columns side by side; stacked on narrow screens. Одно поле
+          на комнату, кнопки копирования GC / Бизон — в той же строке, чтобы
+          сетка эфиров не стала выше прежней. */}
       <div className="flex flex-col gap-4 sm:flex-row sm:gap-2.5">
         {SLOTS.map((slot) => (
           <div key={slot} className="min-w-0 flex-1">
             <div className="mb-1 text-[11px] font-medium text-[var(--muted)]">{labels[slot]}</div>
-            <div className="grid items-center gap-x-1.5 gap-y-1" style={{ gridTemplateColumns: gtc }}>
-              <span /><span className="text-[10px] text-[var(--faint)]">GC</span>
-              <span className="text-[10px] text-[var(--faint)]">Бизон</span>
-              {Array.from({ length: dayCount }, (_, idx) => idx + 1).map((day) => {
-                const c = grid[key(slot, day)];
-                return (
-                  <FragmentRow key={day} day={day} cell={c} canEdit={canEdit}
-                    canRemove={canEdit && dayCount > 1}
-                    onRemove={() => removeDay(day)}
-                    onChange={(f, v) => set(slot, day, f, v)}
-                    onGcBlur={() => autofillWeb(slot, day)} />
-                );
-              })}
+            <div className="grid items-center gap-x-1.5 gap-y-1" style={{ gridTemplateColumns: '22px minmax(0,1fr) auto' }}>
+              {Array.from({ length: dayCount }, (_, idx) => idx + 1).map((day) => (
+                <LiveRow key={day} day={day} cell={grid[key(slot, day)]} canEdit={canEdit}
+                  canRemove={canEdit && dayCount > 1}
+                  onRemove={() => removeDay(day)}
+                  onChange={(v) => setLiveLink(slot, day, v)} />
+              ))}
             </div>
           </div>
         ))}
@@ -369,7 +354,7 @@ export default function RoomsEditor({ funnelId, initialDays, enabled: enabledPro
           </button>
           {canFill && (
             <button type="button" onClick={() => setGrid(filled)}
-              title="Достроить пустые ячейки по образцу заполненных: другой день, второе время, Бизон из GC"
+              title="Достроить пустые ячейки эфиров по образцу заполненных: другой день, второе время"
               className="flex items-center gap-1 text-[12px] font-semibold text-[var(--orange)]">
               <Wand2 size={13} /> Заполнить остальные
             </button>
@@ -459,17 +444,16 @@ function ReplayField({ cell, n, canEdit, showTime, mark, onChange }: {
   );
 }
 
-function FragmentRow({ day, cell, canEdit, canRemove, onRemove, onChange, onGcBlur }: {
+/**
+ * Строка дня в сетке эфиров: номер дня (с крестиком удаления), одно поле с
+ * кодом комнаты и кнопки копирования полных ссылок.
+ */
+function LiveRow({ day, cell, canEdit, canRemove, onRemove, onChange }: {
   day: number; cell: Cell;
   canEdit: boolean; canRemove: boolean; onRemove: () => void;
-  onChange: (field: 'gcRoom' | 'webRoom', value: string) => void;
-  onGcBlur: () => void;
+  onChange: (value: string) => void;
 }) {
-  const inp = 'h-7 w-full min-w-0 rounded-[5px] border border-[var(--line-soft)] bg-white px-2 font-mono text-[12px] text-[var(--ink)]';
-  // Autofill Web only when the GC value actually changed during this focus —
-  // tabbing through an untouched GC field must not resurrect a Web link the
-  // employee deliberately cleared.
-  const gcOnFocus = useRef<string | null>(null);
+  const slug = roomSlugFromUrl(cell.webRoom) ?? roomSlugFromUrl(cell.gcRoom);
   return (
     <>
       <span className="group/day relative rounded-[4px] bg-[var(--chip)] py-[2px] text-center font-mono text-[10px] text-[var(--muted)]">
@@ -486,13 +470,21 @@ function FragmentRow({ day, cell, canEdit, canRemove, onRemove, onChange, onGcBl
           </button>
         )}
       </span>
-      <UrlInput className={inp} value={cell.gcRoom} placeholder="gc…" readOnly={!canEdit} onChange={(v) => onChange('gcRoom', v)}
-        onFocus={() => { gcOnFocus.current = cell.gcRoom; }}
-        onBlur={() => {
-          if (gcOnFocus.current !== cell.gcRoom) onGcBlur();
-          gcOnFocus.current = null;
-        }} />
-      <UrlInput className={inp} value={cell.webRoom} placeholder="бизон…" readOnly={!canEdit} onChange={(v) => onChange('webRoom', v)} />
+      {/* Обычное поле, не UrlInput — по доводу ReplayField: в поле код, а
+          ссылки копируют кнопки рядом. */}
+      <input className={LIVE_INPUT} value={liveInputValue(cell)} placeholder="ссылка или код" readOnly={!canEdit}
+        title={cell.webRoom || cell.gcRoom || undefined} spellCheck={false}
+        onChange={(e) => onChange(e.target.value)} />
+      <span className="flex gap-1">
+        {slug && (
+          <>
+            <CopyChip label="GC" url={cell.gcRoom || gcRoomUrl(slug)} />
+            <CopyChip label="Бизон" url={cell.webRoom || webRoomUrl(slug)} />
+          </>
+        )}
+      </span>
     </>
   );
 }
+
+const LIVE_INPUT = 'h-7 w-full min-w-0 rounded-[5px] border border-[var(--line-soft)] bg-white px-2 font-mono text-[12px] text-[var(--ink)]';
