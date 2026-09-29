@@ -161,23 +161,30 @@ export function collectFunnelOrigins(db: AnyDB, funnelId: number): Map<string, s
       gcRoom: funnelDays.gcRoom,
       webRoom: funnelDays.webRoom,
       replayUrl: funnelDays.replayUrl,
+      webReplay: funnelDays.webReplay,
+      replay2Url: funnelDays.replay2Url,
+      webReplay2: funnelDays.webReplay2,
     })
     .from(funnelDays)
     .where(eq(funnelDays.funnelId, funnelId))
     .all() as {
       slot: string; day: number;
       gcRoom: string | null; webRoom: string | null; replayUrl: string | null;
+      webReplay: string | null; replay2Url: string | null; webReplay2: string | null;
     }[];
 
   for (const d of days) {
     const where = `${d.slot}:00 · день ${d.day}`;
-    for (const [raw, kind] of [
-      [d.gcRoom, 'room_gc'],
-      [d.webRoom, 'room_web'],
-      [d.replayUrl, 'room_replay'],
+    for (const [raw, kind, which] of [
+      [d.gcRoom, 'room_gc', ''],
+      [d.webRoom, 'room_web', ''],
+      [d.replayUrl, 'room_replay', ' · повтор 1'],
+      [d.webReplay, 'room_replay_web', ' · повтор 1'],
+      [d.replay2Url, 'room_replay', ' · повтор 2'],
+      [d.webReplay2, 'room_replay_web', ' · повтор 2'],
     ] as const) {
       const url = normalizeUrl(raw ?? '');
-      if (url && !out.has(url)) out.set(url, `${sourceKindLabel(kind)} · ${where}`);
+      if (url && !out.has(url)) out.set(url, `${sourceKindLabel(kind)} · ${where}${which}`);
     }
   }
 

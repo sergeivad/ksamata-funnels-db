@@ -187,4 +187,12 @@ if [ -n "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] Phase-18 migration done."
 fi
 
+# Apply Phase-19 migration (idempotent: колонки второго повтора и времени
+# повторов в funnel_days). Только ADD COLUMN, данных не переносит.
+if [ -n "$FUNNELS_DB_PATH" ]; then
+  echo "[entrypoint] Running Phase-19 migration against $FUNNELS_DB_PATH"
+  node /app/migrate-phase19.cjs
+  echo "[entrypoint] Phase-19 migration done."
+fi
+
 exec node server.js

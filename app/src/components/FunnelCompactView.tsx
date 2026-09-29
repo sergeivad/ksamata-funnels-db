@@ -7,9 +7,11 @@ import type { FunnelDetail } from '@/lib/funnels';
 import type { DayCell } from '@/lib/funnel-days';
 import type { BlockState } from '@/lib/funnel-blocks';
 import { getBlockDef } from '@/lib/blocks';
-import { groupDaysByDay, visibleBlocks, blockHasLabels, isOpenableUrl } from '@/lib/funnel-compact';
+import { groupDaysByDay, visibleBlocks, blockHasLabels, isOpenableUrl, type RoomSlotData } from '@/lib/funnel-compact';
+import { gcRoomUrl, roomSlugFromUrl, webRoomUrl } from '@/lib/room-urls';
 import { scenarioViews, joinTagsForCopy } from '@/lib/tag-scenarios';
 import StatusPill from './StatusPill';
+import CopyChip from './CopyChip';
 
 interface Props {
   funnel: FunnelDetail;
@@ -206,7 +208,7 @@ function RoomSlotCell({
   timeLabel,
   className = '',
 }: {
-  slot?: { gcRoom: string; webRoom: string; replayUrl: string };
+  slot?: RoomSlotData;
   replayEnabled: boolean;
   timeLabel: string;
   className?: string;
@@ -219,7 +221,33 @@ function RoomSlotCell({
       <span className="text-[10px] uppercase tracking-wide text-[var(--faint)] sm:hidden">{timeLabel}</span>
       {slot.gcRoom.trim() !== '' && <CopyableUrlRow label="GC" url={slot.gcRoom} narrowLabel wrap />}
       {slot.webRoom.trim() !== '' && <CopyableUrlRow label="Web" url={slot.webRoom} narrowLabel wrap />}
-      {replayEnabled && slot.replayUrl.trim() !== '' && <CopyableUrlRow label="Повтор" url={slot.replayUrl} narrowLabel wrap />}
+      {replayEnabled && (
+        <>
+          <ReplayCopyRow n={1} gc={slot.replayUrl} web={slot.webReplay} time={slot.replayTime} />
+          <ReplayCopyRow n={2} gc={slot.replay2Url} web={slot.webReplay2} time={slot.replay2Time} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Повтор в просмотре: подпись со временем показа и кнопки GC / Web — у повтора,
+ * как у эфира, два адреса (room-urls.ts), и в рассылку нужен то один, то
+ * другой. Не комнатный адрес показывается обычной строкой ссылки.
+ */
+function ReplayCopyRow({ n, gc, web, time }: { n: 1 | 2; gc: string; web: string; time: string }) {
+  if (!gc.trim() && !web.trim()) return null;
+  const label = time ? `Повтор ${time}` : `Повтор ${n}`;
+  const slug = roomSlugFromUrl(web) ?? roomSlugFromUrl(gc);
+  if (!slug) return <CopyableUrlRow label={label} url={gc || web} narrowLabel wrap />;
+  return (
+    <div className="flex min-h-6 min-w-0 items-center gap-1.5 border-b border-[var(--line-soft)] py-1 last:border-b-0">
+      <span className="w-[48px] shrink-0 text-[10px] text-[#6B4FBB]">{label}</span>
+      <div className="flex flex-wrap gap-1">
+        <CopyChip label="GC" url={gc || gcRoomUrl(slug)} />
+        <CopyChip label="Web" url={web || webRoomUrl(slug)} />
+      </div>
     </div>
   );
 }

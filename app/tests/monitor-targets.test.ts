@@ -802,6 +802,29 @@ describe('комнаты как цели', () => {
     expect(kindOf('https://gc.ksamata.ru/tst1-15r')).toBe('room_replay');
   });
 
+  it('оба повтора дают цели ГК и Web, и обе проверяются по умолчанию', () => {
+    wipeFunnelUrls();
+    wipeRooms();
+    const id = activeFunnelId();
+    sqlite.prepare(`UPDATE funnels SET rooms_enabled = 1, rooms_replay_enabled = 1 WHERE id = ?`).run(id);
+    setRoom(id, '15', 1, 'https://gc.ksamata.ru/tst9-15', 'https://web.ksamatacenter.com/room/tst9-15');
+    sqlite.prepare(
+      `UPDATE funnel_days SET replay_url = ?, web_replay = ?, replay2_url = ?, web_replay2 = ?
+        WHERE funnel_id = ? AND time_slot = '15' AND day_num = 1`,
+    ).run(
+      'https://gc.ksamata.ru/tst9r-15', 'https://web.ksamatacenter.com/room/tst9r-15',
+      'https://gc.ksamata.ru/tst9rr-15', 'https://web.ksamatacenter.com/room/tst9rr-15', id,
+    );
+
+    syncMonitorTargets(db);
+
+    expect(kindOf('https://gc.ksamata.ru/tst9r-15')).toBe('room_replay');
+    expect(kindOf('https://gc.ksamata.ru/tst9rr-15')).toBe('room_replay');
+    expect(kindOf('https://web.ksamatacenter.com/room/tst9r-15')).toBe('room_replay_web');
+    expect(kindOf('https://web.ksamatacenter.com/room/tst9rr-15')).toBe('room_replay_web');
+    expect(enabledOf('https://web.ksamatacenter.com/room/tst9rr-15')).toBe(1);
+  });
+
   it('комнаты проверяются по умолчанию', () => {
     wipeFunnelUrls();
     wipeRooms();

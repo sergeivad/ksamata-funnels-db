@@ -20,6 +20,67 @@ export function webRoomFromGc(gc: string): string {
   return m ? `https://web.ksamatacenter.com/room/${m[1]}` : '';
 }
 
+// ── Один слаг — три адреса ──────────────────────────────────────────────────
+//
+// Замер 29.09.2026: gc.ksamata.ru/<слаг> отвечает 302 на
+// web.ksamatacenter.com/room/<слаг>, а тот и start.bizon365.ru/room/135662/<слаг>
+// — одна и та же комната Бизона под двумя доменами (одинаковый <title>). Во
+// всех 584 днях живой базы слаг GC и слаг Web совпадают, исключений нет.
+// Поэтому комната задаётся слагом, а три адреса из него выводятся.
+//
+// GC при этом не синоним: это страница ГетКурса, которую кто-то должен
+// завести. Не заведена — 404, хотя комната жива. Поэтому храним и GC, и Web, и
+// мониторинг проверяет их по отдельности.
+
+const ROOM_HOST_RES: RegExp[] = [
+  /^https?:\/\/gc\.ksamata\.ru\/([^\s/?#]+)\/?(?:[?#].*)?$/i,
+  /^https?:\/\/web\.ksamatacenter\.com\/room\/([^\s/?#]+)\/?(?:[?#].*)?$/i,
+  /^https?:\/\/start\.bizon365\.ru\/room\/\d+\/([^\s/?#]+)\/?(?:[?#].*)?$/i,
+];
+
+/**
+ * Слаг комнаты — то, что сервер вправе подставить в адрес запроса к Бизону:
+ * буквы, цифры, дефис, подчёркивание. Всё прочее — не комната.
+ */
+const ROOM_SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,79}$/i;
+
+export function isRoomSlug(s: string): boolean {
+  return ROOM_SLUG_RE.test(s);
+}
+
+/**
+ * Слаг из любого из трёх адресов комнаты; null — адрес не комнатный (курсовые
+ * страницы вида gc.ksamata.ru/svs/bonus1 сюда не проходят: у них два сегмента).
+ */
+export function roomSlugFromUrl(url: string): string | null {
+  const v = url.trim();
+  for (const re of ROOM_HOST_RES) {
+    const m = re.exec(v);
+    if (m && isRoomSlug(m[1])) return m[1];
+  }
+  return null;
+}
+
+export const gcRoomUrl = (slug: string) => `https://gc.ksamata.ru/${slug}`;
+export const webRoomUrl = (slug: string) => `https://web.ksamatacenter.com/room/${slug}`;
+
+/**
+ * Слаг повтора из слага эфира: `r` (повтор 1) или `rr` (повтор 2) сразу после
+ * цифры дня — cvc3-15-yan → cvc3r-15-yan / cvc3rr-15-yan, 4boo-yons →
+ * 4rboo-yons. Цифра дня ищется «отдельной», как в mirrorDayUrl, чтобы токены
+ * времени 15/19 не сошли за день 1. Null — цифры дня в слаге нет.
+ *
+ * Это кандидат, а не ответ: правило сходится с 38 из 44 старых повторов базы,
+ * поэтому поиск повторов (replay-finder.ts) каждый кандидат проверяет на Бизоне.
+ */
+export function replaySlug(liveSlug: string, dayNum: number, n: 1 | 2): string | null {
+  const re = new RegExp(`(?<!\\d)${dayNum}(?!\\d)`);
+  const m = re.exec(liveSlug);
+  if (!m) return null;
+  const at = m.index + m[0].length;
+  return liveSlug.slice(0, at) + 'r'.repeat(n) + liveSlug.slice(at);
+}
+
 /**
  * Mirror a room url into another day by replacing the standalone day digit:
  * 1dbo-bookv → 2dbo-bookv, dih1-15-rsya → dih2-15-rsya. "Standalone" means not

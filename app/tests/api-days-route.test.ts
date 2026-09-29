@@ -53,7 +53,19 @@ describe('days route', () => {
 
     const getRes = await GET({} as never, { params: Promise.resolve({ id: String(funnelId) }) });
     const body = await getRes.json();
-    expect(body).toContainEqual({ timeSlot: '15', dayNum: 1, gcRoom: 'g', webRoom: 'w', replayUrl: 'r' });
+    expect(body).toContainEqual({
+      timeSlot: '15', dayNum: 1, gcRoom: 'g', webRoom: 'w', replayUrl: 'r',
+      webReplay: '', replayTime: '', replay2Url: '', webReplay2: '', replay2Time: '',
+    });
+  });
+
+  it('отвергает поле повтора не строкой', async () => {
+    const params = Promise.resolve({ id: String(funnelId) });
+    const putRes = await PUT(
+      putReq({ cells: [{ timeSlot: '15', dayNum: 1, gcRoom: 'g', webRoom: 'w', replayUrl: 'r', replay2Url: 5 }] }),
+      { params },
+    );
+    expect(putRes.status).toBe(400);
   });
 
   it('rejects cells missing replayUrl with 400', async () => {

@@ -3,10 +3,10 @@
  * (FunnelCompactView). Kept framework-free so they're easy to unit test.
  */
 
-import type { DayCell } from './funnel-days';
+import type { DayCell, ReplayFields } from './funnel-days';
 import type { BlockItem, BlockState } from './funnel-blocks';
 
-export type RoomSlotData = { gcRoom: string; webRoom: string; replayUrl: string };
+export type RoomSlotData = { gcRoom: string; webRoom: string; replayUrl: string } & ReplayFields;
 export type RoomDayGroup = { dayNum: number; slots: Partial<Record<'15' | '19', RoomSlotData>> };
 
 /**
@@ -18,14 +18,19 @@ export type RoomDayGroup = { dayNum: number; slots: Partial<Record<'15' | '19', 
 export function groupDaysByDay(days: DayCell[]): RoomDayGroup[] {
   const byDay = new Map<number, RoomDayGroup>();
   for (const d of days) {
-    const hasContent = d.gcRoom.trim() !== '' || d.webRoom.trim() !== '' || d.replayUrl.trim() !== '';
+    const hasContent = [d.gcRoom, d.webRoom, d.replayUrl, d.webReplay, d.replay2Url, d.webReplay2]
+      .some((v) => (v ?? '').trim() !== '');
     if (!hasContent) continue;
     let group = byDay.get(d.dayNum);
     if (!group) {
       group = { dayNum: d.dayNum, slots: {} };
       byDay.set(d.dayNum, group);
     }
-    group.slots[d.timeSlot] = { gcRoom: d.gcRoom, webRoom: d.webRoom, replayUrl: d.replayUrl };
+    group.slots[d.timeSlot] = {
+      gcRoom: d.gcRoom, webRoom: d.webRoom, replayUrl: d.replayUrl,
+      webReplay: d.webReplay ?? '', replayTime: d.replayTime ?? '',
+      replay2Url: d.replay2Url ?? '', webReplay2: d.webReplay2 ?? '', replay2Time: d.replay2Time ?? '',
+    };
   }
   return [...byDay.values()].sort((a, b) => a.dayNum - b.dayNum);
 }

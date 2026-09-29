@@ -52,7 +52,8 @@ describe('реестр видов источника', () => {
   it('подписывает комнаты по-русски', () => {
     expect(sourceKindLabel('room_gc')).toBe('Комнаты ГК');
     expect(sourceKindLabel('room_web')).toBe('Комнаты Web');
-    expect(sourceKindLabel('room_replay')).toBe('Повторы');
+    expect(sourceKindLabel('room_replay')).toBe('Повторы ГК');
+    expect(sourceKindLabel('room_replay_web')).toBe('Повторы Web');
   });
 
   it('незнакомый вид отдаёт сам себя, а известным не считается', () => {
