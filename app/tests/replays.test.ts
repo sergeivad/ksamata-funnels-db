@@ -9,10 +9,12 @@ import {
   gcRoomUrl, isRoomSlug, replaySlug, roomSlugFromUrl, webRoomUrl,
 } from '../src/lib/room-urls';
 import { parseBizonRoomPage } from '../src/lib/bizon-room-page';
-import { findReplays, type FetchFn } from '../src/lib/replay-finder';
+import { checkRooms, findReplays, type FetchFn, type RoomCheckResult } from '../src/lib/room-check';
 import {
-  buildGrid, commonReplayTime, emptyCell, gridKey, liveInputValue, replayInputValue, withFoundReplay, withLiveLink, withReplayLink,
+  applyRoomCheck, buildGrid, commonReplayTime, emptyCell, gridKey, liveInputValue, replayInputValue, roomCheckSummary,
+  withFoundReplay, withLiveLink, withReplayLink,
 } from '../src/lib/rooms-grid';
+import type { DayCell } from '../src/lib/funnel-days';
 
 const ALIVE = (ms: number) =>
   `<html><head><title>3й день онлайн-здравницы</title></head><body><script>var closestDate = +'${ms}';</script></body></html>`;
@@ -242,5 +244,190 @@ describe('поле эфира в сетке', () => {
     const c = withLiveLink(withLiveLink(emptyCell(), 'cvc3-15-yan'), '');
     expect(c.gcRoom).toBe('');
     expect(c.webRoom).toBe('');
+  });
+});
+
+// ── «Заполнить и проверить» ──────────────────────────────────────────────────
+
+const gc = (slug: string) => `https://gc.ksamata.ru/${slug}`;
+const web = (slug: string) => `https://web.ksamatacenter.com/room/${slug}`;
+const liveCell = (timeSlot: '15' | '19', dayNum: number, slug = ''): DayCell =>
+  ({ timeSlot, dayNum, gcRoom: slug ? gc(slug) : '', webRoom: slug ? web(slug) : '', replayUrl: '' });
+/** Сетка на `days` дней, где вписана одна комната: 15:00, день 1. */
+const oneRoomGrid = (days: number, slug = 'dbo1-15-vks'): DayCell[] =>
+  (['15', '19'] as const).flatMap((t) => Array.from({ length: days }, (_, i) =>
+    liveCell(t, i + 1, t === '15' && i === 0 ? slug : '')));
+
+describe('checkRooms', () => {
+  it('из одной комнаты выводит всю сетку и вписывает только найденное на Бизоне', async () => {
+    const bizon = fakeBizon({
+      'dbo1-15-vks': ALIVE(0), 'dbo2-15-vks': ALIVE(0),
+      'dbo1-19-vks': ALIVE(0), 'dbo2-19-vks': DEAD,
+    });
+    const res = await checkRooms(oneRoomGrid(2), false, bizon.fetch);
+    expect(res.lives).toEqual([
+      { timeSlot: '15', dayNum: 1, slug: 'dbo1-15-vks', wasFilled: true, outcome: 'found' },
+      { timeSlot: '15', dayNum: 2, slug: 'dbo2-15-vks', wasFilled: false, outcome: 'found' },
+      { timeSlot: '19', dayNum: 1, slug: 'dbo1-19-vks', wasFilled: false, outcome: 'found' },
+      { timeSlot: '19', dayNum: 2, slug: 'dbo2-19-vks', wasFilled: false, outcome: 'missing' },
+    ]);
+    expect(res.replays).toEqual([]);
+    expect(bizon.asked.every((u) => u.startsWith('https://web.ksamatacenter.com/room/'))).toBe(true);
+  });
+
+  it('при выключенном «повторе» повторы не ищет вовсе', async () => {
+    const bizon = fakeBizon({ 'dbo1-15-vks': ALIVE(0), 'dbo1-19-vks': ALIVE(0) });
+    const res = await checkRooms([liveCell('15', 1, 'dbo1-15-vks')], false, bizon.fetch);
+    expect(res.replays).toEqual([]);
+    expect(bizon.asked.sort()).toEqual([web('dbo1-15-vks'), web('dbo1-19-vks')]);
+  });
+
+  // Кандидат r/rr строится из кода эфира; у мёртвого эфира он построен от
+  // неверного кода, и проверять его незачем.
+  it('повторы ищет только у найденного эфира', async () => {
+    const bizon = fakeBizon({
+      'dbo1-15-vks': ALIVE(0), 'dbo1-19-vks': DEAD,
+      'dbo1r-15-vks': ALIVE(AT_19_MSK), 'dbo1rr-15-vks': ALIVE(AT_9_MSK),
+    });
+    const res = await checkRooms([liveCell('15', 1, 'dbo1-15-vks'), liveCell('19', 1)], true, bizon.fetch);
+    expect(res.replays.filter((r) => r.outcome === 'found').map((r) => [r.timeSlot, r.n, r.slug, r.time])).toEqual([
+      ['15', 1, 'dbo1r-15-vks', '19:00'],
+      ['15', 2, 'dbo1rr-15-vks', '9:00'],
+    ]);
+    expect(res.replays.filter((r) => r.timeSlot === '19').map((r) => r.outcome)).toEqual(['skipped', 'skipped']);
+    expect(bizon.asked.some((u) => u.includes('dbo1r-19'))).toBe(false);
+  });
+
+  it('вписанный повтор проверяет и у мёртвого эфира — чтобы пометить', async () => {
+    const bizon = fakeBizon({ 'dbo1-15-vks': DEAD, 'svoy-r': DEAD });
+    const res = await checkRooms([{ ...liveCell('15', 1, 'dbo1-15-vks'), webReplay: web('svoy-r'), replayUrl: gc('svoy-r') }], true, bizon.fetch);
+    expect(res.replays[0]).toMatchObject({ n: 1, slug: 'svoy-r', wasFilled: true, outcome: 'missing' });
+  });
+
+  it('сбой сети у эфира — error, а не missing', async () => {
+    const bizon = fakeBizon({ 'dbo1-15-vks': ALIVE(0) });
+    const res = await checkRooms(oneRoomGrid(2), false, bizon.fetch);
+    expect(res.lives.find((l) => l.timeSlot === '15' && l.dayNum === 2)?.outcome).toBe('error');
+  });
+
+  it('не комнату в поле эфира не проверяет', async () => {
+    const bizon = fakeBizon({});
+    const res = await checkRooms([{ ...liveCell('15', 1), gcRoom: 'заметка' }], false, bizon.fetch);
+    expect(res.lives[0]).toMatchObject({ slug: null, wasFilled: true, outcome: 'skipped' });
+    expect(bizon.asked).toHaveLength(0);
+  });
+
+  it('пятидневная воронка — не больше тридцати страниц Бизона', async () => {
+    const all = new Proxy({}, { has: () => true, get: () => ALIVE(0) }) as Record<string, string>;
+    const counting = fakeBizon(all);
+    await checkRooms(oneRoomGrid(5), true, counting.fetch);
+    expect(counting.asked).toHaveLength(30);
+  });
+});
+
+describe('applyRoomCheck', () => {
+  const grid2 = () => buildGrid(oneRoomGrid(2), 2);
+  const result = (over: Partial<RoomCheckResult> = {}): RoomCheckResult => ({
+    lives: [
+      { timeSlot: '15', dayNum: 1, slug: 'dbo1-15-vks', wasFilled: true, outcome: 'found' },
+      { timeSlot: '15', dayNum: 2, slug: 'dbo2-15-vks', wasFilled: false, outcome: 'found' },
+      { timeSlot: '19', dayNum: 1, slug: 'dbo1-19-vks', wasFilled: false, outcome: 'error' },
+      { timeSlot: '19', dayNum: 2, slug: 'dbo2-19-vks', wasFilled: false, outcome: 'missing' },
+    ],
+    replays: [],
+    ...over,
+  });
+
+  it('вписывает найденный эфир и помечает остальное, пустое оставляет пустым', () => {
+    const { grid, marks, counts } = applyRoomCheck(grid2(), result());
+    expect(grid[gridKey('15', 2)].gcRoom).toBe(gc('dbo2-15-vks'));
+    expect(grid[gridKey('15', 2)].webRoom).toBe(web('dbo2-15-vks'));
+    expect(grid[gridKey('19', 1)]).toEqual(emptyCell());
+    expect(grid[gridKey('19', 2)]).toEqual(emptyCell());
+    expect(marks).toEqual({
+      '15-2-0': { kind: 'new', slug: 'dbo2-15-vks' },
+      '19-1-0': { kind: 'error', slug: 'dbo1-19-vks' },
+      '19-2-0': { kind: 'absent', slug: 'dbo2-19-vks' },
+    });
+    expect(counts).toMatchObject({ livesAdded: 1, livesFailed: 1, livesAbsent: 1, livesMissing: 0 });
+  });
+
+  it('вписанную человеком мёртвую комнату помечает красным и не трогает', () => {
+    const { grid, marks } = applyRoomCheck(grid2(), result({
+      lives: [{ timeSlot: '15', dayNum: 1, slug: 'dbo1-15-vks', wasFilled: true, outcome: 'missing' }],
+    }));
+    expect(grid[gridKey('15', 1)].gcRoom).toBe(gc('dbo1-15-vks'));
+    expect(marks['15-1-0']).toEqual({ kind: 'missing', slug: 'dbo1-15-vks' });
+  });
+
+  // Пока шла проверка, человек вписал в ячейку своё — ответ относится к
+  // другому значению, и непустое поле не перетирается никогда.
+  it('ячейку, заполненную за время проверки, не перетирает', () => {
+    const g = grid2();
+    g[gridKey('15', 2)] = withLiveLink(g[gridKey('15', 2)], 'svoy-kod');
+    const { grid, marks } = applyRoomCheck(g, result());
+    expect(liveInputValue(grid[gridKey('15', 2)])).toBe('svoy-kod');
+    expect(marks['15-2-0']).toBeUndefined();
+  });
+
+  it('вписывает найденный повтор со временем, пустой кандидат не помечает', () => {
+    const { grid, marks, counts } = applyRoomCheck(grid2(), result({
+      lives: [],
+      replays: [
+        { timeSlot: '15', dayNum: 1, n: 1, slug: 'dbo1r-15-vks', wasFilled: false, outcome: 'found', time: '19:00' },
+        { timeSlot: '15', dayNum: 1, n: 2, slug: 'dbo1rr-15-vks', wasFilled: false, outcome: 'missing', time: null },
+      ],
+    }));
+    expect(grid[gridKey('15', 1)].webReplay).toBe(web('dbo1r-15-vks'));
+    expect(grid[gridKey('15', 1)].replayTime).toBe('19:00');
+    expect(grid[gridKey('15', 1)].webReplay2).toBe('');
+    expect(marks).toEqual({ '15-1-1': { kind: 'new', slug: 'dbo1r-15-vks' } });
+    expect(counts).toMatchObject({ replaysAdded: 1, replaysAbsent: 1 });
+  });
+});
+
+describe('roomCheckSummary', () => {
+  const zero = {
+    livesAdded: 0, livesMissing: 0, livesAbsent: 0, livesFailed: 0,
+    replaysAdded: 0, replaysAbsent: 0, replaysMissing: 0, replaysFailed: 0,
+  };
+
+  it('говорит, что вписано, чего нет и что не проверено', () => {
+    expect(roomCheckSummary({ ...zero, livesAdded: 7, replaysAdded: 12, livesMissing: 1, livesAbsent: 1, livesFailed: 1 }, true))
+      .toBe('Вписано: эфиров 7, повторов 12. Они подсвечены, проверьте и сохраните. '
+        + 'Вписанных комнат, которых нет на Бизоне: 1, отмечены красным. '
+        + 'Эфиров, не найденных по правилу: 1, поля остались пустыми. '
+        + 'Не удалось проверить: 1, нажмите ещё раз.');
+  });
+
+  it('ничего нового — так и пишет', () => {
+    expect(roomCheckSummary(zero, false)).toBe('Нового не вписано.');
+  });
+});
+
+describe('checkRooms: образец для вывода', () => {
+  // Достройка берёт источник в своём слоте раньше чужого: опечатка в 19:00
+  // выводила бы от себя всю колонку 19:00 мёртвой (снимок справки 29.09.2026).
+  it('мёртвая вписанная комната не служит образцом', async () => {
+    const bizon = fakeBizon({
+      'dbo1-15-vks': ALIVE(0), 'dbo2-15-vks': ALIVE(0),
+      'dbo2-19-oshibka': DEAD, 'dbo1-19-vks': ALIVE(0),
+    });
+    const res = await checkRooms([
+      liveCell('15', 1, 'dbo1-15-vks'), liveCell('15', 2),
+      liveCell('19', 1), liveCell('19', 2, 'dbo2-19-oshibka'),
+    ], false, bizon.fetch);
+    expect(res.lives.find((l) => l.timeSlot === '19' && l.dayNum === 1))
+      .toMatchObject({ slug: 'dbo1-19-vks', wasFilled: false, outcome: 'found' });
+    expect(res.lives.find((l) => l.timeSlot === '19' && l.dayNum === 2))
+      .toMatchObject({ slug: 'dbo2-19-oshibka', wasFilled: true, outcome: 'missing' });
+    expect(bizon.asked.some((u) => u.includes('oshibka') && !u.endsWith('dbo2-19-oshibka'))).toBe(false);
+  });
+
+  it('непроверенная (сбой сети) комната образцом остаётся', async () => {
+    const bizon = fakeBizon({ 'dbo2-19-vks': ALIVE(0) });
+    const res = await checkRooms([liveCell('19', 1, 'dbo1-19-vks'), liveCell('19', 2)], false, bizon.fetch);
+    expect(res.lives.find((l) => l.timeSlot === '19' && l.dayNum === 2))
+      .toMatchObject({ slug: 'dbo2-19-vks', outcome: 'found' });
   });
 });
