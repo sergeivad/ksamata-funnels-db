@@ -52,24 +52,32 @@ export default function FunnelCard({
   //
   // В режиме просмотра колонка действий не просто пустеет, а исчезает из
   // сетки: пустая колонка с gap оставила бы на её месте дыру.
+  //
+  // На телефоне (≤760px) строка складывается в две: название на всю ширину,
+  // под ним пилюли слева и «⋮» справа. Прежняя раскладка оставляла названию
+  // треть ширины («Б…», «П.»), а три кнопки уезжали отдельной строкой.
   const columns = canEdit
     ? 'grid-cols-[minmax(0,1fr)_minmax(80px,auto)_auto_22px]'
     : 'grid-cols-[minmax(0,1fr)_minmax(80px,auto)_22px]';
   const containerClass =
-    `grid ${columns} items-center gap-3 rounded-[8px] border px-3 py-2.5 text-left transition max-[760px]:grid-cols-[minmax(0,1fr)_auto] border-[var(--color-border-soft)] bg-[rgba(255,255,255,0.38)] hover:bg-white`;
+    `grid ${columns} items-center gap-3 rounded-[8px] border px-3 py-2.5 text-left transition max-[760px]:grid-cols-[minmax(0,1fr)_auto] max-[760px]:gap-y-2 border-[var(--color-border-soft)] bg-[rgba(255,255,255,0.38)] hover:bg-white`;
 
   const actionBtnClass =
-    'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] border bg-white transition border-[var(--color-border-soft)] text-[#111111] hover:border-[#111111]';
+    'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] border bg-white transition border-[var(--color-border-soft)] text-[#111111] hover:border-[#111111] max-[760px]:h-9 max-[760px]:w-9';
+
+  // На телефоне пункты меню крупнее: в 12px по пальцу не попасть.
+  const menuItemClass =
+    'flex w-full items-center px-3 py-1.5 text-left text-[12px] text-[#111111] transition hover:bg-[#F5F3EE] disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent max-[760px]:py-2.5 max-[760px]:text-[14px]';
 
   return (
     <div className={containerClass}>
       {/* Left: code chip (click copies) + title link — real <a>, so
           Cmd/middle-click opens the funnel in a new tab */}
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2 max-[760px]:col-span-2 max-[760px]:items-start">
         <CodeChip code={funnel.frontCode} />
         <Link
           href={href}
-          className="min-w-0 flex-1 truncate text-[13px] font-semibold hover:underline"
+          className="min-w-0 flex-1 truncate text-[13px] font-semibold hover:underline max-[760px]:line-clamp-2 max-[760px]:whitespace-normal max-[760px]:text-[14px] max-[760px]:leading-[20px]"
         >
           {funnel.title}
         </Link>
@@ -138,7 +146,7 @@ export default function FunnelCard({
                       setMenuOpen(false);
                       onSetStatus(s);
                     }}
-                    className="flex w-full items-center px-3 py-1.5 text-left text-[12px] text-[#111111] transition hover:bg-[#F5F3EE] disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
+                    className={menuItemClass}
                   >
                     {STATUS_ACTION_LABELS[s]}
                   </button>
@@ -154,10 +162,37 @@ export default function FunnelCard({
                     setMenuOpen(false);
                     onCheck();
                   }}
-                  className="flex w-full items-center px-3 py-1.5 text-left text-[12px] text-[#111111] transition hover:bg-[#F5F3EE] disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
+                  className={menuItemClass}
                 >
                   {checking ? 'Проверяем…' : 'Проверить ссылки'}
                 </button>
+                {/* На телефоне кнопок «Дублировать» и «Удалить» в строке нет —
+                    они здесь, чтобы строке хватало места на название. */}
+                <div className="min-[760px]:hidden">
+                  <div className="my-1 h-px bg-[var(--color-border-soft)]" />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onDuplicate();
+                    }}
+                    className={menuItemClass}
+                  >
+                    Дублировать
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onDelete();
+                    }}
+                    className={`${menuItemClass} text-[#B42318]`}
+                  >
+                    Удалить
+                  </button>
+                </div>
               </div>
             </>
           )}
@@ -166,7 +201,7 @@ export default function FunnelCard({
         {/* Duplicate */}
         <button
           type="button"
-          className={actionBtnClass}
+          className={`${actionBtnClass} max-[760px]:hidden`}
           onClick={onDuplicate}
           aria-label="Дублировать"
           title="Дублировать"
@@ -179,6 +214,7 @@ export default function FunnelCard({
           type="button"
           className={[
             actionBtnClass,
+            'max-[760px]:hidden',
             'border-[#F3B8AD] text-[#B42318] hover:bg-[#FFF4F1]',
           ].join(' ')}
           onClick={onDelete}

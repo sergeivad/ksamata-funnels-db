@@ -19,7 +19,7 @@ export default function StatusTabs({ options, value, counts, onChange }: StatusT
     <div
       role="group"
       aria-label="Статус воронок"
-      className="flex flex-wrap gap-x-6 border-b border-[var(--color-border-soft)]"
+      className="-mx-4 flex gap-x-4 overflow-x-auto whitespace-nowrap border-b border-[var(--color-border-soft)] px-4 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:gap-x-6 sm:px-0"
     >
       {options.map((o) => {
         const active = o.value === value;

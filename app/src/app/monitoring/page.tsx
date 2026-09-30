@@ -300,7 +300,7 @@ export default function MonitoringPage() {
       {/* Toast portal — та же обёртка, что и в списке воронок (app/src/app/page.tsx),
           иначе Toast остаётся обычным блоком в конце страницы и уезжает за экран. */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 pointer-events-none">
+        <div className="pointer-events-none fixed bottom-4 left-4 right-4 z-50 flex justify-center sm:bottom-6 sm:left-auto sm:right-6">
           <Toast
             key={toast.key}
             message={toast.message}
