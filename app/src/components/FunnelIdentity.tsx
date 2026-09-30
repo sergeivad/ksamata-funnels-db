@@ -552,7 +552,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
         {tagsError && <div role="alert" className="mt-1 text-right text-[11px] font-medium text-[#B42318]">{tagsError}</div>}
       </div>
 
-      <div className="mb-1 flex items-center gap-2">
+      <div className="mb-1 flex flex-wrap items-center gap-2">
         <span className="text-[10px] uppercase tracking-wide text-[var(--faint)]">Время</span>
         <input value={ta} onChange={(e) => setTa(e.target.value)} readOnly={!canEdit} className={`${inp} w-[62px] text-center font-mono`} />
         <input value={tb} onChange={(e) => setTb(e.target.value)} readOnly={!canEdit} className={`${inp} w-[62px] text-center font-mono`} />
@@ -565,7 +565,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
               </span>
             )}
             <button type="button" onClick={save} disabled={saving}
-              className="rounded-[8px] bg-[var(--orange)] px-4 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">
+              className="whitespace-nowrap rounded-[8px] bg-[var(--orange)] px-4 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">
               {saving ? 'Сохранение…' : 'Сохранить идентификацию'}
             </button>
           </span>

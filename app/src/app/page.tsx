@@ -513,7 +513,7 @@ export default function HomePage() {
   }
 
   return (
-    <main className="mx-auto max-w-[900px] px-4 py-8">
+    <main className="mx-auto max-w-[900px] px-4 py-5 sm:py-8">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-[18px] font-semibold text-[var(--color-text)]">
@@ -543,7 +543,7 @@ export default function HomePage() {
           Фильтр по осям всегда на экране: иначе о нём не догадаться. */}
       {!loading && funnels.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[160px] flex-1">
+          <div className="relative min-w-[160px] flex-1 max-sm:basis-full">
             <input
               type="text"
               value={search}
@@ -680,7 +680,7 @@ export default function HomePage() {
 
       {/* Toast portal */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 pointer-events-none">
+        <div className="pointer-events-none fixed bottom-4 left-4 right-4 z-50 flex justify-center sm:bottom-6 sm:left-auto sm:right-6">
           <Toast
             key={toast.key}
             message={toast.message}
