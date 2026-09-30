@@ -33,11 +33,13 @@ import { runMigratePhase12 } from '../scripts/migrate-phase12';
 import { runMigratePhase14 } from '../scripts/migrate-phase14';
 import { runMigratePhase16 } from '../scripts/migrate-phase16';
 import { runMigratePhase18 } from '../scripts/migrate-phase18';
+import { runMigratePhase20 } from '../scripts/migrate-phase20';
 import { replaceDays, listDays } from '../src/lib/funnel-days';
 import { ConflictError } from '../src/lib/errors';
 import { replaceBlock, getBlock } from '../src/lib/funnel-blocks';
 import { replaceOverrides } from '../src/lib/tag-overrides';
 import { copyDbForTest } from './helpers/db';
+import { funnelUpdateSchema } from '../src/lib/validation';
 
 // __dirname = app/tests/ → go up 2 levels to repo root for the DB
 const REAL_DB = join(__dirname, '../../ksamata_funnels.db');
@@ -63,6 +65,7 @@ runMigratePhase14(sqlite);
 // (а его, по предупреждению CLAUDE.md, rebase подменяет молча).
 runMigratePhase16(sqlite);
 runMigratePhase18(sqlite);
+runMigratePhase20(sqlite);
 const testDb = drizzle(sqlite, { schema });
 
 afterAll(() => {
@@ -833,6 +836,44 @@ describe('признак «есть в ЛИК» (Phase 18)', () => {
   it('черновик заводится без галки', () => {
     const draft = createDraftFunnel(testDb);
     expect(getFunnel(testDb, draft.id)!.inLeak).toBe(false);
+  });
+});
+
+describe('«чего не хватает в ЛИК» (Phase 20)', () => {
+  it('новая воронка и черновик заводятся с пустым полем', () => {
+    const created = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 10201 });
+    expect(created.leakTodo).toBe('');
+    expect(getFunnel(testDb, created.id)!.leakTodo).toBe('');
+    expect(getFunnel(testDb, createDraftFunnel(testDb).id)!.leakTodo).toBe('');
+  });
+
+  it('текст пишется через updateFunnel, виден в карточке и в списке, очищается', () => {
+    const created = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 10212 });
+    expect(updateFunnel(testDb, created.id, { leakTodo: 'комнаты' })!.leakTodo).toBe('комнаты');
+    expect(getFunnel(testDb, created.id)!.leakTodo).toBe('комнаты');
+    expect(listFunnels(testDb).find((f) => f.id === created.id)!.leakTodo).toBe('комнаты');
+    updateFunnel(testDb, created.id, { leakTodo: '' });
+    expect(getFunnel(testDb, created.id)!.leakTodo).toBe('');
+  });
+
+  it('правка других полей текст не трогает', () => {
+    const created = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 10223 });
+    updateFunnel(testDb, created.id, { leakTodo: 'предложение регистрации' });
+    updateFunnel(testDb, created.id, { comment: 'заметка' });
+    expect(getFunnel(testDb, created.id)!.leakTodo).toBe('предложение регистрации');
+  });
+
+  it('дубликат текст не наследует', () => {
+    const src = createFunnel(testDb, { ...BASE_FUNNEL_DATA, num: 10234 });
+    updateFunnel(testDb, src.id, { leakTodo: 'комнаты' });
+    const dup = duplicateFunnel(testDb, src.id)!;
+    expect(dup.leakTodo).toBe('');
+    expect(getFunnel(testDb, dup.id)!.leakTodo).toBe('');
+  });
+
+  it('схема валидации обрезает пробелы и отвергает слишком длинный текст', () => {
+    expect(funnelUpdateSchema.parse({ leakTodo: '  комнаты  ' }).leakTodo).toBe('комнаты');
+    expect(funnelUpdateSchema.safeParse({ leakTodo: 'я'.repeat(501) }).success).toBe(false);
   });
 });
 

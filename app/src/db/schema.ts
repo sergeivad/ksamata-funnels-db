@@ -98,6 +98,10 @@ export const funnels = sqliteTable(
     // синхронизации с ЛИК нет (у него нет токена). Умолчание 0: новая
     // воронка заводится сначала здесь и лишь потом переносится в ЛИК.
     inLeak:             integer('in_leak').default(0),
+    // Phase 20: чего не хватает в ЛИК (свободный текст). Пусто — заведена
+    // полностью. Ставит человек; непустое при in_leak = 1 даёт пилюлю
+    // «ЛИК · доделать».
+    leakTodo:           text('leak_todo').notNull().default(''),
   },
   (t) => ({
     productIdx:    index('idx_funnels_product').on(t.productId),

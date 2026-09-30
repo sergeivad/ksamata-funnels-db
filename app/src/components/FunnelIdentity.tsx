@@ -36,6 +36,7 @@ type IdentitySnapshot = {
   funnelType: string;
   hasPredspisok: boolean;
   inLeak: boolean;
+  leakTodo: string;
 };
 
 interface Props { funnel: FunnelDetail; onDirtyChange?: (dirty: boolean) => void }
@@ -68,6 +69,8 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
   // Заведена ли воронка в ЛИК (Phase 18). Синхронизации нет: завели воронку
   // в ЛИК — ставят галку здесь, и пилюля «нет в ЛИК» в списке гаснет.
   const [inLeak, setInLeak] = useState(funnel.inLeak);
+  // Чего не хватает в ЛИК (Phase 20). Поле показано только при поднятой галке.
+  const [leakTodo, setLeakTodo] = useState(funnel.leakTodo);
 
   /**
    * Отражает ли рабочая копия оверрайдов предсписка то, что лежит на сервере.
@@ -97,6 +100,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
     funnelType: funnel.funnelType ?? '',
     hasPredspisok: funnel.hasPredspisok,
     inLeak: funnel.inLeak,
+    leakTodo: funnel.leakTodo,
   });
 
   const dirty =
@@ -111,7 +115,8 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
     tb !== saved.tb ||
     funnelType !== (saved.funnelType ?? '') ||
     hasPredspisok !== saved.hasPredspisok ||
-    inLeak !== saved.inLeak;
+    inLeak !== saved.inLeak ||
+    leakTodo.trim() !== saved.leakTodo;
 
   const onDirtyChangeRef = useRef(onDirtyChange);
   onDirtyChangeRef.current = onDirtyChange;
@@ -291,6 +296,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
       frontCode, status,
       product: axes.product, contractor: axes.contractor, channel: axes.channel, direction: axes.direction,
       comment, ta, tb, funnelType, hasPredspisok, inLeak,
+      leakTodo: leakTodo.trim(),
     };
     setSaving(true);
     setError(null);
@@ -305,6 +311,7 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
           funnelType: submitted.funnelType,
           hasPredspisok: submitted.hasPredspisok,
           inLeak: submitted.inLeak,
+          leakTodo: submitted.leakTodo,
         }),
       });
       const body = await res.json().catch(() => null);
@@ -401,6 +408,16 @@ export default function FunnelIdentity({ funnel, onDirtyChange }: Props) {
       <div className="mb-3 flex items-center gap-1.5 text-[10px] text-[var(--faint)]">
         <Wand2 size={12} /> имя собирается из продукта · подрядчика · канала · направления
       </div>
+
+      {inLeak && (
+        <label className="mb-3 flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-wide text-[var(--faint)]">Чего не хватает в ЛИК</span>
+          <input value={leakTodo} onChange={(e) => setLeakTodo(e.target.value)} maxLength={500}
+            placeholder="например: предложение регистрации, комнаты" readOnly={!canEdit}
+            title="Пусто, если воронка заведена в ЛИК полностью. Текст попадает в подсказку пилюли «ЛИК · доделать» в списке."
+            className={`${inp} w-full`} />
+        </label>
+      )}
 
       <div className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2">
         <RefSelect kind="products" label="Продукт" value={axes.product} onChange={(v) => setAxes({ ...axes, product: v })} />

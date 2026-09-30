@@ -87,7 +87,10 @@ Drizzle SQLite. Core + lookup + content + tags tables:
   `frontCode`, `comment`, `timeLabelA`/`timeLabelB`, room toggles
   `roomsEnabled` / `roomsReplayEnabled`, и `hasPredspisok` — есть ли у воронки
   шаг предсписка (Phase 16, умолчание 1), и `inLeak` — заведена ли воронка
-  в ЛИК (Phase 18, умолчание 0; ставит человек, синхронизации с ЛИК нет).
+  в ЛИК (Phase 18, умолчание 0; ставит человек, синхронизации с ЛИК нет), и
+  `leakTodo` (`leak_todo`, Phase 20, текст «чего не хватает в ЛИК», по
+  умолчанию пусто; при `inLeak` и непустом тексте список рисует пилюлю
+  «ЛИК · доделать»; дубликат поле не наследует).
   Семи URL-колонок дашбордов (`dash_sales_url`, `dash_pereliv_url`,
   `regi_total_url`, `regi_15_url`, `regi_19_url`, `regi_notime_url`,
   `predspisok_url`) в `schema.ts` больше нет (Phase 11) — как и `landing_url`
@@ -774,9 +777,10 @@ Components (`app/src/components/`): `AppHeader`, `FunnelCard`,
 **всегда**: клик по заголовку группы делает то же самое, но о нём надо знать
 заранее, и фильтра на экране просто не было видно),
 `AuthProvider` (контекст прав + `useCanEdit`), `EditorGate`, `LoginForm`,
-`LeakPill` (пилюля «ЛИК» / «нет в ЛИК» в строке списка, правило в
-`lib/leak-pill.ts`: пустой черновик и архив без галки пилюли не получают —
-им в ЛИК быть не обязательно. Стоит на месте чипа типа воронки, убранного
+`LeakPill` (пилюля «ЛИК» / «ЛИК · доделать» / «нет в ЛИК» в строке списка,
+правило в `lib/leak-pill.ts`; «доделать» даёт поднятая галка и непустой
+`leakTodo`, подсказка несёт текст. Пустой черновик и архив без галки пилюли не
+получают: им в ЛИК быть не обязательно. Стоит на месте чипа типа воронки, убранного
 26.09.2026: «Прямые»/«Квиз» владельцу ничего не сообщали, тип остался в
 карточке и в тегах),
 `FunnelHealthPill` (пилюля состояния ссылок — стоит в той же flex-группе, что
@@ -1114,9 +1118,18 @@ better-sqlite3 runner compiled to `.cjs` for Docker).
   2026 у каждого дня эфира два повтора (замер по Бизону 29.09: у эфира 15:00 —
   19:00 и 9:00, у 19:00 — 9:00 и 12:00, в дни 1–4).
 
+- **Phase 20** — `funnels.leak_todo TEXT NOT NULL DEFAULT ''`: чего не хватает в
+  ЛИК у воронки, заведённой туда заранее и не полностью (нет предложения
+  регистрации в GetCourse, нет комнат). Только `ADD COLUMN` под `PRAGMA
+  table_info`, без бэкфилла: недоделки называет человек на карточке, поле
+  показывается при поднятой галке «есть в ЛИК». Колонку нужно завести и в
+  репозиторной базе, и в сиде (`npx tsx scripts/migrate-phase20-runner.ts` из
+  `app/`, затем сид пересобирается по правилу выше), иначе тесты на копии
+  репозиторной базы падают на `no such column: leak_todo`.
+
 **Docker runs, in order** (`app/docker-entrypoint.sh`): Phase 2 → 3 (+data) →
 4 → 5 → legacy-tag-override backfill → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14
-→ 15 → 16 → 17 → 18 → 19.
+→ 15 → 16 → 17 → 18 → 19 → 20.
 
 **A migration script must never run itself.** esbuild bundles the runner and the
 migration into one file, and inside that bundle `require.main === module` is

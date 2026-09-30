@@ -5,8 +5,10 @@ import { leakPillState } from '@/lib/leak-pill';
  * типа (11px), чтобы не отъедать колонку статуса. Заведённая воронка —
  * спокойная сплошная пилюля; незаведённая — пустая рамка тёплого цвета:
  * сигнал «надо завести» должен быть виден, а не читаться по отсутствию.
+ * Заведённая не полностью — тёплая сплошная пилюля «ЛИК · доделать»: она
+ * отличается и от спокойной «ЛИК», и от пустой рамки «нет в ЛИК».
  */
-export default function LeakPill(props: { inLeak: boolean; status: string; blank: boolean }) {
+export default function LeakPill(props: { inLeak: boolean; leakTodo: string; status: string; blank: boolean }) {
   const state = leakPillState(props);
   if (state === 'in') {
     return (
@@ -15,6 +17,16 @@ export default function LeakPill(props: { inLeak: boolean; status: string; blank
         title="Воронка заведена в ЛИК, аналитика по ней есть"
       >
         ЛИК
+      </span>
+    );
+  }
+  if (state === 'incomplete') {
+    return (
+      <span
+        className="whitespace-nowrap rounded bg-[#FBEBD9] px-1.5 py-0.5 text-[11px] text-[#A8581A]"
+        title={`Воронка заведена в ЛИК не полностью. Не хватает: ${props.leakTodo.trim()}`}
+      >
+        ЛИК · доделать
       </span>
     );
   }

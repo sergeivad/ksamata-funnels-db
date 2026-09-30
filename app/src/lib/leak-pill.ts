@@ -4,8 +4,11 @@
  * Чистая функция без БД, потому что список — клиентский компонент (тот же
  * довод, что у funnel-health.ts).
  *
- * Три состояния:
- *  - `in` — галка стоит, воронка заведена;
+ * Четыре состояния:
+ *  - `in` — галка стоит, воронка заведена полностью;
+ *  - `incomplete` — галка стоит, но в `leakTodo` записано, чего не хватает
+ *    (воронку завели в ЛИК заранее, набор правил неполный): недоделку
+ *    нельзя потерять, поэтому она видна в списке;
  *  - `missing` — галки нет, и это сигнал к действию: воронку пора заводить;
  *  - `null` — пилюли нет вовсе.
  *
@@ -15,15 +18,17 @@
  * ЛИК не заводить). Заведённую воронку отмечаем в любом статусе: факт «она
  * есть в ЛИК» от статуса не зависит.
  */
-export type LeakPillState = 'in' | 'missing' | null;
+export type LeakPillState = 'in' | 'incomplete' | 'missing' | null;
 
 export function leakPillState(f: {
   inLeak: boolean;
+  /** Чего не хватает в ЛИК (funnels.leak_todo); пусто — всё заведено. */
+  leakTodo: string;
   status: string;
   /** Все четыре оси пусты — пустой черновик. */
   blank: boolean;
 }): LeakPillState {
-  if (f.inLeak) return 'in';
+  if (f.inLeak) return f.leakTodo.trim() !== '' ? 'incomplete' : 'in';
   if (f.blank || f.status === 'archive') return null;
   return 'missing';
 }

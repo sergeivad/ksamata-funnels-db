@@ -68,6 +68,12 @@ export type FunnelListItem = {
    * docs/leak-engine.md). Список показывает по нему пилюлю «ЛИК».
    */
   inLeak: boolean;
+  /**
+   * Чего не хватает в ЛИК (funnels.leak_todo, Phase 20). Свободный текст;
+   * пустая строка — воронка заведена полностью. Список показывает по нему
+   * пилюлю «ЛИК · доделать».
+   */
+  leakTodo: string;
 };
 
 export type FunnelDetail = FunnelListItem & {
@@ -297,6 +303,7 @@ export function listFunnels(db: DB): FunnelListItem[] {
       productName: funnels.productName,
       funnelType: funnelTypes.name, // NULL, если тип не выбран
       inLeak: funnels.inLeak,
+      leakTodo: funnels.leakTodo,
     })
     .from(funnels)
     .leftJoin(funnelTypes, eq(funnelTypes.id, funnels.funnelTypeId))
@@ -312,6 +319,7 @@ export function listFunnels(db: DB): FunnelListItem[] {
       productName: f.productName,
       funnelType: f.funnelType ?? null,
       inLeak: f.inLeak === 1,
+      leakTodo: f.leakTodo ?? '',
       name: funnelName(axes),
       axes,
     };
@@ -339,6 +347,7 @@ export function getFunnel(db: DB, id: number): FunnelDetail | null {
     productName:  row.productName,
     funnelType:   typeCtx.name,
     inLeak:       row.inLeak === 1,
+    leakTodo:     row.leakTodo ?? '',
     name:         funnelName(axes),
     sourceId:     row.sourceId,
     productId:    row.productId,
@@ -435,6 +444,7 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
         roomsEnabled:       data.roomsEnabled === false ? 0 : 1,
         hasPredspisok:      data.hasPredspisok === false ? 0 : 1,
         inLeak:             data.inLeak ? 1 : 0,
+        leakTodo:           data.leakTodo ?? '',
         funnelTypeId:       data.funnelType ? resolveFunnelTypeId(tx, data.funnelType) : null,
       })
       .returning()
@@ -456,6 +466,7 @@ export function createFunnel(db: DB, data: FunnelCreate): FunnelListItem {
       productName: inserted.productName,
       funnelType:  typeName,
       inLeak:      inserted.inLeak === 1,
+      leakTodo:    inserted.leakTodo ?? '',
       name:        funnelName(axes),
       axes,
     };
@@ -533,6 +544,7 @@ export function createDraftFunnel(db: DB): FunnelListItem {
     // (см. комментарий выше): решение о типе принимается при заполнении.
     funnelType:  null,
     inLeak:      false,
+    leakTodo:    '',
     name:        funnelName(emptyAxes),
     axes:        emptyAxes,
   };
@@ -595,6 +607,7 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
     if (data.roomsEnabled       !== undefined) scalarUpdate.roomsEnabled       = data.roomsEnabled ? 1 : 0;
     if (data.hasPredspisok      !== undefined) scalarUpdate.hasPredspisok      = data.hasPredspisok ? 1 : 0;
     if (data.inLeak             !== undefined) scalarUpdate.inLeak             = data.inLeak ? 1 : 0;
+    if (data.leakTodo           !== undefined) scalarUpdate.leakTodo           = data.leakTodo;
     if (data.funnelType !== undefined) {
       scalarUpdate.funnelTypeId = data.funnelType ? resolveFunnelTypeId(tx, data.funnelType) : null;
     }
@@ -673,6 +686,7 @@ export function updateFunnel(db: DB, id: number, data: FunnelUpdate): FunnelList
       productName: finalRow.productName,
       funnelType:  finalTypeName,
       inLeak:      finalRow.inLeak === 1,
+      leakTodo:    finalRow.leakTodo ?? '',
       name:        funnelName(finalAxes),
       axes:        finalAxes,
     };
@@ -956,6 +970,9 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
         // ещё ничего нет. Унаследованная галка спрятала бы ровно ту воронку,
         // которую пора заводить.
         inLeak:             0,
+        // leak_todo тоже не копируется: список недостающего относится к
+        // конкретной воронке в ЛИК, а у копии её там ещё нет.
+        leakTodo:           '',
       })
       .returning()
       .get() as Funnel;
@@ -981,6 +998,7 @@ export function duplicateFunnel(db: DB, id: number): FunnelListItem | null {
       productName: inserted.productName,
       funnelType:  typeName,
       inLeak:      false,
+      leakTodo:    '',
       name:        funnelName(sourceAxes),
       axes:        sourceAxes,
     };
