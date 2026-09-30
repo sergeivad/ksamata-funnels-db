@@ -18,6 +18,7 @@ interface Funnel {
   status: FunnelStatus;
   title: string;
   inLeak: boolean;
+  leakTodo: string;
   /** Все четыре оси пусты — пустой черновик. */
   blank: boolean;
 }
@@ -103,7 +104,7 @@ export default function FunnelCard({
         {/* Чип типа воронки («Прямые», «Квиз») убран 26.09.2026 по просьбе
             владельца: он ничего не сообщал. Тип остаётся в карточке и в
             тегах. На его месте — пилюля ЛИК. */}
-        <LeakPill inLeak={funnel.inLeak} status={funnel.status} blank={funnel.blank} />
+        <LeakPill inLeak={funnel.inLeak} leakTodo={funnel.leakTodo} status={funnel.status} blank={funnel.blank} />
       </div>
 
       {/* Action buttons — только для редактора: анониму эти запросы вернёт 401 */}

@@ -195,4 +195,12 @@ if [ -n "$FUNNELS_DB_PATH" ]; then
   echo "[entrypoint] Phase-19 migration done."
 fi
 
+# Apply Phase-20 migration (idempotent: колонка funnels.leak_todo, «чего не
+# хватает в ЛИК»). Только ADD COLUMN, данных не переносит.
+if [ -n "$FUNNELS_DB_PATH" ]; then
+  echo "[entrypoint] Running Phase-20 migration against $FUNNELS_DB_PATH"
+  node /app/migrate-phase20.cjs
+  echo "[entrypoint] Phase-20 migration done."
+fi
+
 exec node server.js

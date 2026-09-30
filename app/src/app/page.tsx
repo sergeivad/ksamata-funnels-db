@@ -63,6 +63,7 @@ interface FunnelListItem {
   axes: FunnelAxes;
   funnelType: string | null;
   inLeak: boolean;
+  leakTodo: string;
 }
 
 interface ToastState {
@@ -458,6 +459,7 @@ export default function HomePage() {
           status: funnel.status,
           title: buildTitle(funnel),
           inLeak: funnel.inLeak,
+          leakTodo: funnel.leakTodo,
           blank: isBlank(funnel),
         }}
         health={health[funnel.id] ?? null}
